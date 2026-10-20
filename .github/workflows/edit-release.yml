@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag, e.g. v0.1.0
+        description: Release tag, e.g. Voxta.Modules.Aios.Spotify/v0.1.1
         required: true
       voxta:
         description: New Voxta range, e.g. ">=1.13.0, <1.15.0" (empty keeps it)

@@ -42,7 +42,7 @@ public class VoxtaModule : IVoxtaModule
             SupportsExplicitContent = true,
             Recommendation = ServiceDefinitionRecommendation.Recommended,
             Notes = "Spotify augmentations.",
-            HelpLink = "https://github.com/aios-ai/voxta-spotify-module",
+            HelpLink = "https://github.com/aios-ai/voxta-modules",
             Logo = ModuleLogo.EmbeddedResource(typeof(VoxtaModule), "Assets.spotify.png"),
             Augmentations = Augmentations,
             ModuleConfigurationProviderType = typeof(ModuleConfigurationProvider),

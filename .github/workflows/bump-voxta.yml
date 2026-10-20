@@ -1,4 +1,4 @@
-# Moves the modules to a newer Voxta.Sdk.Modules (range, lock files, module version) and opens a pull request.
+# Moves every module to a newer Voxta.Sdk.Modules version (range, lock files, and module versions) and opens a PR.
 name: bump voxta
 
 on:
@@ -11,7 +11,7 @@ on:
         description: module.json voxta range (empty = ">=" + that version)
         required: false
       bump:
-        description: Module version
+        description: Version bump for every module
         type: choice
         options: [patch, minor, major, none]
         default: patch
