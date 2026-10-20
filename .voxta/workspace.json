@@ -1,0 +1,9 @@
+{
+  // What a Voxta chat working in this repository turns on: module development (load, reload and debug the module in
+  // that Voxta), the shell for git and dotnet, and the workspace's file tools.
+  "augmentations": [
+    { "key": "module_dev", "service": "ModuleDevTools", "label": "Module Development" },
+    { "key": "tools.shell", "service": "Tools", "label": "Shell" },
+    { "key": "workspace", "service": "Workspace", "label": "Workspace" }
+  ]
+}

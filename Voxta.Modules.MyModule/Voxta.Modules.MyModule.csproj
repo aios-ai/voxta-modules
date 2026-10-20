@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <!-- Dependencies next to the DLL, so Voxta can load the build folder as a dev folder. -->
+        <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <!-- The oldest Voxta you support (module.json "voxta"). Voxta provides it at runtime. -->
+        <PackageReference Include="Voxta.Sdk.Modules" Version="1.13.0-alpha.4" ExcludeAssets="runtime" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <EmbeddedResource Include="Assets\logo.svg" />
+    </ItemGroup>
+
+</Project>

@@ -1,0 +1,14 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions: {}
+
+jobs:
+  build:
+    uses: voxta-ai/voxta-module-actions/.github/workflows/build.yml@v1
+    permissions:
+      contents: read

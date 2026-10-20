@@ -1,0 +1,7 @@
+{
+  "id": "Voxta.Modules.MyModule",
+  "version": "0.1.0",
+  "voxta": ">=1.13.0",
+  "label": "My Module",
+  "description": "A starting point for your own module."
+}

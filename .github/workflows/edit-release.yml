@@ -1,0 +1,32 @@
+# Changes a published release without rebuilding it: cap its Voxta range when a later Voxta breaks it, or yank it.
+name: edit release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag, e.g. v0.1.0
+        required: true
+      voxta:
+        description: New Voxta range, e.g. ">=1.13.0, <1.15.0" (empty keeps it)
+        required: false
+      yanked:
+        description: Withdraw it
+        type: choice
+        options: [unchanged, 'yes', 'no']
+        default: unchanged
+
+permissions: {}
+
+jobs:
+  edit:
+    uses: voxta-ai/voxta-module-actions/.github/workflows/edit-release.yml@v1
+    permissions:
+      contents: write
+      id-token: write
+    with:
+      tag: ${{ inputs.tag }}
+      voxta: ${{ inputs.voxta }}
+      yanked: ${{ inputs.yanked }}
+      publish: ${{ vars.VOXTA_PUBLISH == 'true' }}
+      api-url: ${{ vars.VOXTA_API_URL || 'https://api.voxta.ai' }}

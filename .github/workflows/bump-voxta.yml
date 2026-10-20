@@ -1,0 +1,30 @@
+# Moves the modules to a newer Voxta.Sdk.Modules (range, lock files, module version) and opens a pull request.
+name: bump voxta
+
+on:
+  workflow_dispatch:
+    inputs:
+      sdk:
+        description: Voxta.Sdk.Modules version, e.g. 1.14.0
+        required: true
+      voxta:
+        description: module.json voxta range (empty = ">=" + that version)
+        required: false
+      bump:
+        description: Module version
+        type: choice
+        options: [patch, minor, major, none]
+        default: patch
+
+permissions: {}
+
+jobs:
+  bump:
+    uses: voxta-ai/voxta-module-actions/.github/workflows/bump-voxta.yml@v1
+    permissions:
+      contents: write
+      pull-requests: write
+    with:
+      sdk: ${{ inputs.sdk }}
+      voxta: ${{ inputs.voxta }}
+      bump: ${{ inputs.bump }}
