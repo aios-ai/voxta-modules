@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net10.0": {
+      "SpotifyAPI.Web": {
+        "type": "Direct",
+        "requested": "[7.4.2, )",
+        "resolved": "7.4.2",
+        "contentHash": "DxyIO+oxI7gyqyGJ5QzVWf31JInRDRhqGtTXIKX6HUJBie+aR+OuB4bFSYWNVO6GL4V+Tm3PQBKNBa+UJzchOA==",
+        "dependencies": {
+          "Newtonsoft.Json": "13.0.3"
+        }
+      },
+      "Voxta.Sdk.Modules": {
+        "type": "Direct",
+        "requested": "[1.13.0-alpha.4, )",
+        "resolved": "1.13.0-alpha.4",
+        "contentHash": "0O+G0+Q6Yty7lkpA0QVl7InwumSDPWgNiJSqh21jxICzDxXIyOjX17aMaLXbfJbro5P7nzjYAueChJGh00AqnQ==",
+        "dependencies": {
+          "Voxta.Abstractions": "1.13.0-alpha.4",
+          "Voxta.Common": "1.13.0-alpha.4",
+          "Voxta.Model": "1.13.0-alpha.4"
+        }
+      },
+      "Newtonsoft.Json": {
+        "type": "Transitive",
+        "resolved": "13.0.3",
+        "contentHash": "HrC5BXdl00IP9zeV+0Z848QWPAoCr9P3bDEZguI+gkLcBKAOxix/tLEAAHC+UvDNPv4a2d18lOReHMOagPa+zQ=="
+      },
+      "Voxta.Abstractions": {
+        "type": "Transitive",
+        "resolved": "1.13.0-alpha.4",
+        "contentHash": "oRfVbyUFzk/kVJep0G45h3jroWRKWWAXulZzLm/i8JGv/L5oX8YpuLAq6nqr48fx9fyTVYDlpS/Hryt7gHZPwA==",
+        "dependencies": {
+          "Voxta.Common": "1.13.0-alpha.4",
+          "Voxta.Model": "1.13.0-alpha.4"
+        }
+      },
+      "Voxta.Common": {
+        "type": "Transitive",
+        "resolved": "1.13.0-alpha.4",
+        "contentHash": "uQswnl1TgcXz5UplzJDAROVGNvK2ZOSzFVE4Ym8rEBlxFLEW/O27Scd68qvdbq42iaXjwgJXlnSFQgs9w2tfkA=="
+      },
+      "Voxta.Model": {
+        "type": "Transitive",
+        "resolved": "1.13.0-alpha.4",
+        "contentHash": "mmkT1ecz4BSw0MirGqWQneE0QYp8Jn4ULjKQOMNSb40YtTAqLg5zCbrFUwcPD8aykhYx+9hcORSW1ITd/VqGEg=="
+      }
+    }
+  }
+}

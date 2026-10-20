@@ -9,12 +9,14 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <!-- The oldest Voxta you support (module.json "voxta"). Voxta provides it at runtime. -->
+        <FrameworkReference Include="Microsoft.AspNetCore.App" />
+        <PackageReference Include="SpotifyAPI.Web" Version="7.4.2" />
+        <!-- The oldest Voxta version supported by module.json. Voxta provides these assemblies at runtime. -->
         <PackageReference Include="Voxta.Sdk.Modules" Version="1.13.0-alpha.4" ExcludeAssets="runtime" />
     </ItemGroup>
 
     <ItemGroup>
-        <EmbeddedResource Include="Assets\logo.svg" />
+        <EmbeddedResource Include="Assets\spotify.png" />
     </ItemGroup>
 
 </Project>

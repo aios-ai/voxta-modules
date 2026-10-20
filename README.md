@@ -1,71 +1,47 @@
-# Voxta module template
+# Spotify module for Voxta
 
-Start a Voxta module with its release pipeline ready: push a tag and Voxta servers can install it from your GitHub
-repository. The code is an empty module that registers with Voxta; replace it with yours.
+Adds Spotify playback control to Voxta chats. The module connects through Spotify OAuth and exposes actions for
+playback, search, queueing, volume, seeking, shuffle, repeat, favorites, playlists, and playback devices.
 
-More examples (text generation, text to speech, tools): [voxta-sdk-examples](https://github.com/voxta-ai/voxta-sdk-examples).
-
-## Start
-
-In Voxta, with an assistant to write it with you: **Workspaces → New workspace**, start from **Voxta module** (offered
-once the Module Development module is installed), give it a name. Voxta clones this repository, renames it the way
-`dotnet new` would, and checks this machine has the .NET SDK it needs. Chats in that workspace turn on module
-development by themselves (`.voxta/workspace.json`): the assistant edits, loads the module into Voxta, reads why it
-failed and reloads it.
-
-With `dotnet new` (renames everything):
-
-```
-git clone https://github.com/voxta-ai/voxta-module-template
-dotnet new install ./voxta-module-template
-dotnet new voxta-module -n Weather -o voxta-weather
-```
-
-Or **Use this template** on GitHub, then replace `MyModule` in the folder, project, solution, namespaces, `ServiceName`
-and `module.json`, and `My Module` / `my_module` in the label and augmentation key. CI fails until `MyModule` is gone.
-
-Commit `packages.lock.json` with the rest: builds use exactly those packages, and CI fails without it. A package change
-updates it on your next local build.
+Requires Voxta `1.13.0` or newer and a Spotify Developer application.
 
 ## Develop
 
-1. `dotnet build`
-2. In Voxta, **Add Modules → Add Custom Module**, add the project folder, **Apply**. It shows with a Dev badge.
-3. Change, build (Voxta can keep running), **Apply**.
+1. Run `dotnet build`.
+2. In Voxta, open **Add Modules → Add Custom Module**, select `Voxta.Modules.Aios.Spotify`, and apply it.
+3. Configure the Spotify Client ID, Client Secret, and Redirect URI.
 
-Load errors, including Voxta APIs your module uses that the running Voxta lacks, show on the Custom Modules page.
+The default redirect URI is:
 
-## module.json
+```text
+http://127.0.0.1:5384/api/extensions/spotify/oauth2/callback
+```
 
-| Field | |
-|---|---|
-| `id` | Unique; the assembly name |
-| `version` | Your module's version; a release tag is `v` + this |
-| `voxta` | The Voxta versions it runs on, e.g. `>=1.13.0` |
-| `label`, `description` | How Voxta lists it |
-| `platforms` | Only if not all, e.g. `["win-x64"]` |
-| `python` | pip requirements, if any |
+Voxta displays module load errors on the Custom Modules page. The project uses the `1.13.0-alpha.4` Modules SDK and
+keeps its package lock file in source control so local and release builds resolve the same dependencies.
 
-The SDK embeds it in the DLL and generates `ModuleInfo.Version` from it.
+## Supported actions
 
-The `Voxta.Sdk.Modules` version is the oldest Voxta you support, `ExcludeAssets="runtime"`: Voxta provides it, so a
-newer Voxta needs no rebuild. Raise it together with `voxta` when you need something newer: **Actions → bump voxta**
-sets both, rewrites `packages.lock.json`, bumps the module's version, builds, and opens a pull request (enable
-"Allow GitHub Actions to create and approve pull requests" under Settings → Actions). Merge it and tag.
+- Pause, resume, and toggle playback.
+- Play requested or random music and configured special playlists.
+- Queue tracks and other Spotify content.
+- Change volume and seek within the current track.
+- Skip tracks and change shuffle or repeat mode.
+- Save the current track, list or update playlists, list devices, and transfer playback.
 
 ## Release
 
-1. Bump `version` in `module.json`, commit.
+1. Bump `version` in `Voxta.Modules.Aios.Spotify/module.json`, commit.
 2. `git tag v0.2.0 && git push --tags`. A tag with a suffix (`v0.2.0-beta.1`) is a pre-release. A repository with
    several modules tags each one `<module id>/v0.2.0`.
 
 The workflows here call Voxta's reusable ones ([voxta-module-actions](https://github.com/voxta-ai/voxta-module-actions)).
 `release.yml` builds the module, attests it, and creates the GitHub release with two assets:
-`<id>-<version>-any.zip` (what Voxta installs) and `voxta-module.json` (module.json as built, the zip's sha256).
+`<id>-<version>-any.zip` (what Voxta installs) and `voxta-module.json` (the built metadata and zip SHA-256).
 `dotnet publish -c Release -p:VoxtaModulePack=dist` makes the same two files locally. A zip is at most 32 MB:
 download CUDA, models and other large dependencies at runtime.
 
-Users add your repository in **Add Modules → Module Registries** (`owner/repo`) and install from there. Voxta checks
+Users add `aios-ai/voxta-spotify-module` in **Add Modules → Module Registries** and install from there. Voxta checks
 each download against the sha256 in `voxta-module.json` and GitHub's own hash of the asset.
 
 When a later Voxta breaks a release, cap its range without rebuilding: **Actions → edit release**, e.g.
@@ -89,7 +65,7 @@ In a public repository every zip is attested by GitHub: it was built by this rep
 tagged commit.
 
 ```
-gh attestation verify Voxta.Modules.MyModule-0.1.0-any.zip --repo <owner>/<repo>
+gh attestation verify Voxta.Modules.Aios.Spotify-0.1.0-any.zip --repo aios-ai/voxta-spotify-module
 ```
 
 The build is pinned (`packages.lock.json`, deterministic compiler output): rebuild the tag with
@@ -98,4 +74,4 @@ and the DLL matches the one in the zip. The zip itself differs (file times).
 
 ## License
 
-MIT, for the template. Your module is yours: change `LICENSE` to whatever you publish it under.
+MIT.

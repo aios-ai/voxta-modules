@@ -1,0 +1,7 @@
+{
+  "id": "Voxta.Modules.Aios.Spotify",
+  "version": "0.1.0",
+  "voxta": ">=1.13.0",
+  "label": "Spotify (by aios)",
+  "description": "Spotify playback control and chat augmentations for Voxta."
+}
