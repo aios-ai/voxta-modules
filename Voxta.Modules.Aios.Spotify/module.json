@@ -2,6 +2,6 @@
   "id": "Voxta.Modules.Aios.Spotify",
   "version": "0.1.0",
   "voxta": ">=1.13.0",
-  "label": "Spotify (by aios)",
-  "description": "Spotify playback control and chat augmentations for Voxta."
+  "label": "Spotify Control (by aios)",
+  "description": "Control Spotify playback, search, playlists, queues, volume, and devices from Voxta chats. Requires Spotify Premium and a Spotify Developer application."
 }

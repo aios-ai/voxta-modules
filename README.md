@@ -8,12 +8,13 @@ Each module has its own project directory, `module.json`, version, dependencies,
 
 ## Modules
 
-### Spotify
+### Spotify Control
 
 `Voxta.Modules.Aios.Spotify` adds Spotify playback control to Voxta chats. It connects through Spotify OAuth and
 exposes actions for playback, search, queueing, volume, seeking, shuffle, repeat, favorites, playlists, and devices.
 
-Requires Voxta `1.13.0` or newer and a Spotify Developer application.
+The module itself is free. It requires Voxta `1.13.0` or newer, a Spotify Premium account, and a Spotify Developer
+application that provides a Client ID and Client Secret.
 
 ## Develop
 
