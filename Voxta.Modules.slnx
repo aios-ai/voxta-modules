@@ -1,4 +1,5 @@
 <Solution>
   <Project Path="Voxta.Modules.Aios.OpenWeather/Voxta.Modules.Aios.OpenWeather.csproj" />
+  <Project Path="Voxta.Modules.Aios.PhilipsHue/Voxta.Modules.Aios.PhilipsHue.csproj" />
   <Project Path="Voxta.Modules.Aios.Spotify/Voxta.Modules.Aios.Spotify.csproj" />
 </Solution>

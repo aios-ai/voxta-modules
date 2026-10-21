@@ -8,6 +8,14 @@ Each module has its own project directory, `module.json`, version, dependencies,
 
 ## Modules
 
+### Philips Hue
+
+`Voxta.Modules.Aios.PhilipsHue` controls Philips Hue lights, smart plugs, rooms, zones, scenes, color, and brightness
+from Voxta chats. It can also expose a configured light to a character for mood and emotion-driven changes.
+
+The module itself is free. It requires Voxta `1.13.0` or newer and a Philips Hue Bridge reachable on the local
+network. Initial setup asks you to press the bridge link button.
+
 ### OpenWeather
 
 `Voxta.Modules.Aios.OpenWeather` adds current weather, forecasts, air quality, and generated weather maps to Voxta

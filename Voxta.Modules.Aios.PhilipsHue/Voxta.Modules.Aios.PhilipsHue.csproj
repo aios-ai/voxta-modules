@@ -1,0 +1,22 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    </PropertyGroup>
+    
+    <ItemGroup>
+        <PackageReference Include="HueApi" Version="3.2.0" />
+        <PackageReference Include="HueApi.ColorConverters" Version="3.1.0" />
+        <!-- The oldest Voxta version supported by module.json. Voxta provides these assemblies at runtime. -->
+        <PackageReference Include="Voxta.Sdk.Modules" Version="1.13.0-alpha.4" ExcludeAssets="runtime" />
+    </ItemGroup>
+	
+    <ItemGroup>
+      <None Remove="Assets\PhilipsHue.png" />
+      <EmbeddedResource Include="Assets\PhilipsHue.png" />
+    </ItemGroup>
+
+</Project>
