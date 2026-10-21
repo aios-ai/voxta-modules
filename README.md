@@ -8,6 +8,14 @@ Each module has its own project directory, `module.json`, version, dependencies,
 
 ## Modules
 
+### OpenWeather
+
+`Voxta.Modules.Aios.OpenWeather` adds current weather, forecasts, air quality, and generated weather maps to Voxta
+chats. It supports configurable locations, units, reported details, and action-inference matching.
+
+The module itself is free. It requires Voxta `1.13.0` or newer and an OpenWeather API key; OpenWeather offers a
+rate-limited free plan.
+
 ### Spotify Control
 
 `Voxta.Modules.Aios.Spotify` adds Spotify playback control to Voxta chats. It connects through Spotify OAuth and
@@ -19,10 +27,10 @@ application that provides a Client ID and Client Secret.
 ## Develop
 
 1. Run `dotnet build Voxta.Modules.slnx` to build the repository, or build a module project directly.
-2. In Voxta, open **Add Modules → Add Custom Module**, select `Voxta.Modules.Aios.Spotify`, and apply it.
-3. Configure the Spotify Client ID, Client Secret, and Redirect URI.
+2. In Voxta, open **Add Modules → Add Custom Module**, select the module project, and apply it.
+3. Configure the selected module in Voxta.
 
-The default redirect URI is:
+Spotify's default redirect URI is:
 
 ```text
 http://127.0.0.1:5384/api/extensions/spotify/oauth2/callback

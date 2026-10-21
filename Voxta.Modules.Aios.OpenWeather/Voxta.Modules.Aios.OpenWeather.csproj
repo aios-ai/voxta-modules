@@ -1,0 +1,27 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <!-- Dependencies next to the DLL, so Voxta can load the build folder as a dev folder. -->
+        <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    </PropertyGroup>
+    
+    <ItemGroup>
+        <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
+        <PackageReference Include="SixLabors.ImageSharp.Drawing" Version="2.1.7" />
+        <!-- The oldest Voxta version supported by module.json. Voxta provides these assemblies at runtime. -->
+        <PackageReference Include="Voxta.Sdk.Modules" Version="1.13.0-alpha.4" ExcludeAssets="runtime" />
+    </ItemGroup>
+    
+    <ItemGroup>
+      <None Remove="Data\countries.csv" />
+      <EmbeddedResource Include="Data\countries.csv" />
+      <None Remove="Data\bounding-boxes.json" />
+      <EmbeddedResource Include="Data\bounding-boxes.json" />
+      <None Remove="Assets\OpenWeather.png" />
+      <EmbeddedResource Include="Assets\OpenWeather.png" />
+    </ItemGroup>
+    
+</Project>
