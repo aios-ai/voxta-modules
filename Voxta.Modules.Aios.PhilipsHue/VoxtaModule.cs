@@ -27,7 +27,8 @@ public class VoxtaModule : IVoxtaModule
             ServiceName = ServiceName,
             Label = "Philips Hue (by aios)",
             Version = ModuleInfo.Version,
-            Experimental = true,
+            Category = "Augmentations",
+            Flags = [ModuleFlag.Experimental, ModuleFlag.SupportsExplicitContent, ModuleFlag.Recommended],
             InstallableBy = ModuleInstallableBy.Anyone,
             Supports = new()
             {
@@ -35,8 +36,6 @@ public class VoxtaModule : IVoxtaModule
             },
             Pricing = ServiceDefinitionPricing.Free,
             Hosting = ServiceDefinitionHosting.Online,
-            SupportsExplicitContent = true,
-            Recommendation = ServiceDefinitionRecommendation.Recommended,
             Notes = "Control Philips Hue lights, rooms, zones, scenes, color, and brightness from Voxta chats. Requires a Philips Hue Bridge on the local network.",
             HelpLink = "https://github.com/aios-ai/voxta-modules",
             Logo = ModuleLogo.EmbeddedResource(typeof(VoxtaModule), "Assets.PhilipsHue.png"),

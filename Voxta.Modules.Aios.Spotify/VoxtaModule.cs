@@ -31,7 +31,8 @@ public class VoxtaModule : IVoxtaModule
             ServiceName = ServiceName,
             Label = "Spotify Control (by aios)",
             Version = ModuleInfo.Version,
-            Experimental = true,
+            Category = "Augmentations",
+            Flags = [ModuleFlag.Experimental, ModuleFlag.SupportsExplicitContent, ModuleFlag.Recommended],
             InstallableBy = ModuleInstallableBy.Anyone,
             Supports = new()
             {
@@ -39,8 +40,6 @@ public class VoxtaModule : IVoxtaModule
             },
             Pricing = ServiceDefinitionPricing.Free,
             Hosting = ServiceDefinitionHosting.Online,
-            SupportsExplicitContent = true,
-            Recommendation = ServiceDefinitionRecommendation.Recommended,
             Notes = "Control Spotify playback, search, playlists, queues, volume, and devices from Voxta chats. The module is free; a Spotify Premium account and Spotify Developer application are required.",
             HelpLink = "https://github.com/aios-ai/voxta-modules",
             Logo = ModuleLogo.EmbeddedResource(typeof(VoxtaModule), "Assets.spotify.png"),

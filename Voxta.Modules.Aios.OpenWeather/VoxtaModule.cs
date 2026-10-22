@@ -29,7 +29,8 @@ public class VoxtaModule : IVoxtaModule
             ServiceName = ServiceName,
             Label = "OpenWeather (by aios)",
             Version = ModuleInfo.Version,
-            Experimental = true,
+            Category = "Augmentations",
+            Flags = [ModuleFlag.Experimental, ModuleFlag.SupportsExplicitContent, ModuleFlag.Recommended],
             InstallableBy = ModuleInstallableBy.Anyone,
             Supports = new()
             {
@@ -37,8 +38,6 @@ public class VoxtaModule : IVoxtaModule
             },
             Pricing = ServiceDefinitionPricing.Free,
             Hosting = ServiceDefinitionHosting.Online,
-            SupportsExplicitContent = true,
-            Recommendation = ServiceDefinitionRecommendation.Recommended,
             Notes = "Add current weather, forecasts, air quality, and weather maps to Voxta chats. The module is free and requires an OpenWeather API key; OpenWeather offers a rate-limited free plan.",
             HelpLink = "https://github.com/aios-ai/voxta-modules",
             Logo = ModuleLogo.EmbeddedResource(typeof(VoxtaModule), "Assets.OpenWeather.png"),

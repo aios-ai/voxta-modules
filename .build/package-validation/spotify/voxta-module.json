@@ -1,0 +1,16 @@
+{
+  "module": {
+  "id": "Voxta.Modules.Aios.Spotify",
+  "version": "0.1.2",
+  "voxta": ">=1.13.0-alpha.9",
+  "label": "Spotify Control (by aios)",
+  "category": "Augmentations",
+  "description": "Control Spotify playback, search, playlists, queues, volume, and devices from Voxta chats. Requires Spotify Premium and a Spotify Developer application."
+},
+  "builtAgainst": "1.13.0-alpha.9",
+  "dotnetSdk": "10.0.402",
+  "commit": "acc95d44be15efd294396c2fced58e22674a784d",
+  "files": [
+    { "rid": "any", "name": "Voxta.Modules.Aios.Spotify-0.1.2-any.zip", "sha256": "cbcbe5fbccde9f4fb53b63519b98e9fdbd50498135fc181ede1ab94ff699a6fa" }
+  ]
+}
