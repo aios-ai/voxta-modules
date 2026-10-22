@@ -1,6 +1,6 @@
 {
   "id": "Voxta.Modules.Aios.OpenWeather",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "voxta": ">=1.13.0-alpha.9",
   "label": "OpenWeather (by aios)",
   "category": "Augmentations",
