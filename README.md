@@ -69,8 +69,7 @@ git tag Voxta.Modules.Aios.Spotify/v0.1.1
 git push origin Voxta.Modules.Aios.Spotify/v0.1.1
 ```
 
-A version suffix makes a prerelease, for example `Voxta.Modules.Aios.Spotify/v0.2.0-beta.1`. The original Spotify
-`v0.1.0` release predates the multi-module repository naming and remains valid; use qualified tags for all new releases.
+A version suffix makes a prerelease, for example `Voxta.Modules.Aios.Spotify/v0.2.0-beta.1`; use qualified tags for all new releases.
 
 The workflows here call Voxta's reusable ones ([voxta-module-actions](https://github.com/voxta-ai/voxta-module-actions)).
 `release.yml` builds the module, attests it, and creates the GitHub release with two assets:
