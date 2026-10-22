@@ -23,7 +23,7 @@ public class VoxtaModule : IVoxtaModule
             "Control Spotify playback, search, playlists, queues, volume, and devices from a chat."
         ),
     ];
-    
+
     public void Configure(IVoxtaModuleBuilder builder)
     {
         builder.Register(new()
@@ -32,7 +32,7 @@ public class VoxtaModule : IVoxtaModule
             Label = "Spotify Control (by aios)",
             Version = ModuleInfo.Version,
             Category = "Augmentations",
-            Flags = [ModuleFlag.Experimental, ModuleFlag.SupportsExplicitContent, ModuleFlag.Recommended],
+            Flags = [ModuleFlag.Experimental],
             InstallableBy = ModuleInstallableBy.Anyone,
             Supports = new()
             {
@@ -48,12 +48,12 @@ public class VoxtaModule : IVoxtaModule
             ModuleConfigurationFieldsRequiringReload = ModuleConfigurationProvider.FieldsRequiringReload,
             ModuleTestingProviderType = typeof(ModuleTestingProvider),
         });
-        
+
         builder.AddChatAugmentationsService<SpotifyChatAugmentationsService>(ServiceName);
-        
+
         builder.Services.AddSingleton<ISpotifyManagerFactory, SpotifyManagerFactory>();
         builder.Services.AddSingleton<ISpotifyAuthCallbackManager, SpotifyAuthCallbackManager>();
-        
+
         builder.Services.AddControllers().PartManager.ApplicationParts.Add(new AssemblyPart(typeof(SpotifyController).Assembly));
     }
 }

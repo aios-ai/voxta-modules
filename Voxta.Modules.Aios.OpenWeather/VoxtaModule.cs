@@ -30,7 +30,7 @@ public class VoxtaModule : IVoxtaModule
             Label = "OpenWeather (by aios)",
             Version = ModuleInfo.Version,
             Category = "Augmentations",
-            Flags = [ModuleFlag.Experimental, ModuleFlag.SupportsExplicitContent, ModuleFlag.Recommended],
+            Flags = [ModuleFlag.Experimental],
             InstallableBy = ModuleInstallableBy.Anyone,
             Supports = new()
             {

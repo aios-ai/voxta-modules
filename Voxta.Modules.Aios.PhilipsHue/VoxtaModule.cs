@@ -19,7 +19,7 @@ public class VoxtaModule : IVoxtaModule
             "Control Philips Hue lights, rooms, zones, scenes, color, and brightness from a chat."
         ),
     ];
-    
+
     public void Configure(IVoxtaModuleBuilder builder)
     {
         builder.Register(new()
@@ -28,7 +28,7 @@ public class VoxtaModule : IVoxtaModule
             Label = "Philips Hue (by aios)",
             Version = ModuleInfo.Version,
             Category = "Augmentations",
-            Flags = [ModuleFlag.Experimental, ModuleFlag.SupportsExplicitContent, ModuleFlag.Recommended],
+            Flags = [ModuleFlag.Experimental],
             InstallableBy = ModuleInstallableBy.Anyone,
             Supports = new()
             {
@@ -44,7 +44,7 @@ public class VoxtaModule : IVoxtaModule
             ModuleConfigurationFieldsRequiringReload = ModuleConfigurationProvider.FieldsRequiringReload,
             ModuleTestingProviderType = typeof(ModuleTestingProvider),
         });
-        
+
         builder.AddChatAugmentationsService<PhilipsHueChatAugmentationsService>(ServiceName);
     }
 }
