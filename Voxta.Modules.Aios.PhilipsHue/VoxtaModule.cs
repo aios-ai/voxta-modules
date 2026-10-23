@@ -27,7 +27,7 @@ public class VoxtaModule : IVoxtaModule
             ServiceName = ServiceName,
             Label = "Philips Hue",
             Version = ModuleInfo.Version,
-            Category = "Augmentations",
+            Category = "Devices",
             Flags = [ModuleFlag.Experimental],
             InstallableBy = ModuleInstallableBy.Anyone,
             Supports = new()
