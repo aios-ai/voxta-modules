@@ -1,8 +1,9 @@
 {
   "id": "Voxta.Modules.Aios.OpenWeather",
-  "version": "0.1.2",
-  "voxta": ">=1.13.0-alpha.9",
-  "label": "OpenWeather (by aios)",
+  "version": "0.1.3",
+  "voxta": ">=1.13.0-alpha.10",
+  "label": "OpenWeather",
+  "author": "aios",
   "category": "Augmentations",
   "description": "Add current weather, forecasts, air quality, and weather maps to Voxta chats. Requires an OpenWeather API key; a rate-limited free plan is available."
 }

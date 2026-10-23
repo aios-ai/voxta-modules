@@ -12,7 +12,7 @@
         <FrameworkReference Include="Microsoft.AspNetCore.App" />
         <PackageReference Include="SpotifyAPI.Web" Version="7.4.2" />
         <!-- The oldest Voxta version supported by module.json. Voxta provides these assemblies at runtime. -->
-        <PackageReference Include="Voxta.Sdk.Modules" Version="1.13.0-alpha.9" ExcludeAssets="runtime" />
+        <PackageReference Include="Voxta.Sdk.Modules" Version="1.13.0-alpha.10" ExcludeAssets="runtime" />
     </ItemGroup>
 
     <ItemGroup>

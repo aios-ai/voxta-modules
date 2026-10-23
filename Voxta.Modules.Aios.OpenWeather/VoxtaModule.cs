@@ -27,7 +27,7 @@ public class VoxtaModule : IVoxtaModule
         builder.Register(new()
         {
             ServiceName = ServiceName,
-            Label = "OpenWeather (by aios)",
+            Label = "OpenWeather",
             Version = ModuleInfo.Version,
             Category = "Augmentations",
             Flags = [ModuleFlag.Experimental],

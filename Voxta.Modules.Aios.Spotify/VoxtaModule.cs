@@ -29,7 +29,7 @@ public class VoxtaModule : IVoxtaModule
         builder.Register(new()
         {
             ServiceName = ServiceName,
-            Label = "Spotify Control (by aios)",
+            Label = "Spotify Control",
             Version = ModuleInfo.Version,
             Category = "Augmentations",
             Flags = [ModuleFlag.Experimental],

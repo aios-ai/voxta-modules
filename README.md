@@ -44,7 +44,7 @@ Spotify's default redirect URI is:
 http://127.0.0.1:5384/api/extensions/spotify/oauth2/callback
 ```
 
-Voxta displays module load errors on the Custom Modules page. The project uses the `1.13.0-alpha.4` Modules SDK and
+Voxta displays module load errors on the Custom Modules page. The project uses the `1.13.0-alpha.10` Modules SDK and
 keeps its package lock file in source control so local and release builds resolve the same dependencies.
 
 ## Supported actions

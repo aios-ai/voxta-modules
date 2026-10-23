@@ -25,7 +25,7 @@ public class VoxtaModule : IVoxtaModule
         builder.Register(new()
         {
             ServiceName = ServiceName,
-            Label = "Philips Hue (by aios)",
+            Label = "Philips Hue",
             Version = ModuleInfo.Version,
             Category = "Augmentations",
             Flags = [ModuleFlag.Experimental],
