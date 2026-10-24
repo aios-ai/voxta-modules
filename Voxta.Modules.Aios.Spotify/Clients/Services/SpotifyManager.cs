@@ -99,7 +99,7 @@ public class SpotifyManager(
 {
     private const string AuthorizationRequiredMessage = "Spotify authorization is required. Please open Voxta on this machine and authorize Spotify.";
     private const string ReauthorizationRequiredMessage = "Spotify authorization has expired or is no longer valid. Please reauthorize Spotify.";
-    private const string AuthorizationDismissedMessage = "Spotify authorization was dismissed. Voxta will not ask again during this chat; start a new chat or test the module when you are ready to authorize.";
+    private const string AuthorizationDismissedMessage = "Spotify authorization was dismissed. Start a new chat or test the module when you are ready to authorize.";
     private const string AuthorizationFailedMessage = "Spotify authorization could not be completed. Voxta will not ask again during this chat; start a new chat or test the module to try again.";
     private const string NoActiveDeviceMessage = "No active Spotify device was found. Please start Spotify on your browser, desktop, or mobile app, then try again.";
     private SpotifyClient? _spotifyClient;
