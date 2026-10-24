@@ -41,6 +41,17 @@ public class ModuleTestingProvider(
         try
         {
             var spotifyUserId = await client.GetSpotifyUserIdAsync();
+            if (spotifyUserId == null)
+            {
+                return
+                [
+                    new ModuleTestResultItem
+                    {
+                        Success = false,
+                        Message = client.LastUserVisibleError ?? "Spotify authorization was not completed.",
+                    }
+                ];
+            }
             return
             [
                 new ModuleTestResultItem
@@ -74,14 +85,16 @@ public class TestUserInteractionWrapper(
 {
     public CancellationToken Abort => abort;
 
-    public async Task<IUserInteractionRequestToken> RequestUserInteraction(Uri url, CancellationToken cancellationToken)
+    public async Task<IUserInteractionRequestToken> RequestUserInteraction(Uri url, bool isReauthorization, CancellationToken cancellationToken)
     {
         var request = await userInteractionRequestsManager.RequestUserInteractionAsync(cancellationToken);
         ws.SendToUser(new ServerUserInteractionRequestMessage
         {
             RequestId = request.RequestId,
             ModuleId = moduleId,
-            Message = "Please authorize Spotify by visiting the following URL:",
+            Message = isReauthorization
+                ? "Your Spotify authorization has expired or is no longer valid. Please reauthorize Spotify by visiting the following URL:"
+                : "Please authorize Spotify by visiting the following URL:",
             Url = url.ToString(),
         });
         return request;

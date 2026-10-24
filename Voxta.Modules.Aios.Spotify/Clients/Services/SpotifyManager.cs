@@ -1,3 +1,5 @@
+using System.Net;
+using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using SpotifyAPI.Web;
@@ -10,18 +12,20 @@ namespace Voxta.Modules.Aios.Spotify.Clients.Services;
 public interface ISpotifyUserInteractionWrapper
 {
     CancellationToken Abort { get; }
-    Task<IUserInteractionRequestToken> RequestUserInteraction(Uri url, CancellationToken cancellationToken);
+    Task<IUserInteractionRequestToken> RequestUserInteraction(Uri url, bool isReauthorization, CancellationToken cancellationToken);
 }
 
 public class SpotifyUserInteractionWrapper(IChatSessionChatAugmentationApi session) : ISpotifyUserInteractionWrapper
 {
     public CancellationToken Abort => session.Chat.Abort;
 
-    public Task<IUserInteractionRequestToken> RequestUserInteraction(Uri url, CancellationToken cancellationToken)
+    public Task<IUserInteractionRequestToken> RequestUserInteraction(Uri url, bool isReauthorization, CancellationToken cancellationToken)
     {
         return session.RequestUserAction(new UserInteractionRequestInput
         {
-            Message = "Please authorize the Spotify integration by visiting the following URL in your browser:",
+            Message = isReauthorization
+                ? "Your Spotify authorization has expired or is no longer valid. Please reauthorize Spotify by visiting the following URL in your browser:"
+                : "Please authorize the Spotify integration by visiting the following URL in your browser:",
             Url = url.ToString(),
         }, cancellationToken);
     }
@@ -93,16 +97,33 @@ public class SpotifyManager(
     SpotifyManagerConfig config,
     ILogger<SpotifyManager> logger) : ISpotifyManager
 {
-    private const string AuthorizationRequiredMessage = "Spotify authorization is required. Please open Voxta on this machine and authorize Spotify again.";
+    private const string AuthorizationRequiredMessage = "Spotify authorization is required. Please open Voxta on this machine and authorize Spotify.";
+    private const string ReauthorizationRequiredMessage = "Spotify authorization has expired or is no longer valid. Please reauthorize Spotify.";
+    private const string AuthorizationDismissedMessage = "Spotify authorization was dismissed. Voxta will not ask again during this chat; start a new chat or test the module when you are ready to authorize.";
+    private const string AuthorizationFailedMessage = "Spotify authorization could not be completed. Voxta will not ask again during this chat; start a new chat or test the module to try again.";
     private const string NoActiveDeviceMessage = "No active Spotify device was found. Please start Spotify on your browser, desktop, or mobile app, then try again.";
     private SpotifyClient? _spotifyClient;
     private SpotifyAuthToken? _spotifyAuthToken;
+    private bool _forceTokenRefresh;
+    private bool _reauthorizationRequired;
+    private bool _authorizationPromptDismissed;
+    private bool _authorizationRetrySuppressed;
+    private bool _authorizationUnavailableLogged;
+    private string? _configurationError;
     public string? LastUserVisibleError { get; private set; }
     public bool IsAuthorizationRequired { get; private set; }
 
     public async Task InitializeSpotifyClient(CancellationToken cancellationToken)
     {
         logger.LogInformation("Initialize Spotify Client");
+        if (TryGetPublicRedirectUriReplacement(config.RedirectUri, out var publicRedirectUri))
+        {
+            _configurationError = $"The configured Spotify Redirect URI is obsolete in Voxta 1.13. Change it in both Voxta and the Spotify Developer Dashboard to {publicRedirectUri}.";
+            SetAuthorizationRequired();
+            logger.LogWarning("{ConfigurationError}", _configurationError);
+            return;
+        }
+
         var accessToken = await GetValidAccessTokenAsync(cancellationToken);
         if (accessToken != null)
         {
@@ -113,7 +134,7 @@ public class SpotifyManager(
         }
         else
         {
-            logger.LogError("Failed to initialize Spotify client. Access token could not be retrieved.");
+            logger.LogWarning("Spotify client was not initialized because authorization is unavailable.");
             SetAuthorizationRequired();
         }
     }
@@ -122,16 +143,35 @@ public class SpotifyManager(
 
     private async Task<string?> GetValidAccessTokenAsync(CancellationToken cancellationToken)
     {
+        if (_configurationError != null)
+        {
+            SetAuthorizationRequired();
+            return null;
+        }
+
         var token = await LoadTokenAsync();
 
-        if (token == null || IsTokenExpired(token))
+        if ((_authorizationPromptDismissed || _authorizationRetrySuppressed) &&
+            (token == null || IsTokenExpired(token) || _forceTokenRefresh))
         {
+            SetAuthorizationRequired();
+            return null;
+        }
+
+        if (token == null || IsTokenExpired(token) || _forceTokenRefresh)
+        {
+            _reauthorizationRequired |= token != null;
             if (token?.RefreshToken != null)
             {
                 try
                 {
                     token = await RefreshTokenAsync(token.RefreshToken, cancellationToken);
                     await SaveTokenAsync(token);
+                    _forceTokenRefresh = false;
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
                 }
                 catch (Exception ex) when (IsInvalidGrant(ex))
                 {
@@ -161,6 +201,7 @@ public class SpotifyManager(
                     LoginRequest.ResponseType.Code
                 )
                 {
+                    State = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)),
                     Scope =
                     [
                         Scopes.UserReadPrivate,
@@ -180,10 +221,22 @@ public class SpotifyManager(
                 string code;
                 try
                 {
-                    code = await GetAuthCodeAsync(authUri, cancellationToken);
+                    code = await GetAuthCodeAsync(authUri, loginRequest.State, _reauthorizationRequired, cancellationToken);
                 }
-                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                catch (SpotifyAuthorizationDismissedException)
                 {
+                    _authorizationPromptDismissed = true;
+                    SetAuthorizationDismissed();
+                    return null;
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Spotify authorization could not be started or another request is already active.");
+                    _authorizationRetrySuppressed = true;
                     SetAuthorizationRequired();
                     return null;
                 }
@@ -199,9 +252,14 @@ public class SpotifyManager(
                 {
                     response = await auth.RequestToken(tokenRequest, cancellationToken);
                 }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
                 catch (Exception ex)
                 {
                     logger.LogWarning(ex, "Failed to exchange Spotify authorization code.");
+                    _authorizationRetrySuppressed = true;
                     SetAuthorizationRequired();
                     return null;
                 }
@@ -214,25 +272,32 @@ public class SpotifyManager(
                 };
 
                 await SaveTokenAsync(token);
+                _forceTokenRefresh = false;
+                _reauthorizationRequired = false;
+                _authorizationPromptDismissed = false;
+                _authorizationRetrySuppressed = false;
             }
         }
         ClearUserVisibleError();
         return token.AccessToken;
     }
 
-    private async Task<string> GetAuthCodeAsync(Uri authUri, CancellationToken cancellationToken)
+    private async Task<string> GetAuthCodeAsync(Uri authUri, string state, bool isReauthorization, CancellationToken cancellationToken)
     {
         try
         {
-            var codeTask = spotifyAuthCallbackManager.WaitForCodeAsync(cancellationToken);
-            await using var userInteractionToken = await userInteractionWrapper.RequestUserInteraction(authUri, cancellationToken);
+            var codeTask = spotifyAuthCallbackManager.WaitForCodeAsync(state, cancellationToken);
+            await using var userInteractionToken = await userInteractionWrapper.RequestUserInteraction(authUri, isReauthorization, cancellationToken);
 
             logger.LogInformation("Waiting for Spotify authentication...");
 
-            await Task.WhenAny(userInteractionToken.Task, codeTask);
+            var completedTask = await Task.WhenAny(userInteractionToken.Task, codeTask);
 
-            if (!codeTask.IsCompleted)
-                throw new OperationCanceledException("User interaction was cancelled or timed out.");
+            if (completedTask == userInteractionToken.Task && !codeTask.IsCompletedSuccessfully)
+            {
+                await userInteractionToken.Task;
+                throw new SpotifyAuthorizationDismissedException();
+            }
 
             var code = await codeTask;
 
@@ -242,7 +307,7 @@ public class SpotifyManager(
         }
         finally
         {
-            spotifyAuthCallbackManager.Release();
+            spotifyAuthCallbackManager.Release(state);
         }
     }
 
@@ -288,6 +353,7 @@ public class SpotifyManager(
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Failed to load Spotify token. User authorization is required.");
+            _reauthorizationRequired = true;
             SetAuthorizationRequired();
             return null;
         }
@@ -322,7 +388,7 @@ public class SpotifyManager(
         {
             if (!await EnsureValidSpotifyClient(cancellationToken) || _spotifyClient == null)
             {
-                logger.LogError("Spotify client not valid. Playback state cannot be retrieved.");
+                logger.LogDebug("Spotify client is not authorized. Playback state was not polled.");
                 return null;
             }
 
@@ -480,7 +546,7 @@ public class SpotifyManager(
 
     public async Task<string?> GetSpotifyUserIdAsync()
     {
-        if (_spotifyClient == null)
+        if (!await EnsureValidSpotifyClient(userInteractionWrapper.Abort) || _spotifyClient == null)
         {
             SetAuthorizationRequired();
             return null;
@@ -808,7 +874,11 @@ public class SpotifyManager(
 
         if (newToken == null)
         {
-            logger.LogError("Unable to refresh access token. Spotify client cannot be used.");
+            if (!_authorizationUnavailableLogged)
+            {
+                logger.LogWarning("Spotify is unavailable until authorization is completed.");
+                _authorizationUnavailableLogged = true;
+            }
             SetAuthorizationRequired();
             return false;
         }
@@ -824,6 +894,7 @@ public class SpotifyManager(
             _spotifyClient = new SpotifyClient(newToken);
         }
 
+        _authorizationUnavailableLogged = false;
         return true;
     }
 
@@ -835,8 +906,53 @@ public class SpotifyManager(
 
     private void SetAuthorizationRequired()
     {
+        if (_configurationError != null)
+        {
+            IsAuthorizationRequired = true;
+            LastUserVisibleError = _configurationError;
+            return;
+        }
+
+        if (_authorizationPromptDismissed)
+        {
+            SetAuthorizationDismissed();
+            return;
+        }
+
+        if (_authorizationRetrySuppressed)
+        {
+            IsAuthorizationRequired = true;
+            LastUserVisibleError = AuthorizationFailedMessage;
+            return;
+        }
+
         IsAuthorizationRequired = true;
-        LastUserVisibleError = AuthorizationRequiredMessage;
+        LastUserVisibleError = _reauthorizationRequired
+            ? ReauthorizationRequiredMessage
+            : AuthorizationRequiredMessage;
+    }
+
+    private void SetAuthorizationDismissed()
+    {
+        IsAuthorizationRequired = true;
+        LastUserVisibleError = AuthorizationDismissedMessage;
+    }
+
+    private static bool TryGetPublicRedirectUriReplacement(Uri redirectUri, out Uri publicRedirectUri)
+    {
+        const string legacyPath = "/api/extensions/spotify/oauth2/callback";
+        if (!redirectUri.AbsolutePath.Equals(legacyPath, StringComparison.OrdinalIgnoreCase))
+        {
+            publicRedirectUri = redirectUri;
+            return false;
+        }
+
+        var builder = new UriBuilder(redirectUri)
+        {
+            Path = "/extensions/spotify/oauth2/callback",
+        };
+        publicRedirectUri = builder.Uri;
+        return true;
     }
 
     private void SetSpotifyApiError(APIException ex, string operation)
@@ -844,11 +960,14 @@ public class SpotifyManager(
         logger.LogWarning(ex, "Spotify API failed while trying to {Operation}.", operation);
 
         var message = ex.Message;
-        if (message.Contains("401", StringComparison.OrdinalIgnoreCase) ||
+        if (ex.Response?.StatusCode == HttpStatusCode.Unauthorized ||
+            message.Contains("401", StringComparison.OrdinalIgnoreCase) ||
             message.Contains("unauthorized", StringComparison.OrdinalIgnoreCase) ||
             message.Contains("invalid token", StringComparison.OrdinalIgnoreCase))
         {
             _spotifyClient = null;
+            _forceTokenRefresh = true;
+            _reauthorizationRequired = true;
             SetAuthorizationRequired();
             return;
         }
@@ -863,4 +982,6 @@ public class SpotifyManager(
 
         LastUserVisibleError = $"Spotify could not {operation}. Please check Spotify and try again.";
     }
+
+    private sealed class SpotifyAuthorizationDismissedException : Exception;
 }

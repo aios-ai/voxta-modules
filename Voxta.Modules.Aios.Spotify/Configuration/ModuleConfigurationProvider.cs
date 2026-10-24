@@ -39,8 +39,8 @@ public class ModuleConfigurationProvider : ModuleConfigurationProviderBase, IMod
         Label = "Redirect URI",
         Required = true,
         //language=markdown
-        Text = "Set your Redirect URI in your Spotify Developer Dashboard at [developer.spotify.com](https://developer.spotify.com/dashboard/).",
-        DefaultValue = "http://127.0.0.1:5384/api/extensions/spotify/oauth2/callback"
+        Text = "Set this exact Redirect URI in your Spotify Developer Dashboard at [developer.spotify.com](https://developer.spotify.com/dashboard/). Older versions used an `/api/extensions/...` URI, which is no longer public in Voxta 1.13.",
+        DefaultValue = "http://127.0.0.1:5384/extensions/spotify/oauth2/callback"
     };
 
     public static readonly FormTextField MatchFilterWakeWord = new()

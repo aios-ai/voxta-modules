@@ -41,8 +41,12 @@ application that provides a Client ID and Client Secret.
 Spotify's default redirect URI is:
 
 ```text
-http://127.0.0.1:5384/api/extensions/spotify/oauth2/callback
+http://127.0.0.1:5384/extensions/spotify/oauth2/callback
 ```
+
+Register that exact URI in the Spotify Developer Dashboard and use the same value in Voxta. If upgrading from
+Spotify module 0.1.4 or earlier, replace the old `/api/extensions/...` URI in both places; Voxta 1.13 protects that
+API path, so it cannot receive Spotify's anonymous browser callback.
 
 Voxta displays module load errors on the Custom Modules page. The project uses the `1.13.0-alpha.10` Modules SDK and
 keeps its package lock file in source control so local and release builds resolve the same dependencies.

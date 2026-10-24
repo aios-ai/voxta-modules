@@ -2,54 +2,75 @@ namespace Voxta.Modules.Aios.Spotify.Clients.Services;
 
 public interface ISpotifyAuthCallbackManager
 {
-    void Callback(string code);
-    Task<string> WaitForCodeAsync(CancellationToken cancellationToken);
-    void Release();
+    SpotifyAuthCallbackResult Callback(string code, string state);
+    Task<string> WaitForCodeAsync(string state, CancellationToken cancellationToken);
+    void Release(string state);
+}
+
+public enum SpotifyAuthCallbackResult
+{
+    Accepted,
+    NoPendingAuthorization,
+    InvalidState,
 }
 
 public class SpotifyAuthCallbackManager : ISpotifyAuthCallbackManager
 {
     private readonly Lock _lock = new();
-    private TaskCompletionSource<string>? _codeTcs;
+    private PendingAuthorization? _pendingAuthorization;
     
-    public void Callback(string code)
+    public SpotifyAuthCallbackResult Callback(string code, string state)
     {
         lock (_lock)
         {
-            if(_codeTcs == null) throw new NullReferenceException("There is no listener for the code");
-            _codeTcs.SetResult(code);
-            _codeTcs = null;
+            if (_pendingAuthorization == null)
+                return SpotifyAuthCallbackResult.NoPendingAuthorization;
+
+            if (!string.Equals(_pendingAuthorization.State, state, StringComparison.Ordinal))
+                return SpotifyAuthCallbackResult.InvalidState;
+
+            _pendingAuthorization.Code.TrySetResult(code);
+            _pendingAuthorization = null;
+            return SpotifyAuthCallbackResult.Accepted;
         }
     }
 
-    public Task<string> WaitForCodeAsync(CancellationToken cancellationToken)
+    public Task<string> WaitForCodeAsync(string state, CancellationToken cancellationToken)
     {
         lock (_lock)
         {
-            if(_codeTcs != null) throw new NullReferenceException("There is already a listener for the code");
-            var tcs = new TaskCompletionSource<string>(_codeTcs);
+            if (_pendingAuthorization != null)
+                throw new InvalidOperationException("Another Spotify authorization request is already waiting for a callback.");
+
+            var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _pendingAuthorization = new PendingAuthorization(state, tcs);
             cancellationToken.Register(() =>
             {
-                if (tcs.Task.IsCompleted) return;
-                tcs.SetCanceled(cancellationToken);
                 lock (_lock)
                 {
-                    if (_codeTcs == tcs)
-                        _codeTcs = null;
+                    if (_pendingAuthorization?.Code != tcs)
+                        return;
+
+                    _pendingAuthorization = null;
+                    tcs.TrySetCanceled(cancellationToken);
                 }
             });
-            _codeTcs = tcs;
             return tcs.Task;
         }
     }
     
-    public void Release()
+    public void Release(string state)
     {
         lock (_lock)
         {
-            if(_codeTcs is { Task.IsCompleted: false })
-                _codeTcs.SetCanceled();
-            _codeTcs = null;
+            if (_pendingAuthorization == null ||
+                !string.Equals(_pendingAuthorization.State, state, StringComparison.Ordinal))
+                return;
+
+            _pendingAuthorization.Code.TrySetCanceled();
+            _pendingAuthorization = null;
         }
     }
+
+    private sealed record PendingAuthorization(string State, TaskCompletionSource<string> Code);
 }
