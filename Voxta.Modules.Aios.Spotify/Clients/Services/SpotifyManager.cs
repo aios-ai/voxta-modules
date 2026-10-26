@@ -249,15 +249,50 @@ public class SpotifyManager(
             }
 
             var request = new PlayerResumePlaybackRequest();
+            var expectedUri = uri;
 
-            if (type is "track" or "episode")
+            if (type == "track" || uri.StartsWith("spotify:track:", StringComparison.Ordinal))
+            {
+                // Desktop clients can accept bare track URIs but clear playback instead of playing.
+                // Start at the requested track in its album; do not retry the destructive request.
+                var track = await _spotifyClient.Tracks.Get(uri.Split(':').Last(), cancellationToken);
+                if (string.IsNullOrWhiteSpace(track.Album?.Uri) || string.IsNullOrWhiteSpace(track.Uri))
+                {
+                    LastUserVisibleError = "Spotify could not find the track's album. Playback was not changed.";
+                    return false;
+                }
+                request.ContextUri = track.Album.Uri;
+                expectedUri = track.Uri;
+                request.OffsetParam = new PlayerResumePlaybackRequest.Offset { Uri = track.Uri };
+                request.PositionMs = 0;
+            }
+            else if (type == "episode")
                 request.Uris = new List<string> { uri };
             else
                 request.ContextUri = uri;
 
             await _spotifyClient.Player.ResumePlayback(request, cancellationToken);
-            ClearUserVisibleError();
-            return true;
+            // A successful HTTP response only acknowledges the command. Allow Connect time to settle.
+            for (var attempt = 0; attempt < 5; attempt++)
+            {
+                if (attempt > 0) await Task.Delay(400, cancellationToken);
+                var state = await GetCurrentPlaybackState(cancellationToken);
+                if (LastUserVisibleError != null) return false;
+                var matches = state?.Item switch
+                {
+                    FullTrack current => current.Uri == expectedUri,
+                    FullEpisode current => current.Uri == expectedUri,
+                    _ => false,
+                };
+                if (state?.IsPlaying == true && (matches || state.Context?.Uri == uri))
+                {
+                    ClearUserVisibleError();
+                    return true;
+                }
+            }
+            logger.LogWarning("Spotify accepted playback for {Uri}, but the requested item was not observed playing.", uri);
+            LastUserVisibleError = "Spotify accepted the play request, but playback of the requested item could not be confirmed. Check Spotify on the active device and start a track manually if the player is empty.";
+            return false;
         }
         catch (APIException ex)
         {

@@ -226,6 +226,11 @@ context exposes IDs, so approval arguments use names. Duplicate or ambiguous nam
 in Spotify. Restricted devices and devices without IDs are rejected. Transfer success means Spotify accepted the
 transfer, not that playback is ready; it preserves the playing/paused state. No tool silently transfers or retries a
 mutation. The legacy name-to-ID adapter remains separate, and the legacy connect tool remains available to disable.
+`SpotifyManager.PlaySpecificUri` starts individual tracks through their album context with a track offset,
+avoiding desktop clients that accept a bare `uris` request but clear the player. Album lookup must succeed
+before changing playback; Spotify may continue with later album tracks after the selected song. After one
+play command, up to five playback-state reads at 400 ms intervals confirm the requested track/episode or
+context is playing. Acceptance without confirmation is a tool error, not success; no play command is retried.
 Playback monitors and initial Hue inventory notes are session features; choose their owner explicitly when both
 augmentations are selected to avoid duplicate polling/notes and double disposal.
 
@@ -250,7 +255,9 @@ legacy suppression, disposal, tool-card settings, description overrides, default
 single-flow authentication settings. `SpotifyVoxtaOAuthChecks` covers automatic browser/desktop callbacks,
 exact consent/exchange URI matching across transient provider instances, request-origin/path validation,
 user/module isolation, expiry, changed credentials, overlapping-client guards, sign-out, cancellation, no retry,
-encrypted storage, missing tokens, serialized refresh, and invalid grants. These checks make no Spotify network
+encrypted storage, missing tokens, serialized refresh, and invalid grants. `SpotifyPlaybackChecks` uses the real SDK
+with a fake HTTP transport to cover album-context requests, resolved track URIs, delayed confirmation, empty or
+wrong playback, lookup failures, playlist contexts and cancellation without replaying commands. These checks make no Spotify network
 calls and do not replace live browser/desktop acceptance testing. The user verified native desktop sign-in before
 listener removal; automatic client switching still requires runtime acceptance after this change.
 
