@@ -10,41 +10,23 @@ namespace Voxta.Modules.Aios.Spotify.Configuration;
 
 public class ModuleConfigurationProvider : ModuleConfigurationProviderBase, IModuleConfigurationProvider
 {
-    public static string[] FieldsRequiringReload => [ClientId.Name, ClientSecret.Name, RedirectUri.Name, AuthorizationMode.Name, VoxtaRedirectUri.Name, SpotifyAccount.Name, Actions.Name, "Tools", "SpotifyTools", ChatToolSettingsContributions.ToolChatStyles.Name, SpeechDuckingVolumePercent.Name, SpecialPlaylists.Name];
-    public const string VoxtaAuthorization = "voxta";
-    public const string ListenerAuthorization = "listener";
-    public static bool UseVoxtaAuthorization(ISettingsSource settings) => settings.GetRequired(AuthorizationMode) switch
-    {
-        VoxtaAuthorization => true,
-        ListenerAuthorization => false,
-        _ => throw new InvalidOperationException("Choose Spotify OAuth or the temporary local listener in Authorization Mode. Unknown modes cannot fall back automatically."),
-    };
-    public static readonly FormChoicesField AuthorizationMode = new()
-    {
-        Name = "AuthorizationMode", Label = "Authorization Mode", DefaultValue = ListenerAuthorization,
-        Choices =
-        [
-            new FormChoice { Value = VoxtaAuthorization, Label = "Spotify OAuth" },
-            new FormChoice { Value = ListenerAuthorization, Label = "Temporary local listener (fallback)" },
-        ],
-        Text = "Spotify OAuth authorizes your Spotify account using Voxta's supported account UI, callback handling and token storage. It never starts the local listener or uses the fallback token file. The fallback stays available until native OAuth has been verified.",
-    };
-    public static readonly FormTextField VoxtaRedirectUri = new()
-    {
-        Name = "VoxtaRedirectUri", Label = "Spotify OAuth Redirect URI", Required = true,
-        DefaultValue = SpotifyRedirectUri.DesktopDefault,
-        Text = "Desktop: http://127.0.0.1:5384/oauth-native-bounce.html. Web browser: http://127.0.0.1:5384/auth/modules/callback. Use your server's origin and register the exact selected URI in Spotify. Desktop sign-in opens your browser and returns to the app through Voxta's link handler. Save before signing in.",
-    };
+    public static string[] FieldsRequiringReload => [ClientId.Name, ClientSecret.Name, SpotifyAccount.Name, Actions.Name, "Tools", "SpotifyTools", ChatToolSettingsContributions.ToolChatStyles.Name, SpeechDuckingVolumePercent.Name, SpecialPlaylists.Name];
+    public static readonly FormDocumentationField SpotifySetup = FormDocumentationField.Create("""
+        Create or open your application in the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard/).
+        Add **both** redirect URIs to its settings:
+
+        - `http://127.0.0.1:5384/oauth-native-bounce.html` (desktop app)
+        - `http://127.0.0.1:5384/auth/modules/callback` (web browser)
+
+        Enter your Client ID and Client Secret below, save, then sign in to Spotify Account.
+        Voxta automatically supplies the correct callback for the client you use. For a different server address,
+        register both paths with that address; remote addresses require HTTPS and local HTTP must use `127.0.0.1` or `[::1]`.
+        """);
     public static readonly FormAuthorizeField SpotifyAccount = new()
     {
         Name = "SpotifyAccount", Label = "Spotify Account", Method = AuthorizationMethod.OAuth2,
-        Text = "Save the client credentials and redirect URI before authorizing. This account is separate from fallback authorization. Select Spotify OAuth, authorize here, then use Test or start a new chat. To repeat the full flow, sign out here and authorize again.",
+        Text = "Save your client credentials and register both redirect URLs above, then sign in here. You can use either the desktop app or browser without changing settings.",
     };
-    private static readonly string DefaultTokenPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "Voxta",
-        "Aios.Spotify",
-        "Voxta.Modules.Aios.Spotify.Auth.json");
 
     public static readonly FormTextField ClientId = new()
     {
@@ -62,16 +44,6 @@ public class ModuleConfigurationProvider : ModuleConfigurationProviderBase, IMod
         Required = true,
         //language=markdown
         Text = "Get your Client Secret from your Spotify Developer Dashboard at [developer.spotify.com](https://developer.spotify.com/dashboard/).",
-    };
-
-    public static readonly FormTextField RedirectUri = new()
-    {
-        Name = "RedirectUri",
-        Label = "Fallback Redirect URI",
-        Required = true,
-        //language=markdown
-        Text = "Use this exact URI in your Spotify Developer Dashboard too. The module temporarily listens on its own local port (5385 by default) during authorization. Use an explicit loopback IP, no period after callback, and a port different from Voxta (5384).",
-        DefaultValue = SpotifyRedirectUri.Default
     };
 
     public static readonly FormTextField MatchFilterWakeWord = new()
@@ -340,16 +312,6 @@ Daily Mix 6="
         DefaultValue = JsonSerializer.Serialize(DefaultActions),
     };
 
-    public static readonly FormTextField TokenPath = new()
-    {
-        Name = "TokenPath",
-        Label = "Token Path",
-        Required = true,
-        Text = "The path to store the Spotify authentication token.",
-        DefaultValue = DefaultTokenPath,
-        Advanced = true,
-    };
-
     public Task<FormField[]> GetModuleConfigurationFieldsAsync(
         IAuthenticationContext auth,
         ISettingsSource settings,
@@ -357,19 +319,16 @@ Daily Mix 6="
     )
     {
         var fields = FormBuilder.Build(
+            SpotifySetup,
             ClientId,
             ClientSecret,
-            AuthorizationMode,
-            VoxtaRedirectUri,
             SpotifyAccount,
-            RedirectUri,
             MatchFilterWakeWord,
             SpeechDuckingVolumePercent,
             SpecialPlaylists,
             SpotifyToolsSettings.ConfigurationField(settings),
             SpotifyToolsSettings.Styles.AsField(),
-            Actions,
-            TokenPath
+            Actions
         );
         return Task.FromResult(fields);
     }

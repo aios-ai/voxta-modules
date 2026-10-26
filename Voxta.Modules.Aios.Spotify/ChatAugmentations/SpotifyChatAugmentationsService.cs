@@ -75,20 +75,15 @@ public class SpotifyChatAugmentationsService(
             SpecialPlaylists = playlistMap
         };
 
-        var useVoxtaAuthorization = ModuleConfigurationProvider.UseVoxtaAuthorization(ModuleConfiguration);
-        var tokenPath = useVoxtaAuthorization ? "" : SpotifyAuthPath.GetUserTokenPath(ModuleConfiguration.GetRequired(ModuleConfigurationProvider.TokenPath), Auth.UserId);
         var spotifyManagerConfig = new SpotifyManagerConfig
         {
-            UseVoxtaAuthorization = useVoxtaAuthorization,
             UserId = Auth.UserId,
-            VoxtaTokenId = Guid.TryParse(ModuleConfiguration.GetOptional(ModuleConfigurationProvider.SpotifyAccount), out var tokenId) ? tokenId : null,
+            TokenId = Guid.TryParse(ModuleConfiguration.GetOptional(ModuleConfigurationProvider.SpotifyAccount), out var tokenId) ? tokenId : null,
             ClientId = ModuleConfiguration.GetRequired(ModuleConfigurationProvider.ClientId),
             ClientSecret = localEncryptionProvider.Decrypt(ModuleConfiguration.GetRequired(ModuleConfigurationProvider.ClientSecret)),
-            RedirectUri = new Uri(ModuleConfiguration.GetRequired(useVoxtaAuthorization ? ModuleConfigurationProvider.VoxtaRedirectUri : ModuleConfigurationProvider.RedirectUri)),
-            TokenPath = tokenPath,
+            Abort = session.Chat.Abort,
         };
-        var sessionWrapper = new SpotifyUserInteractionWrapper(session, InstanceSettings.ModuleId);
-        var spotifyManager = await spotifyManagerFactory.CreateSpotifyManager(sessionWrapper, spotifyManagerConfig, cancellationToken);
+        var spotifyManager = await spotifyManagerFactory.CreateSpotifyManager(spotifyManagerConfig, cancellationToken);
 
         var spotifySearchService = new SpotifySearchService(spotifyManager, loggerFactory.CreateLogger<SpotifySearchService>());
         await spotifySearchService.InitializeAsync(cancellationToken);

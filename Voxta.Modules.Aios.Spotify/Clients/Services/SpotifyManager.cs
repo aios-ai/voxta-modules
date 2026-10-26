@@ -1,84 +1,40 @@
 using System.Net;
-using System.Security.Cryptography;
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using SpotifyAPI.Web;
-using Voxta.Abstractions.Chats.Sessions;
 using Voxta.Abstractions.Authorization;
 using Voxta.Abstractions.Encryption;
-using Voxta.Abstractions.Utils;
 using Voxta.Modules.Aios.Spotify.Clients.Models;
 using Voxta.Modules.Aios.Spotify.Configuration;
 
 namespace Voxta.Modules.Aios.Spotify.Clients.Services;
 
-public interface ISpotifyUserInteractionWrapper
-{
-    CancellationToken Abort { get; }
-    Task<IUserInteractionRequestToken> RequestUserInteraction(Uri url, bool isReauthorization, CancellationToken cancellationToken);
-}
-
-public class SpotifyUserInteractionWrapper(IChatSessionChatAugmentationApi session, Guid moduleId) : ISpotifyUserInteractionWrapper
-{
-    public CancellationToken Abort => session.Chat.Abort;
-
-    public Task<IUserInteractionRequestToken> RequestUserInteraction(Uri url, bool isReauthorization, CancellationToken cancellationToken)
-    {
-        return session.RequestUserAction(new UserInteractionRequestInput
-        {
-            ModuleId = moduleId,
-            Message = isReauthorization
-                ? "Your Spotify authorization has expired or is no longer valid. Please reauthorize Spotify by visiting the following URL in your browser:"
-                : "Please authorize the Spotify integration by visiting the following URL in your browser:",
-            Url = url.ToString(),
-        }, cancellationToken);
-    }
-}
-
 public class SpotifyManagerConfig
 {
     public required string ClientId { get; init; }
     public required string ClientSecret { get; init; }
-    public required Uri RedirectUri { get; init; }
-    public required string TokenPath { get; init; }
-    public bool UseVoxtaAuthorization { get; init; }
     public Guid UserId { get; init; }
-    public Guid? VoxtaTokenId { get; init; }
-    public TimeSpan AuthorizationTimeout { get; init; } = TimeSpan.FromMinutes(3);
+    public Guid? TokenId { get; init; }
+    public CancellationToken Abort { get; init; }
 }
 
 public interface ISpotifyManagerFactory
 {
-    Task<ISpotifyManager> CreateSpotifyManager(ISpotifyUserInteractionWrapper userInteractionWrapper, SpotifyManagerConfig config, CancellationToken cancellationToken);
+    Task<ISpotifyManager> CreateSpotifyManager(SpotifyManagerConfig config, CancellationToken cancellationToken);
 }
-    
+
 public class SpotifyManagerFactory(
-    IModuleOAuthTokenStore voxtaTokens,
+    IModuleOAuthTokenStore tokens,
     ILocalEncryptionProvider encryption,
-    ISpotifyAuthCallbackManager spotifyAuthCallbackManager,
-    ILoggerFactory loggerFactory
-) : ISpotifyManagerFactory
+    ISpotifyOAuthTokenClient oauth,
+    ILoggerFactory loggerFactory) : ISpotifyManagerFactory
 {
-    public async Task<ISpotifyManager> CreateSpotifyManager(ISpotifyUserInteractionWrapper userInteractionWrapper, SpotifyManagerConfig config, CancellationToken cancellationToken)
+    public async Task<ISpotifyManager> CreateSpotifyManager(SpotifyManagerConfig config, CancellationToken cancellationToken)
     {
-        if (!config.UseVoxtaAuthorization)
-        {
-            var tokenFolder = Path.GetDirectoryName(Path.GetFullPath(config.TokenPath)) ?? throw new InvalidOperationException("Token path is invalid");
-            if (!Directory.Exists(tokenFolder))
-                Directory.CreateDirectory(tokenFolder);
-        }
-
-        var logger = loggerFactory.CreateLogger<SpotifyManager>();
-        var spotifyManager = new SpotifyManager(spotifyAuthCallbackManager, userInteractionWrapper, config, logger,
-            config.UseVoxtaAuthorization ? new SpotifyVoxtaTokenStore(voxtaTokens, encryption, config.UserId, config.VoxtaTokenId) : null);
-        await spotifyManager.InitializeSpotifyClient(cancellationToken);
-            
-        if (!spotifyManager.HasClient)
-        {
-            logger.LogWarning("Spotify client could not be initialized. The chat session will report the authorization problem to the user.");
-        }
-
-        return spotifyManager;
+        var manager = new SpotifyManager(config,
+            new SpotifyVoxtaTokenStore(tokens, encryption, config.UserId, config.TokenId), oauth,
+            loggerFactory.CreateLogger<SpotifyManager>());
+        await manager.InitializeSpotifyClient(cancellationToken);
+        return manager;
     }
 }
 
@@ -106,313 +62,91 @@ public interface ISpotifyManager
 }
     
 public class SpotifyManager(
-    ISpotifyAuthCallbackManager spotifyAuthCallbackManager,
-    ISpotifyUserInteractionWrapper userInteractionWrapper,
     SpotifyManagerConfig config,
-    ILogger<SpotifyManager> logger,
-    ISpotifyTokenStore? voxtaTokenStore = null) : ISpotifyManager
+    ISpotifyTokenStore tokenStore,
+    ISpotifyOAuthTokenClient oauth,
+    ILogger<SpotifyManager> logger) : ISpotifyManager
 {
-    private const string AuthorizationRequiredMessage = "Spotify authorization is required. Please open Voxta on this machine and authorize Spotify.";
-    private const string ReauthorizationRequiredMessage = "Spotify authorization has expired or is no longer valid. Please reauthorize Spotify.";
-    private const string AuthorizationDismissedMessage = "Spotify authorization was dismissed. Start a new chat or test the module when you are ready to authorize.";
-    private const string AuthorizationFailedMessage = "Spotify authorization could not be completed. Voxta will not ask again during this chat; start a new chat or test the module to try again.";
+    private const string AuthorizationRequiredMessage = "Spotify authorization is required. Save your client credentials and sign in using Spotify Account in module settings, then test the module or start a new chat.";
+    private const string ReauthorizationRequiredMessage = "Spotify authorization has expired or is no longer valid. Sign out and sign in again using Spotify Account in module settings.";
+    private const string AuthorizationFailedMessage = "Spotify could not refresh authorization. Sign out and sign in again using Spotify Account in module settings, then test the module or start a new chat.";
     private const string NoActiveDeviceMessage = "No active Spotify device was found. Please start Spotify on your browser, desktop, or mobile app, then try again.";
+    private readonly SemaphoreSlim _authorizationGate = new(1, 1);
     private SpotifyClient? _spotifyClient;
+    private string? _clientAccessToken;
     private SpotifyAuthToken? _spotifyAuthToken;
     private bool _forceTokenRefresh;
     private bool _reauthorizationRequired;
-    private bool _authorizationPromptDismissed;
     private bool _authorizationRetrySuppressed;
     private bool _authorizationUnavailableLogged;
-    private string? _configurationError;
     public string? LastUserVisibleError { get; private set; }
     public bool IsAuthorizationRequired { get; private set; }
+    public bool HasClient => _spotifyClient != null;
 
     public async Task InitializeSpotifyClient(CancellationToken cancellationToken)
     {
-        logger.LogInformation("Initialize Spotify Client ({AuthorizationMode})", config.UseVoxtaAuthorization ? "Spotify OAuth; local listener disabled" : "local listener fallback");
         var accessToken = await GetValidAccessTokenAsync(cancellationToken);
         if (accessToken != null)
         {
             _spotifyClient = new SpotifyClient(accessToken);
-            ClearUserVisibleError();
-            logger.LogInformation("Spotify client authenticated and created successfully");
-            logger.LogWarning("Note: This plugin acts solely as an interface between Voxta and your Spotify player. You must have an active Spotify device or playback session that the plugin can connect to and control. Once connected, you can pause and resume playback freely, until the device becomes inactive for a certain period of time.");
-        }
-        else
-        {
-            logger.LogWarning("Spotify client was not initialized because authorization is unavailable.");
-            SetAuthorizationRequired();
+            _clientAccessToken = accessToken;
+            logger.LogInformation("Spotify client initialized using the account stored by Voxta.");
         }
     }
-
-    public bool HasClient => _spotifyClient != null;
 
     private async Task<string?> GetValidAccessTokenAsync(CancellationToken cancellationToken)
     {
-        if (_configurationError != null)
+        await _authorizationGate.WaitAsync(cancellationToken);
+        try
         {
-            SetAuthorizationRequired();
-            return null;
-        }
-
-        var token = await LoadTokenAsync(cancellationToken);
-
-        if ((_authorizationPromptDismissed || _authorizationRetrySuppressed) &&
-            (token == null || IsTokenExpired(token) || _forceTokenRefresh))
-        {
-            SetAuthorizationRequired();
-            return null;
-        }
-
-        if (token == null || IsTokenExpired(token) || _forceTokenRefresh)
-        {
-            _reauthorizationRequired |= token != null;
-            if (token?.RefreshToken != null)
+            var token = await tokenStore.LoadAsync(cancellationToken);
+            _spotifyAuthToken = token;
+            if (token == null || string.IsNullOrWhiteSpace(token.AccessToken))
             {
+                SetAuthorizationRequired();
+                return null;
+            }
+            if (DateTime.UtcNow >= token.ExpiresAt || _forceTokenRefresh)
+            {
+                _reauthorizationRequired = true;
+                if (_authorizationRetrySuppressed || string.IsNullOrWhiteSpace(token.RefreshToken))
+                {
+                    SetAuthorizationRequired();
+                    return null;
+                }
                 try
                 {
-                    token = await RefreshTokenAsync(token.RefreshToken, cancellationToken);
-                    await SaveTokenAsync(token, cancellationToken);
+                    var refreshed = await oauth.RefreshAsync(config.ClientId, config.ClientSecret, token.RefreshToken, cancellationToken);
+                    token = new SpotifyAuthToken
+                    {
+                        AccessToken = refreshed.EncryptedAccessToken,
+                        RefreshToken = refreshed.EncryptedRefreshToken ?? token.RefreshToken,
+                        ExpiresAt = refreshed.Expires.UtcDateTime,
+                    };
+                    await tokenStore.SaveAsync(token, cancellationToken);
+                    _spotifyAuthToken = token;
                     _forceTokenRefresh = false;
                 }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
-                    throw;
-                }
-                catch (Exception ex) when (IsInvalidGrant(ex))
-                {
-                    logger.LogWarning(ex, "Spotify refresh token is invalid or expired. Discarding stored token and requesting authorization again.");
-                    await DiscardStoredTokenAsync(cancellationToken);
-                    SetAuthorizationRequired();
-                    token = null;
-                }
+                catch (OperationCanceledException) { throw; }
                 catch (Exception ex)
                 {
-                    logger.LogWarning(ex, "Failed to refresh Spotify token. User authorization is required.");
-                    SetAuthorizationRequired();
-                    token = null;
-                }
-            }
-            if (config == null)
-            {
-                throw new InvalidOperationException("_spotifyConfig null.");
-            }
-
-            if (token == null)
-            {
-                if (config.UseVoxtaAuthorization)
-                {
-                    _spotifyClient = null;
-                    _configurationError = "Spotify is not authorized in Spotify OAuth mode. Save the module settings, authorize Spotify Account in module configuration, then run Test or start a new chat. The local listener and fallback token file are disabled in this mode.";
-                    SetAuthorizationRequired();
-                    return null;
-                }
-                if (SpotifyRedirectUri.GetError(config.RedirectUri) is { } redirectError)
-                {
-                    _configurationError = redirectError;
-                    SetAuthorizationRequired();
-                    return null;
-                }
-                var auth = new OAuthClient();
-                var loginRequest = new LoginRequest(
-                    config.RedirectUri,
-                    config.ClientId,
-                    LoginRequest.ResponseType.Code
-                )
-                {
-                    State = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)),
-                    Scope = SpotifyModuleAuthorizationProvider.ScopesRequired
-
-                };
-
-                var authUri = loginRequest.ToUri();
-                string code;
-                try
-                {
-                    code = await GetAuthCodeAsync(authUri, loginRequest.State, _reauthorizationRequired, cancellationToken);
-                }
-                catch (SpotifyAuthorizationDeniedException)
-                {
-                    _configurationError = "Spotify authorization was denied. Run the module test again when you are ready to allow access.";
-                    SetAuthorizationRequired();
-                    return null;
-                }
-                catch (SpotifyAuthorizationSetupException ex)
-                {
-                    _configurationError = ex.Message;
-                    SetAuthorizationRequired();
-                    return null;
-                }
-                catch (SpotifyAuthorizationDismissedException)
-                {
-                    _authorizationPromptDismissed = true;
-                    SetAuthorizationDismissed();
-                    return null;
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
-                    throw;
-                }
-                catch (Exception ex)
-                {
-                    logger.LogWarning(ex, "Spotify authorization could not be started or another request is already active.");
                     _authorizationRetrySuppressed = true;
+                    logger.LogWarning(ex, "Spotify authorization refresh failed.");
+                    if (IsInvalidGrant(ex))
+                    {
+                        await tokenStore.DeleteAsync(cancellationToken);
+                        _spotifyAuthToken = null;
+                    }
                     SetAuthorizationRequired();
                     return null;
                 }
-
-                var tokenRequest = new AuthorizationCodeTokenRequest(
-                    config.ClientId,
-                    config.ClientSecret,
-                    code,
-                    config.RedirectUri
-                );
-                AuthorizationCodeTokenResponse response;
-                try
-                {
-                    response = await auth.RequestToken(tokenRequest, cancellationToken);
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
-                    throw;
-                }
-                catch (Exception ex)
-                {
-                    logger.LogWarning(ex, "Failed to exchange Spotify authorization code.");
-                    _authorizationRetrySuppressed = true;
-                    SetAuthorizationRequired();
-                    return null;
-                }
-
-                token = new SpotifyAuthToken
-                {
-                    AccessToken = response.AccessToken,
-                    RefreshToken = response.RefreshToken,
-                    ExpiresAt = DateTime.UtcNow.AddSeconds(response.ExpiresIn)
-                };
-
-                await SaveTokenAsync(token, cancellationToken);
-                _forceTokenRefresh = false;
-                _reauthorizationRequired = false;
-                _authorizationPromptDismissed = false;
-                _authorizationRetrySuppressed = false;
             }
+            _authorizationRetrySuppressed = false;
+            _reauthorizationRequired = false;
+            ClearUserVisibleError();
+            return token.AccessToken;
         }
-        ClearUserVisibleError();
-        return token.AccessToken;
-    }
-
-    private async Task<string> GetAuthCodeAsync(Uri authUri, string state, bool isReauthorization, CancellationToken cancellationToken)
-    {
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(config.AuthorizationTimeout);
-        try
-        {
-            var codeTask = spotifyAuthCallbackManager.WaitForCodeAsync(state, timeout.Token);
-            SpotifyOAuthListener listener;
-            try { listener = await SpotifyOAuthListener.StartAsync(config.RedirectUri, spotifyAuthCallbackManager, timeout.Token); }
-            catch (OperationCanceledException) { throw; }
-            catch (Exception) { throw new SpotifyAuthorizationSetupException("Spotify could not open its local callback port. Close another pending Spotify authorization or choose a free loopback port in both redirect URI settings."); }
-            await using var callbackListener = listener;
-            await using var userInteractionToken = await userInteractionWrapper.RequestUserInteraction(authUri, isReauthorization, timeout.Token);
-            logger.LogInformation("Waiting for Spotify authentication...");
-            var completedTask = await Task.WhenAny(userInteractionToken.Task, codeTask);
-            if (completedTask == userInteractionToken.Task && !codeTask.IsCompletedSuccessfully)
-            {
-                await userInteractionToken.Task;
-                throw new SpotifyAuthorizationDismissedException();
-            }
-            return await codeTask;
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            throw new SpotifyAuthorizationSetupException("Spotify authorization timed out. Check that the redirect URI matches in Voxta and the Spotify Developer Dashboard, then run the module test again.");
-        }
-        finally { spotifyAuthCallbackManager.Release(state); }
-    }
-
-    private bool IsTokenExpired(SpotifyAuthToken token)
-    {
-        return DateTime.UtcNow >= token.ExpiresAt;
-    }
-
-    private async Task SaveTokenAsync(SpotifyAuthToken token, CancellationToken cancellationToken)
-    {
-        if (config.UseVoxtaAuthorization)
-        {
-            if (voxtaTokenStore == null) throw new InvalidOperationException("Voxta OAuth token storage is unavailable.");
-            await voxtaTokenStore.SaveAsync(token, cancellationToken);
-            _spotifyAuthToken = token;
-            return;
-        }
-        var options = new JsonSerializerOptions { WriteIndented = true };
-        var json = JsonSerializer.Serialize(token, options);
-        await File.WriteAllTextAsync(config.TokenPath, json);
-        _spotifyAuthToken = token;
-    }
-
-    private async Task<SpotifyAuthToken> RefreshTokenAsync(string refreshToken, CancellationToken cancellationToken)
-    {
-        var auth = new OAuthClient();
-        var refreshRequest = new AuthorizationCodeRefreshRequest(config.ClientId, config.ClientSecret, refreshToken);
-
-        var response = await auth.RequestToken(refreshRequest, cancellationToken);
-
-        return new SpotifyAuthToken
-        {
-            AccessToken = response.AccessToken,
-            RefreshToken = refreshToken,
-            ExpiresAt = DateTime.UtcNow.AddSeconds(response.ExpiresIn)
-        };
-    }
-
-    private async Task<SpotifyAuthToken?> LoadTokenAsync(CancellationToken cancellationToken)
-    {
-        if (config.UseVoxtaAuthorization)
-        {
-            _spotifyAuthToken = voxtaTokenStore == null ? null : await voxtaTokenStore.LoadAsync(cancellationToken);
-            return _spotifyAuthToken;
-        }
-        if (!File.Exists(config.TokenPath))
-            return null;
-
-        try
-        {
-            var json = await File.ReadAllTextAsync(config.TokenPath);
-            _spotifyAuthToken = JsonSerializer.Deserialize<SpotifyAuthToken>(json);
-            return _spotifyAuthToken;
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Failed to load Spotify token. User authorization is required.");
-            _reauthorizationRequired = true;
-            SetAuthorizationRequired();
-            return null;
-        }
-    }
-
-    private async Task DiscardStoredTokenAsync(CancellationToken cancellationToken)
-    {
-        _spotifyAuthToken = null;
-        _spotifyClient = null;
-
-        if (config.UseVoxtaAuthorization)
-        {
-            if (voxtaTokenStore != null) await voxtaTokenStore.DeleteAsync(cancellationToken);
-            return;
-        }
-        if (!File.Exists(config.TokenPath))
-            return;
-
-        try
-        {
-            File.Delete(config.TokenPath);
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Failed to delete expired Spotify token file at {TokenPath}.", config.TokenPath);
-        }
+        finally { _authorizationGate.Release(); }
     }
 
     private static bool IsInvalidGrant(Exception ex)
@@ -558,7 +292,7 @@ public class SpotifyManager(
 
     public async Task<SearchResponse?> SearchSpotify(string query, SearchRequest.Types type, string? market = null, CancellationToken cancellationToken = default)
     {
-        using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, userInteractionWrapper.Abort);
+        using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, config.Abort);
         cancellationToken = linkedCancellation.Token;
         if (!await EnsureValidSpotifyClient(cancellationToken) || _spotifyClient == null)
         {
@@ -587,7 +321,7 @@ public class SpotifyManager(
 
     public async Task<string?> GetSpotifyUserIdAsync(CancellationToken cancellationToken = default)
     {
-        using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, userInteractionWrapper.Abort);
+        using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, config.Abort);
         cancellationToken = linkedCancellation.Token;
         if (!await EnsureValidSpotifyClient(cancellationToken) || _spotifyClient == null)
         {
@@ -934,9 +668,10 @@ public class SpotifyManager(
             return false;
         }
 
-        if (_spotifyClient == null || _spotifyAuthToken.AccessToken != newToken)
+        if (_spotifyClient == null || _clientAccessToken != newToken)
         {
             _spotifyClient = new SpotifyClient(newToken);
+            _clientAccessToken = newToken;
         }
 
         _authorizationUnavailableLogged = false;
@@ -951,36 +686,11 @@ public class SpotifyManager(
 
     private void SetAuthorizationRequired()
     {
-        if (_configurationError != null)
-        {
-            IsAuthorizationRequired = true;
-            LastUserVisibleError = _configurationError;
-            return;
-        }
-
-        if (_authorizationPromptDismissed)
-        {
-            SetAuthorizationDismissed();
-            return;
-        }
-
-        if (_authorizationRetrySuppressed)
-        {
-            IsAuthorizationRequired = true;
-            LastUserVisibleError = AuthorizationFailedMessage;
-            return;
-        }
-
+        _spotifyClient = null;
+        _clientAccessToken = null;
         IsAuthorizationRequired = true;
-        LastUserVisibleError = _reauthorizationRequired
-            ? ReauthorizationRequiredMessage
-            : AuthorizationRequiredMessage;
-    }
-
-    private void SetAuthorizationDismissed()
-    {
-        IsAuthorizationRequired = true;
-        LastUserVisibleError = AuthorizationDismissedMessage;
+        LastUserVisibleError = _authorizationRetrySuppressed ? AuthorizationFailedMessage
+            : _reauthorizationRequired ? ReauthorizationRequiredMessage : AuthorizationRequiredMessage;
     }
 
     private void SetSpotifyApiError(APIException ex, string operation)
@@ -1011,6 +721,4 @@ public class SpotifyManager(
         LastUserVisibleError = $"Spotify could not {operation}. Please check Spotify and try again.";
     }
 
-    private sealed class SpotifyAuthorizationDismissedException : Exception;
-    private sealed class SpotifyAuthorizationSetupException(string message) : Exception(message);
 }

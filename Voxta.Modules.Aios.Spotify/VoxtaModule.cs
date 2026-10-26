@@ -53,7 +53,7 @@ public class VoxtaModule : IVoxtaModule
         builder.AddChatAugmentationsService<SpotifyChatAugmentationsService>(ServiceName);
 
         builder.Services.AddSingleton<ISpotifyManagerFactory, SpotifyManagerFactory>();
-        builder.Services.AddSingleton<ISpotifyAuthCallbackManager, SpotifyAuthCallbackManager>();
+        builder.Services.AddSingleton<SpotifyOAuthFlows>();
         builder.Services.AddSingleton<ISpotifyOAuthTokenClient, SpotifyOAuthTokenClient>();
 
     }

@@ -12,7 +12,7 @@ public interface ISpotifyTokenStore
     Task DeleteAsync(CancellationToken token);
 }
 
-/// <summary>The native mode uses only Voxta's per-user encrypted token store, never the fallback file.</summary>
+/// <summary>Adapt Voxta's per-user encrypted account store to the Spotify manager.</summary>
 internal sealed class SpotifyVoxtaTokenStore(IModuleOAuthTokenStore store, ILocalEncryptionProvider encryption,
     Guid userId, Guid? tokenId) : ISpotifyTokenStore
 {

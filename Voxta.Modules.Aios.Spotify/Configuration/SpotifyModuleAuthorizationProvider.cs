@@ -1,5 +1,8 @@
 using SpotifyAPI.Web;
 using Microsoft.Extensions.Logging;
+using Microsoft.AspNetCore.Http;
+using System.Security.Cryptography;
+using System.Text;
 using Voxta.Abstractions.Encryption;
 using Voxta.Abstractions.Registration;
 using Voxta.Abstractions.Security;
@@ -30,6 +33,7 @@ internal sealed class SpotifyOAuthTokenClient : ISpotifyOAuthTokenClient
 
 /// <summary>Participates in Voxta's own account UI, callback page, state validation, and token persistence.</summary>
 public sealed class SpotifyModuleAuthorizationProvider(ILocalEncryptionProvider encryption, ISpotifyOAuthTokenClient tokens,
+    SpotifyOAuthFlows flows, IHttpContextAccessor requestContext,
     ILogger<SpotifyModuleAuthorizationProvider>? logger = null)
     : IOAuth2ModuleAuthorizationProvider
 {
@@ -46,8 +50,8 @@ public sealed class SpotifyModuleAuthorizationProvider(ILocalEncryptionProvider 
         ValidateField(field);
         cancellationToken.ThrowIfCancellationRequested();
         return Task.FromResult(token != null && (token.Expires > DateTimeOffset.UtcNow || token.EncryptedRefreshToken != null)
-            ? new AuthorizationStatus("Spotify authorization is stored by Voxta. The temporary listener is not used in Spotify OAuth mode.", AuthorizationFlowStatus.Authorized, token.Name, token.Expires)
-            : new AuthorizationStatus("Authorize here. Use the desktop callback URI for the desktop app or the browser callback URI for a web browser, and register that exact URI in Spotify.", AuthorizationFlowStatus.Undefined));
+            ? new AuthorizationStatus("Spotify authorization is stored securely by Voxta.", AuthorizationFlowStatus.Authorized, token.Name, token.Expires)
+            : new AuthorizationStatus("Register both redirect URLs shown above in your Spotify application, save your client credentials, then sign in here. Desktop or browser is selected automatically.", AuthorizationFlowStatus.Undefined));
     }
 
     public Task<string> GetOAuth2AuthorizationUrlAsync(IAuthenticationContext auth, StaticSettingsSource config,
@@ -55,16 +59,20 @@ public sealed class SpotifyModuleAuthorizationProvider(ILocalEncryptionProvider 
     {
         ValidateField(field);
         cancellationToken.ThrowIfCancellationRequested();
-        var redirect = Redirect(config);
-        if (!string.Equals(redirect.AbsoluteUri, returnUrl, StringComparison.Ordinal))
-        {
-            if (Uri.TryCreate(returnUrl, UriKind.Absolute, out var requested) && SpotifyRedirectUri.GetVoxtaError(requested) == null)
-                throw new InvalidOperationException($"This Voxta client needs {requested.AbsoluteUri}. Set Spotify OAuth Redirect URI to that exact URI, register it in the Spotify Developer Dashboard, save the module settings, then sign in again.");
-            throw new InvalidOperationException("Voxta supplied an unsupported Spotify OAuth callback address. Use the desktop app or web browser sign-in button with a supported callback URI.");
-        }
+        if (!Uri.TryCreate(returnUrl, UriKind.Absolute, out var redirect))
+            throw new InvalidOperationException("Voxta supplied an invalid Spotify OAuth callback address.");
+        if (SpotifyRedirectUri.GetError(redirect) is { } redirectError)
+            throw new InvalidOperationException(redirectError);
+        var request = requestContext.HttpContext?.Request;
+        if (request == null || !Uri.TryCreate($"{request.Scheme}://{request.Host}/", UriKind.Absolute, out var origin) ||
+            !string.Equals(origin.GetLeftPart(UriPartial.Authority), redirect.GetLeftPart(UriPartial.Authority), StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("The Spotify callback must use the same server origin as the Voxta sign-in request.");
         if (string.IsNullOrWhiteSpace(state)) throw new InvalidOperationException("Voxta did not supply OAuth state. Start authorization again from the Spotify Account field.");
-        return Task.FromResult(new LoginRequest(redirect, config.GetRequired(ModuleConfigurationProvider.ClientId), LoginRequest.ResponseType.Code)
-        { State = state, Scope = ScopesRequired }.ToUri().AbsoluteUri);
+        var credentials = Credentials(config);
+        var url = new LoginRequest(redirect, credentials.ClientId, LoginRequest.ResponseType.Code)
+            { State = state, Scope = ScopesRequired }.ToUri().AbsoluteUri;
+        flows.Begin(auth.UserId, ModuleId(), credentials.Fingerprint, redirect);
+        return Task.FromResult(url);
     }
 
     public Task<AccessTokenInfo> ExchangeCodeForTokenAsync(IAuthenticationContext auth, StaticSettingsSource config,
@@ -73,8 +81,9 @@ public sealed class SpotifyModuleAuthorizationProvider(ILocalEncryptionProvider 
         ValidateField(field);
         cancellationToken.ThrowIfCancellationRequested();
         if (string.IsNullOrWhiteSpace(code)) throw new InvalidOperationException("Spotify did not return an authorization code.");
-        return tokens.ExchangeAsync(config.GetRequired(ModuleConfigurationProvider.ClientId),
-            encryption.Decrypt(config.GetRequired(ModuleConfigurationProvider.ClientSecret)), code, Redirect(config), cancellationToken);
+        var credentials = Credentials(config);
+        var redirect = flows.Consume(auth.UserId, ModuleId(), credentials.Fingerprint);
+        return tokens.ExchangeAsync(credentials.ClientId, credentials.Secret, code, redirect, cancellationToken);
     }
 
     public Task<AccessTokenInfo?> RefreshTokenAsync(IAuthenticationContext auth, StaticSettingsSource config,
@@ -87,21 +96,29 @@ public sealed class SpotifyModuleAuthorizationProvider(ILocalEncryptionProvider 
             encryption.Decrypt(config.GetRequired(ModuleConfigurationProvider.ClientSecret)), refreshToken, token);
     }
 
-    // Voxta deletes its own token on sign-out. The fallback token file is deliberately independent.
+    // Voxta owns token deletion. Sign-out also abandons any unfinished sign-in for this module.
     public Task SignOutAsync(IAuthenticationContext auth, StaticSettingsSource config, string field, CancellationToken cancellationToken)
     {
         ValidateField(field);
         cancellationToken.ThrowIfCancellationRequested();
+        flows.Cancel(auth.UserId, ModuleId());
         logger?.LogInformation("Spotify OAuth sign-out requested. Voxta will remove the stored account token and clear the account field.");
         return Task.CompletedTask;
     }
 
-    private static Uri Redirect(StaticSettingsSource config)
+    private Guid ModuleId()
     {
-        var value = config.GetRequired(ModuleConfigurationProvider.VoxtaRedirectUri);
-        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || SpotifyRedirectUri.GetVoxtaError(uri) is { })
-            throw new InvalidOperationException($"Set Spotify OAuth Redirect URI to {SpotifyRedirectUri.DesktopDefault} for the desktop app or {SpotifyRedirectUri.VoxtaDefault} for a web browser, using your server's origin, and register that exact URI in Spotify.");
-        return uri;
+        if (Guid.TryParse(requestContext.HttpContext?.Request.RouteValues["moduleId"]?.ToString(), out var moduleId) && moduleId != Guid.Empty)
+            return moduleId;
+        throw new InvalidOperationException("Spotify sign-in must be started through Voxta's module account UI.");
+    }
+
+    private (string ClientId, string Secret, string Fingerprint) Credentials(StaticSettingsSource config)
+    {
+        var clientId = config.GetRequired(ModuleConfigurationProvider.ClientId);
+        var secret = encryption.Decrypt(config.GetRequired(ModuleConfigurationProvider.ClientSecret));
+        var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(clientId + "\0" + secret)));
+        return (clientId, secret, fingerprint);
     }
 
     private static void ValidateField(string field)

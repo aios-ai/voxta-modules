@@ -169,7 +169,6 @@ Console.WriteLine("PASS invalid arguments rejected before provider access");
 }
 await SpotifyConfigurationChecks.RunAsync();
 await SpotifyVoxtaOAuthChecks.RunAsync();
-if (args.Contains("--oauth-listener")) await SpotifyOAuthChecks.RunAsync();
 Console.WriteLine("All Spotify tool checks passed.");
 
 static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }

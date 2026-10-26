@@ -1,12 +1,9 @@
 using Microsoft.Extensions.Logging;
-using Voxta.Abstractions.Connections;
 using Voxta.Abstractions.Encryption;
 using Voxta.Abstractions.Modules;
 using Voxta.Abstractions.Registration;
 using Voxta.Abstractions.Security;
 using Voxta.Abstractions.Testing;
-using Voxta.Abstractions.Utils;
-using Voxta.Model.WebsocketMessages.ServerMessages;
 using Voxta.Modules.Aios.Spotify.Clients.Services;
 using Voxta.Modules.Aios.Spotify.Configuration;
 
@@ -15,8 +12,6 @@ namespace Voxta.Modules.Aios.Spotify;
 public class ModuleTestingProvider(
     ILocalEncryptionProvider localEncryptionProvider,
     ISpotifyManagerFactory spotifyManagerFactory,
-    IUserInteractionRequestsManager userInteractionRequestsManager,
-    IIVoxtaWebsocketBroadcasterFactory broadcastFactory,
     ILogger<ModuleTestingProvider> logger
     ) : IVoxtaModuleTestingProvider
 {
@@ -27,24 +22,18 @@ public class ModuleTestingProvider(
         CancellationToken cancellationToken
         )
     {
-        var useVoxtaAuthorization = ModuleConfigurationProvider.UseVoxtaAuthorization(settings);
         var config = new SpotifyManagerConfig
         {
-            UseVoxtaAuthorization = useVoxtaAuthorization,
             UserId = auth.UserId,
-            VoxtaTokenId = Guid.TryParse(settings.GetOptional(ModuleConfigurationProvider.SpotifyAccount), out var tokenId) ? tokenId : null,
+            TokenId = Guid.TryParse(settings.GetOptional(ModuleConfigurationProvider.SpotifyAccount), out var tokenId) ? tokenId : null,
             ClientId = settings.GetRequired(ModuleConfigurationProvider.ClientId),
             ClientSecret = localEncryptionProvider.Decrypt(settings.GetRequired(ModuleConfigurationProvider.ClientSecret)),
-            RedirectUri = new Uri(settings.GetRequired(useVoxtaAuthorization ? ModuleConfigurationProvider.VoxtaRedirectUri : ModuleConfigurationProvider.RedirectUri)),
-            TokenPath = useVoxtaAuthorization ? "" : SpotifyAuthPath.GetUserTokenPath(settings.GetRequired(ModuleConfigurationProvider.TokenPath), auth.UserId),
+            Abort = cancellationToken,
         };
-        // TODO: There is no way currently to get a tunnel here
-        var ws = broadcastFactory.Create(auth.UserId);
-        var session = new TestUserInteractionWrapper(userInteractionRequestsManager, ws, moduleId, cancellationToken);
-        var client = await spotifyManagerFactory.CreateSpotifyManager(session, config, cancellationToken);
+        var client = await spotifyManagerFactory.CreateSpotifyManager(config, cancellationToken);
         try
         {
-            var spotifyUserId = await client.GetSpotifyUserIdAsync();
+            var spotifyUserId = await client.GetSpotifyUserIdAsync(cancellationToken);
             if (spotifyUserId == null)
             {
                 return
@@ -78,29 +67,5 @@ public class ModuleTestingProvider(
             ];
         }
 
-    }
-}
-
-public class TestUserInteractionWrapper(
-    IUserInteractionRequestsManager userInteractionRequestsManager,
-    IVoxtaWebsocketBroadcaster ws,
-    Guid moduleId,
-    CancellationToken abort) : ISpotifyUserInteractionWrapper
-{
-    public CancellationToken Abort => abort;
-
-    public async Task<IUserInteractionRequestToken> RequestUserInteraction(Uri url, bool isReauthorization, CancellationToken cancellationToken)
-    {
-        var request = await userInteractionRequestsManager.RequestUserInteractionAsync(cancellationToken);
-        ws.SendToUser(new ServerUserInteractionRequestMessage
-        {
-            RequestId = request.RequestId,
-            ModuleId = moduleId,
-            Message = isReauthorization
-                ? "Your Spotify authorization has expired or is no longer valid. Please reauthorize Spotify by visiting the following URL:"
-                : "Please authorize Spotify by visiting the following URL:",
-            Url = url.ToString(),
-        });
-        return request;
     }
 }
