@@ -1,0 +1,6 @@
+<Project>
+  <!-- Compile privately into each module: no extra runtime DLL or installable module. -->
+  <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)*.cs" Link="Tools/Framework/%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

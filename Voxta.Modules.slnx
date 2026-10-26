@@ -2,4 +2,7 @@
   <Project Path="Voxta.Modules.Aios.OpenWeather/Voxta.Modules.Aios.OpenWeather.csproj" />
   <Project Path="Voxta.Modules.Aios.PhilipsHue/Voxta.Modules.Aios.PhilipsHue.csproj" />
   <Project Path="Voxta.Modules.Aios.Spotify/Voxta.Modules.Aios.Spotify.csproj" />
+  <Folder Name="/tests/">
+    <Project Path="tests/Tools.Tests/Tools.Tests.csproj" />
+  </Folder>
 </Solution>

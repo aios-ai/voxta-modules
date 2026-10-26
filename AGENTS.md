@@ -14,3 +14,7 @@ This is the active source repository for the installable modules under `Voxta.Mo
 - Do not overwrite or recreate an existing release tag. Use the `edit release` workflow to cap compatibility or yank an existing release.
 
 The shared workflows in `.github/workflows` remain the authority for build, packaging, prerelease detection, and GitHub Release creation.
+
+## Architecture
+
+- [Tools foundation and migration contract](docs/ARCHITECTURE.md): shared tool catalog, SDK boundaries, independent legacy actions, and migration coverage for all three modules.
