@@ -165,7 +165,7 @@ Daily Mix 6="
             Name = "seek_playback",
             Layer = "SpotifyControl",
             ShortDescription = "seek through the track",
-            Description = "When {{ user }} asks go to (seek) a specific position within the current track. Use 'forward' or 'backward' for relative seeks, 'to_time' for absolute time (e.g., 1 minute 30 seconds), 'to_percent' for percentage (e.g., 50%), or 'middle' for the midpoint.",
+            Description = "When {{ user }} asks go to (seek) a specific position within the current track. Use 'forward' or 'backward' for relative seconds, 'forward_percent' or 'backward_percent' to move from the current position by a percentage of the total track duration, 'to_time' for absolute time from the beginning, 'to_percent' for an absolute percentage from the beginning, or 'middle' for the midpoint. 'Forward by 10%' means forward_percent=10; 'go to 10%' means to_percent=10. Clarify an unclear direction or reference point.",
             MatchFilter = @"\b(?:seek|jump|scrub|forward|backward|rewind)\b|\bgo\s+to\b|\bskip\s+(?:ahead|back|forward|backward)\b",
             FlagsFilter = "playing",
             CancelReply = "true",

@@ -17,7 +17,7 @@ authorization. Other modules' behavior and versions are unchanged.
 - `Tools/SpotifyToolCatalog.cs` owns 17 native definitions and SDK schemas, permissions, choices, and bindings.
   `SpotifyToolHandler` validates and executes through `ISpotifyManager` and `SpotifySearchService`; it never
   references the action handler or sends notes, cancels replies, or triggers generation. Mutating calls are
-  serialized within the session and recorded through the playback monitor's last-command context.
+  serialized within the session and return immediate tool results; command summaries are not persisted in context.
 - `SpotifyToolsSettings` exposes `SpotifyTools` through the same `FormArrayOfObjectsField` card editor used
   by actions, with fixed names, per-tool disable switches, and editable descriptions. It reads existing nonempty
   SDK `Tools` selections as a migration fallback until cards are saved; an empty beta.1 selection adopts the new
@@ -205,7 +205,7 @@ Recommended order: OpenWeather, Hue, Spotify. Prefix the names below as describe
 | --- | --- | --- |
 | OpenWeather (5) | `get_weather`, `get_weather_forecast`, `get_air_pollution`, `get_air_pollution_forecast`, `get_weather_map` | Reuse `IOpenWeatherClient` and summarizers. Preserve configured location fallback, units, selected details, and cache path. Separate data/formatting from note feedback. Return maps as images plus descriptive text. All five are queries. |
 | Hue (8) | `turn_lights_on`, `turn_lights_off`, `hueBridge_connect`, `change_color`, `show_emotion`, `change_brightness`, `activate_scene`, `show_hue_inventory` | Reuse Hue manager/services. Validate brightness and target selection; expose useful disconnected/not-found errors. Inventory is Read; device/connection changes are Act. Keep emotion control gated by the configured character light and opt-in tool selection; agent-loop timing is distinct from the old after-assistant action timing. Preserve setup/link-button interaction separately from tool-result feedback. |
-| Spotify (17) | `toggle_playback`, `spotify_connect`, `play_random_music`, `play_special_playlist`, `play_music`, `queue_track`, `volume`, `seek_playback`, `skip_next`, `skip_previous`, `repeat_mode`, `shuffle_mode`, `add_to_favorites`, `get_playlists`, `add_to_playlist`, `list_devices`, `transfer_to_device` | Reuse manager/search services. The connect tool diagnoses available players without activating one. Connect and playlist/device listing are Read; mutations are Act. Preserve configured playlists, playback state, last-command tracking, and speech ducking independently of the action handler. Keep OAuth setup and passive playback monitoring separate from tool execution. |
+| Spotify (17) | `toggle_playback`, `spotify_connect`, `play_random_music`, `play_special_playlist`, `play_music`, `queue_track`, `volume`, `seek_playback`, `skip_next`, `skip_previous`, `repeat_mode`, `shuffle_mode`, `add_to_favorites`, `get_playlists`, `add_to_playlist`, `list_devices`, `transfer_to_device` | Reuse manager/search services. The connect tool diagnoses available players without activating one. Connect and playlist/device listing are Read; mutations are Act. Preserve configured playlists, playback state and speech ducking independently of the action handler. Keep OAuth setup and passive playback monitoring separate from tool execution. |
 
 Spotify speech events use the neutral `SpotifyPlaybackSession` and `SpotifySpeechDucking`, independently of
 `SpotifyActionHandler`. Preserve this boundary when extending the tools path.
@@ -219,7 +219,13 @@ The tools session awaits a read-only player-state preflight before activation co
 `SpotifyPlaybackMonitor` owns stable connection, active-device, playback and track contexts, refreshed every second.
 It does not discover devices at startup or in the background. No active player is distinct from a provider failure,
 missing authorization, or an active paused player. Full context comparison detects device switches and track removal
-without republishing unchanged ticks; context writes preserve the last command.
+without republishing unchanged ticks. Context contains current state only; tool results and legacy action feedback
+confirm commands without a persistent last-command context.
+Seeking distinguishes relative seconds (`forward`/`backward`), relative percentages of the total duration
+(`forward_percent`/`backward_percent`, measured from the current position), and absolute positions from the
+beginning (`to_time`/`to_percent`). Percentage values are integers from 0 to 100; targets are clamped to the
+track or episode boundaries in tools (legacy seeks support tracks). For example, at 3:00 in a ten-minute track,
+forward by 10% reaches 4:00, whereas go to 10% reaches 1:00.
 On a requested destination change, `spotify_list_devices` reports names, types, active status and control availability.
 Transfer accepts device names and resolves current internal IDs privately. Neither discovery output nor playback
 context exposes IDs, so approval arguments use names. Duplicate or ambiguous names require clarification or renaming

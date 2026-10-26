@@ -38,17 +38,15 @@ foreach (var (operation, json, mutation) in operations)
     var fixture = new Fixture();
     var result = await fixture.Call(operation, json);
     Check(!result.IsError, $"Unexpected result for {operation}: {result.Text}");
-    Check(fixture.Commands.Count == (mutation == null ? 0 : 1), $"Command tracking for {operation}");
     if (mutation != null)
     {
         Check(fixture.Backend.Calls.Count(c => c.Name == mutation) == 1, $"Duplicate or missing mutation: {operation}");
         var failed = new Fixture();
         failed.Backend.Succeed = false;
         Check((await failed.Call(operation, json)).IsError, $"Provider failure hidden: {operation}");
-        Check(failed.Commands.Count == 0, $"Failed command tracked: {operation}");
         Check(failed.Backend.Calls.Count(c => c.Name == mutation) == 1, $"Mutation retried: {operation}");
     }
-    Console.WriteLine($"PASS {operation} dispatch, result, and command tracking");
+    Console.WriteLine($"PASS {operation} dispatch and result");
 }
 
 var invalid = new (string, string)[]
@@ -64,6 +62,9 @@ var invalid = new (string, string)[]
     ("volume", "{\"type\":\"set\",\"value\":1.5}"),
     ("seek_playback", "{\"target\":\"to_time\"}"),
     ("seek_playback", "{\"target\":\"to_percent\",\"value\":101}"),
+    ("seek_playback", "{\"target\":\"forward_percent\"}"),
+    ("seek_playback", "{\"target\":\"forward_percent\",\"value\":101}"),
+    ("seek_playback", "{\"target\":\"backward_percent\",\"value\":-1}"),
     ("seek_playback", "{\"target\":\"invalid\"}"),
     ("repeat_mode", "{\"mode\":\"invalid\"}"),
     ("shuffle_mode", "{\"mode\":true}"),
@@ -94,6 +95,31 @@ Console.WriteLine("PASS invalid arguments rejected before provider access");
     await f.Call("seek_playback", "{\"target\":\"to_time\",\"value\":2147483647}");
     Check((int)f.Backend.Calls.Last(c => c.Name == "SeekPlayback").Args[0]! == 180000, "Seek overflow/clamping");
     Console.WriteLine("PASS metadata, opt-in availability, seek defaults and overflow");
+}
+
+{
+    // At 3:00 in a ten-minute track, moving by 10% means one minute from now.
+    var f = new Fixture();
+    f.Backend.State!.ProgressMs = 180000;
+    ((FullTrack)f.Backend.State.Item).DurationMs = 600000;
+    foreach (var (target, value, expected) in new[]
+    {
+        ("forward_percent", 10, 240000),
+        ("backward_percent", 10, 120000),
+        ("to_percent", 10, 60000),
+        ("forward_percent", 100, 600000),
+        ("backward_percent", 100, 0),
+        ("forward_percent", 0, 180000),
+    })
+    {
+        var result = await f.Call("seek_playback", JsonSerializer.Serialize(new { target, value }));
+        Check(!result.IsError, "Percentage seek failed: " + target);
+        Check((int)f.Backend.Calls.Last(c => c.Name == "SeekPlayback").Args[0]! == expected, "Incorrect seek reference or boundary: " + target);
+    }
+    f.Backend.State.Item = new FullEpisode { DurationMs = 600000 };
+    Check(!(await f.Call("seek_playback", "{\"target\":\"forward_percent\",\"value\":10}")).IsError
+        && (int)f.Backend.Calls.Last(c => c.Name == "SeekPlayback").Args[0]! == 240000, "Episode relative seek failed");
+    Console.WriteLine("PASS relative/absolute percentage seeks, boundaries and episodes");
 }
 
 {
@@ -201,9 +227,8 @@ Console.WriteLine("PASS invalid arguments rejected before provider access");
     Check(instance.GetRequiredServiceTypes().Length == 0 && instance is not IActionInferenceAugmentation, "Tools depend on action inference");
     await instance.CallToolAsync("spotify_skip_next", null, default);
     await instance.CallToolAsync("spotify_skip_previous", null, default);
-    playback.Initialize();
-    await monitor.SetLastActionAsync("Skipped to previous track.", default);
-    Check(((SessionProxy)session).Contexts.Any(c => c.Name == "Spotify Last Command" && c.Text == "Skipped to previous track."), "Last command not retained in context");
+    await playback.InitializeAsync(default);
+    Check(((SessionProxy)session).Contexts.All(c => c.Name != "Spotify Last Command"), "Last command context retained");
     await instance.DisposeAsync();
     await instance.DisposeAsync();
     Console.WriteLine("PASS tools session, no ActionInference, legacy suppression, multiple calls and disposal");
@@ -227,15 +252,13 @@ sealed class Fixture
     public readonly ISpotifyManager Manager = DispatchProxy.Create<ISpotifyManager, BackendProxy>();
     public BackendProxy Backend => (BackendProxy)Manager;
     public readonly Dictionary<string, string> Playlists = new() { ["daily mix 1"] = "special-id" };
-    public readonly List<string> Commands = [];
     public SpotifySpeechDucking Ducking { get; }
     public SpotifyToolHandler Handler { get; }
     public ModuleToolCatalog Catalog { get; }
     public Fixture()
     {
         Ducking = new(Manager, () => Backend.State, 40);
-        Handler = new(Manager, new SpotifySearchService(Manager, NullLogger<SpotifySearchService>.Instance), Playlists, Ducking,
-            (text, _) => { Commands.Add(text); return Task.CompletedTask; });
+        Handler = new(Manager, new SpotifySearchService(Manager, NullLogger<SpotifySearchService>.Instance), Playlists, Ducking);
         Catalog = SpotifyToolCatalog.Create(Handler, new(SpotifyToolCatalog.Choices.Select(c => c.Name).ToHashSet(), [ChatStyles.Assistant]), Playlists, NullLogger.Instance);
     }
     public Task<ChatToolCallResult> Call(string operation, string json, CancellationToken token = default) =>

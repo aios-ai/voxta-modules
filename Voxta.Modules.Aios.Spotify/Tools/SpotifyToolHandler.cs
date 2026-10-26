@@ -11,8 +11,7 @@ internal sealed class SpotifyToolHandler(
     ISpotifyManager manager,
     SpotifySearchService search,
     IReadOnlyDictionary<string, string> specialPlaylists,
-    SpotifySpeechDucking ducking,
-    Func<string, CancellationToken, Task> recordCommand)
+    SpotifySpeechDucking ducking)
 {
     // Serialize stateful search selection and commands; never retry a side effect.
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -72,8 +71,9 @@ internal sealed class SpotifyToolHandler(
             }
             case "seek_playback":
             {
-                var target = Choice(args, "target", "forward", "backward", "to_time", "to_percent", "middle");
-                var value = target == "middle" ? 0 : Number(args, target is "forward" or "backward" ? 10 : null, target == "to_percent" ? 100 : int.MaxValue);
+                var target = Choice(args, "target", "forward", "backward", "forward_percent", "backward_percent", "to_time", "to_percent", "middle");
+                var percentage = target is "forward_percent" or "backward_percent" or "to_percent";
+                var value = target == "middle" ? 0 : Number(args, target is "forward" or "backward" ? 10 : null, percentage ? 100 : int.MaxValue);
                 var state = await manager.GetCurrentPlaybackState(token);
                 var duration = state?.Item switch { FullTrack track => track.DurationMs, FullEpisode episode => episode.DurationMs, _ => 0 };
                 if (state == null || duration <= 0) return Failure("No track or episode is currently available to seek.");
@@ -81,6 +81,8 @@ internal sealed class SpotifyToolHandler(
                 {
                     "forward" => state.ProgressMs + (long)value * 1000,
                     "backward" => state.ProgressMs - (long)value * 1000,
+                    "forward_percent" => state.ProgressMs + (long)duration * value / 100,
+                    "backward_percent" => state.ProgressMs - (long)duration * value / 100,
                     "to_time" => (long)value * 1000,
                     "to_percent" => (long)duration * value / 100,
                     _ => duration / 2,
@@ -150,12 +152,11 @@ internal sealed class SpotifyToolHandler(
         $"{d.Name} [type: {d.Type}, active: {d.IsActive.ToString().ToLowerInvariant()}, controllable: {(!d.IsRestricted && !string.IsNullOrWhiteSpace(d.Id)).ToString().ToLowerInvariant()}]"));
 
     private ChatToolCallResult Failure(string fallback) => new(manager.LastUserVisibleError ?? fallback, true);
-    private async Task<ChatToolCallResult> Changed(bool success, string text, CancellationToken token)
+    private Task<ChatToolCallResult> Changed(bool success, string text, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
-        if (!success) return Failure("Spotify did not complete the requested change. Check authorization and the active player.");
-        await recordCommand(text, token);
-        return new(text, false);
+        return Task.FromResult(success ? new ChatToolCallResult(text, false)
+            : Failure("Spotify did not complete the requested change. Check authorization and the active player."));
     }
     private static string TrackName(FullTrack track) => $"{track.Name} by {string.Join(", ", track.Artists.Select(a => a.Name))}";
     private static string Text(JsonElement? args, string key)

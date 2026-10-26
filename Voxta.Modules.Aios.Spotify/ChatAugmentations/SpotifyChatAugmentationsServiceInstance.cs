@@ -147,14 +147,14 @@ public class SpotifyChatAugmentationsServiceInstance(
                 new FunctionArgumentDefinition
                 {
                     Name = "target",
-                    Description = "The type of seek: 'forward', 'backward', 'to_time', 'to_percent', or 'middle'.",
+                    Description = "The type of seek: 'forward'/'backward' for relative seconds, 'forward_percent'/'backward_percent' for relative percentage of total duration from the current position, 'to_time'/'to_percent' for absolute positions from the beginning, or 'middle'.",
                     Required = true,
                     Type = FunctionArgumentType.String,
                 },
                 new FunctionArgumentDefinition
                 {
                     Name = "value",
-                    Description = "The value for the target (e.g., seconds for 'forward'/'backward', total seconds for 'to_time', percentage for 'to_percent'). Not needed for 'middle'.",
+                    Description = "The value for the target (e.g., seconds for 'forward'/'backward', total seconds for 'to_time', 0-100 percentage of total duration for 'forward_percent'/'backward_percent'/'to_percent'). Not needed for 'middle'.",
                     Required = false,
                     Type = FunctionArgumentType.Integer,
                 }

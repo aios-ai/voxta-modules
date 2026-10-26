@@ -94,8 +94,7 @@ public class SpotifyChatAugmentationsService(
         if (tools)
         {
             var playback = new SpotifyPlaybackSession(spotifyPlaybackMonitor, ducking);
-            var handler = new SpotifyToolHandler(spotifyManager, spotifySearchService, playlistMap, ducking,
-                spotifyPlaybackMonitor.SetLastActionAsync);
+            var handler = new SpotifyToolHandler(spotifyManager, spotifySearchService, playlistMap, ducking);
             var toolInstance = new SpotifyToolsSession(SpotifyToolCatalog.Create(handler, SpotifyToolsSettings.From(ModuleConfiguration), playlistMap, logger), playback);
             try { await playback.InitializeAsync(cancellationToken); }
             catch { await toolInstance.DisposeAsync(); throw; }
@@ -103,7 +102,7 @@ public class SpotifyChatAugmentationsService(
         }
 
         var spotifyActionHandler = new SpotifyActionHandler(spotifyManager, spotifySearchService, session, config,
-            loggerFactory.CreateLogger<SpotifyActionHandler>(), () => spotifyPlaybackMonitor.PlaybackState, spotifyPlaybackMonitor.SetLastActionAsync, ducking);
+            loggerFactory.CreateLogger<SpotifyActionHandler>(), () => spotifyPlaybackMonitor.PlaybackState, ducking);
         var instance = new SpotifyChatAugmentationsServiceInstance(session, config, spotifyPlaybackMonitor, spotifyActionHandler, ducking);
         try { instance.Initialize(); }
         catch { await instance.DisposeAsync(); throw; }

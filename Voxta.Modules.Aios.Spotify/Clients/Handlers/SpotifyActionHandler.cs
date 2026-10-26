@@ -16,7 +16,6 @@ public class SpotifyActionHandler(
     SpotifyChatAugmentationsSettings settings,
     ILogger<SpotifyActionHandler> logger,
     Func<CurrentlyPlayingContext?> getPlaybackState,
-    Func<string, CancellationToken, Task> setLastAction,
     SpotifySpeechDucking? speechDucking = null)
 {
     private Dictionary<string, string> _deviceMap = new();
@@ -62,7 +61,7 @@ public class SpotifyActionHandler(
                 case "skip_next":
                     if (await spotifyManager.SkipToPreviousOrNextTrack("next", cancellationToken))
                     {
-                        await SetLastActionAndSendSecret("Skipped to the next track.", cancellationToken);
+                        await SendActionFeedback("Skipped to the next track.", cancellationToken);
                     }
                     else
                         await SendSpotifyFailureOrDefault($"Failed to skip to the next Spotify track.", cancellationToken);
@@ -70,7 +69,7 @@ public class SpotifyActionHandler(
                 case "skip_previous":
                     if (await spotifyManager.SkipToPreviousOrNextTrack("previous", cancellationToken))
                     {
-                        await SetLastActionAndSendSecret("Skipped to the previous track.", cancellationToken);
+                        await SendActionFeedback("Skipped to the previous track.", cancellationToken);
                     }
                     else
                         await SendSpotifyFailureOrDefault($"Failed to skip to the previous Spotify track.", cancellationToken);
@@ -129,7 +128,7 @@ public class SpotifyActionHandler(
         logger.LogInformation($"Toggling music playback. Current state: {isPlaying}, toggling to: {(!isPlaying ? "play" : "pause")}");
         if (await spotifyManager.ControlSpotifyPlayback(!isPlaying, cancellationToken))
         {
-            await SetLastActionAndSendSecret($"Toggled playback to {(!isPlaying ? "play" : "pause")}.", cancellationToken);
+            await SendActionFeedback($"Toggled playback to {(!isPlaying ? "play" : "pause")}.", cancellationToken);
         }
         else
             await SendSpotifyFailureOrDefault("Failed to toggle Spotify playback.", cancellationToken);
@@ -154,7 +153,6 @@ public class SpotifyActionHandler(
             var trackName = selectedTrack.Name;
             var artistName = string.Join(", ", selectedTrack.Artists.Select(a => a.Name));
 
-            await setLastAction($"Started random track: {trackName} by {artistName}.", cancellationToken);
             await SendWithPrefix($" {trackName} by {artistName} has been selected by spotify based on {{{{ user }}}}'s top tracks.", cancellationToken);
         }
         else
@@ -178,7 +176,6 @@ public class SpotifyActionHandler(
             var uri = $"spotify:playlist:{playlistId}";
             if (await spotifyManager.PlaySpecificUri(uri, cancellationToken, "playlist"))
             {
-                await setLastAction($"Started playlist: {playlistName}.", cancellationToken);
                 await SendWithPrefix($"Playing your playlist: {playlistName}", cancellationToken);
             }
             else
@@ -222,7 +219,6 @@ public class SpotifyActionHandler(
         {
             if (await spotifyManager.PlaySpecificUri(playUri, cancellationToken, playType))
             {
-                await setLastAction($"Started {playType}: {playFriendlyName}.", cancellationToken);
                 await SendWithPrefix($"Playing {playType}: {playFriendlyName}", cancellationToken);
             }
             else
@@ -250,7 +246,6 @@ public class SpotifyActionHandler(
         {
             if (await spotifyManager.QueueTrack(queueUri, cancellationToken))
             {
-                await setLastAction($"Queued track: {queueFriendlyName}.", cancellationToken);
                 await SendWithPrefix($"Added to queue: {queueFriendlyName}", cancellationToken);
             }
             else
@@ -308,7 +303,7 @@ public class SpotifyActionHandler(
 
         if (await spotifyManager.ChangeVolume(newVolume, cancellationToken))
         {
-            await SetLastActionAndSendSecret($"Changed volume to {newVolume}%.", cancellationToken);
+            await SendActionFeedback($"Changed volume to {newVolume}%.", cancellationToken);
         }
         else
         {
@@ -370,14 +365,22 @@ public class SpotifyActionHandler(
                     return;
                 }
                 break;
+            case "forward_percent":
+            case "backward_percent":
             case "to_percent":
-                if (message.TryGetArgument("value", out var percentString) && int.TryParse(percentString, out var percent))
+                if (message.TryGetArgument("value", out var percentString) && int.TryParse(percentString, out var percent) && percent is >= 0 and <= 100)
                 {
-                    newPositionMs = (long)(trackDurationMs * (percent / 100.0));
+                    var offsetMs = trackDurationMs * percent / 100;
+                    newPositionMs = targetString.ToLowerInvariant() switch
+                    {
+                        "forward_percent" => currentPositionMs + offsetMs,
+                        "backward_percent" => currentPositionMs - offsetMs,
+                        _ => offsetMs,
+                    };
                 }
                 else
                 {
-                    await SendSpotifyFailure("Spotify could not seek playback because no percentage was specified.", cancellationToken);
+                    await SendSpotifyFailure("Spotify could not seek playback because the percentage must be an integer from 0 to 100.", cancellationToken);
                     return;
                 }
                 break;
@@ -385,7 +388,7 @@ public class SpotifyActionHandler(
                 newPositionMs = trackDurationMs / 2;
                 break;
             default:
-                await SendSpotifyFailure("Spotify could not seek playback because the target must be forward, backward, to_time, to_percent, or middle.", cancellationToken);
+                await SendSpotifyFailure("Spotify could not seek playback because the target must be forward, backward, forward_percent, backward_percent, to_time, to_percent, or middle.", cancellationToken);
                 return;
         }
 
@@ -393,7 +396,7 @@ public class SpotifyActionHandler(
 
         if (await spotifyManager.SeekPlayback((int)newPositionMs, cancellationToken))
         {
-            await SetLastActionAndSendSecret($"Set playback position to {StringUtils.FormatMillisecondsToMinutesSeconds((int)newPositionMs)}.", cancellationToken);
+            await SendActionFeedback($"Set playback position to {StringUtils.FormatMillisecondsToMinutesSeconds((int)newPositionMs)}.", cancellationToken);
         }
         else
             await SendSpotifyFailureOrDefault("Failed to seek Spotify playback.", cancellationToken);
@@ -406,7 +409,6 @@ public class SpotifyActionHandler(
         repeatMode = StringUtils.CleanString(repeatMode);
         if (await spotifyManager.SetRepeatMode(repeatMode, cancellationToken))
         {
-            await setLastAction($"Set repeat mode to {repeatMode}.", cancellationToken);
             await SendWithPrefix($"Repeat mode set to {repeatMode}.", cancellationToken);
         }
         else
@@ -421,7 +423,6 @@ public class SpotifyActionHandler(
         var shuffleModeBool = shuffleMode != "off";
         if (await spotifyManager.SetShuffle(shuffleModeBool, cancellationToken))
         {
-            await setLastAction($"Set shuffle mode to {(shuffleModeBool ? "on" : "off")}.", cancellationToken);
             await SendWithPrefix($"Shuffle mode set to {(shuffleModeBool ? "on" : "off")}.", cancellationToken);
         }
         else
@@ -441,7 +442,6 @@ public class SpotifyActionHandler(
         {
             if (await spotifyManager.AddTrackToLibraryAsync(trackUri, trackFriendlyName, cancellationToken))
             {
-                await setLastAction($"Added {trackFriendlyName} to Favorites.", cancellationToken);
                 await SendWithPrefix($"Track '{trackFriendlyName}' added to your Favorites.", cancellationToken);
             }
             else
@@ -501,7 +501,6 @@ public class SpotifyActionHandler(
         var request = new PlaylistAddItemsRequest(new List<string> { trackUri });
         if (await spotifyManager.AddItems(playlistId, request, cancellationToken))
         {
-            await setLastAction($"Added {trackFriendlyName} to playlist {playlistFriendlyName}.", cancellationToken);
             await SendWithPrefix($"Track '{trackFriendlyName}' added to playlist '{playlistFriendlyName}'.", cancellationToken);
         }
         else
@@ -555,15 +554,14 @@ public class SpotifyActionHandler(
         }
         if (await spotifyManager.TransferPlayback(matchedDevice.Value, cancellationToken))
         {
-            await SetLastActionAndSendSecret($"Transferred playback to {matchedDevice.Key}.", cancellationToken);
+            await SendActionFeedback($"Transferred playback to {matchedDevice.Key}.", cancellationToken);
         }
         else
             await SendSpotifyFailureOrDefault($"Failed to transfer playback to: {matchedDevice.Key}", cancellationToken);
     }
 
-    private async Task SetLastActionAndSendSecret(string action, CancellationToken cancellationToken)
+    private async Task SendActionFeedback(string action, CancellationToken cancellationToken)
     {
-        await setLastAction(action, cancellationToken);
         if (_cancelReply.Value)
         {
             await session.SendNoteAsync(action, cancellationToken);

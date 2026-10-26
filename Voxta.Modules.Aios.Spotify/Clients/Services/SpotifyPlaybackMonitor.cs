@@ -16,7 +16,6 @@ public class SpotifyPlaybackMonitor(
     private readonly SemaphoreSlim _gate = new(1, 1);
     private string? _playbackError;
     private bool _authorizationRequired;
-    private string? _lastCommand;
     private string? _lastFlags;
     private string? _lastPublished;
     public CurrentlyPlayingContext? PlaybackState { get; private set; }
@@ -74,17 +73,6 @@ public class SpotifyPlaybackMonitor(
         finally { _gate.Release(); }
     }
 
-    public async Task SetLastActionAsync(string action, CancellationToken cancellationToken)
-    {
-        await _gate.WaitAsync(cancellationToken);
-        try
-        {
-            _lastCommand = action;
-            await PublishContextsAsync(cancellationToken);
-        }
-        finally { _gate.Release(); }
-    }
-
     private async Task PublishContextsAsync(CancellationToken cancellationToken)
     {
         var contexts = BuildContextDefinitions(PlaybackState);
@@ -98,9 +86,6 @@ public class SpotifyPlaybackMonitor(
     {
         var contexts = new List<ContextDefinition>();
         var isConnected = playbackState?.Device?.IsActive == true;
-
-        if (_lastCommand != null)
-            AddContext(contexts, "last_command", "Spotify Last Command", _lastCommand);
 
         AddContext(
             contexts,

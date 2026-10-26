@@ -22,7 +22,7 @@ internal static class SpotifyContextChecks
         Check(Context("Spotify Connection Status").Contains("start playback manually"), "Manual playback prerequisite missing");
         Check(Context("Spotify Playback Status").Contains("no active player"), "No player misreported as paused");
         Check(session.Contexts.All(c => c.Name != "Spotify Available Devices"), "Unrequested discovery context retained");
-        Check(f.Commands.Count == 0 && f.Backend.Calls.All(c => c.Name == "GetCurrentPlaybackState"), "Preflight discovered or controlled devices");
+        Check(f.Backend.Calls.All(c => c.Name == "GetCurrentPlaybackState"), "Preflight discovered or controlled devices");
 
         var writes = session.ContextWrites;
         await monitor.RefreshAsync(default);
@@ -36,11 +36,10 @@ internal static class SpotifyContextChecks
         await monitor.RefreshAsync(default);
         Check(Context("Spotify Active Device").Contains("Other Computer") && Context("Spotify Playback Status").Contains("playing"), "Device switch with same volume not published");
         Check(session.Contexts.Single(c => c.Name == "Spotify Playback Status").Id == contextId, "Context identity changed");
-        await monitor.SetLastActionAsync("Playing a song.", default);
         f.Backend.State = null;
         await monitor.RefreshAsync(default);
         Check(session.Contexts.All(c => c.Name != "Spotify Active Device"), "Stale active device retained");
-        Check(Context("Spotify Last Command") == "Playing a song.", "Refresh lost last command");
+        Check(session.Contexts.All(c => c.Name != "Spotify Last Command"), "Last command context retained");
 
         f.Backend.OnCall = name => { if (name == "GetCurrentPlaybackState") throw new Exception("secret-error"); };
         await monitor.RefreshAsync(default);
