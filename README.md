@@ -41,22 +41,30 @@ application that provides a Client ID and Client Secret.
 Spotify has two explicit **Authorization Mode** choices. The existing **Temporary local listener (fallback)**
 remains the default while the server-managed pipeline is tested.
 
-To test **Voxta OAuth (test pipeline)** using Voxta's existing web server:
+To use **Spotify OAuth** in the desktop app, using Voxta's existing web server:
 
-1. Open Voxta at `http://127.0.0.1:5384` in the browser you will use for the whole authorization.
-2. Add `http://127.0.0.1:5384/auth/modules/callback` to your Spotify Developer Dashboard's redirect URIs.
-3. Select **Voxta OAuth (test pipeline)** in the module. Set **Voxta OAuth Redirect URI** to that same address,
-   confirm the client credentials, and save the module settings.
-4. Authorize **Spotify Account (Voxta OAuth)** in module configuration. Complete Spotify authorization in the
-   same browser, returning to Voxta's callback page. Do not copy the outgoing Spotify URL into another browser:
-   the callback needs the state stored by the browser that started the flow.
-5. Run **Test**, then start a new chat and test playback/tools. This mode uses only Voxta's encrypted account
-   token store; it never starts the temporary listener or uses its saved token file. To repeat a fresh login,
-   sign out of the Spotify Account field and authorize again.
+1. Add `http://127.0.0.1:5384/oauth-native-bounce.html` to your Spotify Developer Dashboard's redirect URIs.
+2. Select **Spotify OAuth** in the module. Set **Spotify OAuth Redirect URI** to that exact address,
+   confirm the client credentials, and save the module settings. Existing browser callback settings are
+   preserved on upgrade, so replace `/auth/modules/callback` with `/oauth-native-bounce.html` for desktop use.
+3. Click **Sign in** in **Spotify Account**. Voxta opens Spotify in your external browser. After consent,
+   its existing bounce page returns the code/state to the desktop app through `voxta://oauth-callback`.
+   Allow your browser to open Voxta when prompted.
+4. Run **Test**, then start a new chat and test playback/tools. This mode uses only Voxta's encrypted account
+   token store; it never starts the temporary listener or uses its saved token file.
 
-If you use another Voxta origin, use that origin followed by `/auth/modules/callback` in both settings. Remote
-origins require HTTPS; HTTP is allowed only with an explicit loopback IP. The module validates that the address
-supplied by Voxta matches the configured redirect exactly. Saved fallback tokens cannot mask a failed native test.
+For sign-in from a web browser, configure and register `http://127.0.0.1:5384/auth/modules/callback` instead.
+Start and finish in the same browser so Voxta retains its OAuth state. Both callback paths can remain registered
+in Spotify, but the module setting must match the client used to start sign-in. New configurations default to
+the desktop callback. The selected URI is used unchanged for both authorization and code exchange; mismatches
+are rejected with the exact address requested by Voxta. HTTPS browser origins are supported; HTTP requires an
+explicit loopback IP. Existing setting keys and the stored mode value are retained despite the UI label rename.
+
+To repeat a fresh login, use **Sign out** in Spotify Account and authorize again. Voxta owns deletion of the
+stored token and account field; this does not require an unexpired Spotify token. On the next provider request,
+an active Spotify client notices the removed account and clears its cached client. A `Spotify OAuth sign-out
+requested` log entry confirms the request reached the module. Live desktop button behavior still requires
+acceptance testing; an unresponsive UI is not treated as proof that token deletion completed.
 
 To return to the fallback, select **Temporary local listener (fallback)** and save. Its **Fallback Redirect URI** is:
 

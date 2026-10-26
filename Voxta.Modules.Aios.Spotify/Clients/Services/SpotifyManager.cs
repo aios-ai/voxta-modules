@@ -130,7 +130,7 @@ public class SpotifyManager(
 
     public async Task InitializeSpotifyClient(CancellationToken cancellationToken)
     {
-        logger.LogInformation("Initialize Spotify Client ({AuthorizationMode})", config.UseVoxtaAuthorization ? "Voxta OAuth; local listener disabled" : "local listener fallback");
+        logger.LogInformation("Initialize Spotify Client ({AuthorizationMode})", config.UseVoxtaAuthorization ? "Spotify OAuth; local listener disabled" : "local listener fallback");
         var accessToken = await GetValidAccessTokenAsync(cancellationToken);
         if (accessToken != null)
         {
@@ -203,7 +203,8 @@ public class SpotifyManager(
             {
                 if (config.UseVoxtaAuthorization)
                 {
-                    _configurationError = "Spotify is not authorized in Voxta OAuth mode. Save the module settings, authorize Spotify Account in module configuration, then run Test or start a new chat. The local listener and fallback token file are disabled in this mode.";
+                    _spotifyClient = null;
+                    _configurationError = "Spotify is not authorized in Spotify OAuth mode. Save the module settings, authorize Spotify Account in module configuration, then run Test or start a new chat. The local listener and fallback token file are disabled in this mode.";
                     SetAuthorizationRequired();
                     return null;
                 }
