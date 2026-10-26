@@ -14,10 +14,23 @@ authorization. Other modules' behavior and versions are unchanged.
 
 ## Spotify integration
 
-- `Tools/SpotifyToolCatalog.cs` owns 17 native definitions and SDK schemas, permissions, choices, and bindings.
-  `SpotifyToolHandler` validates and executes through `ISpotifyManager` and `SpotifySearchService`; it never
+- `Tools/SpotifyToolCatalog.cs` owns 18 native definitions and SDK schemas, permissions, choices, and bindings.
+  `SpotifyToolHandler` validates and executes through `ISpotifyManager`; it never
   references the action handler or sends notes, cancels replies, or triggers generation. Mutating calls are
   serialized within the session and return immediate tool results; command summaries are not persisted in context.
+- `spotify_search` is a read-only catalog query. It returns up to ten candidates of one requested type in
+  Spotify order with their URIs and identifying metadata; it never selects or starts music. The agent chooses
+  a candidate and passes its exact URI to `spotify_play_music` or, for a track, `spotify_queue_track`.
+  Name/type arguments on those two mutation tools are no longer supported. Artist URIs ask Spotify to select
+  music in that artist's context; a specific song requires selecting a track result. Genre requests use
+  playlist searches or Spotify's genre filter for tracks. Tools never initialize or call the legacy search
+  service; legacy actions retain their existing ranking and playback behavior.
+- `ISpotifyManager.PlayWithResult` distinguishes command rejection, accepted-but-unconfirmed playback, and
+  observed playback. Tools return these states plus the observed item/device rather than marking an
+  acknowledged command as failed. Polling is bounded and never repeats the play mutation. Artist playback
+  can be confirmed by the playing track's artist URI when context is missing or different. Exact track/episode
+  requests still require the requested item; paused or unrelated playback is not confirmation. The legacy
+  `PlaySpecificUri` adapter retains its previous boolean/context-confirmation semantics and feedback.
 - `SpotifyToolsSettings` exposes `SpotifyTools` through the same `FormArrayOfObjectsField` card editor used
   by actions, with fixed names, per-tool disable switches, and editable descriptions. It reads existing nonempty
   SDK `Tools` selections as a migration fallback until cards are saved; an empty beta.1 selection adopts the new
@@ -205,7 +218,7 @@ Recommended order: OpenWeather, Hue, Spotify. Prefix the names below as describe
 | --- | --- | --- |
 | OpenWeather (5) | `get_weather`, `get_weather_forecast`, `get_air_pollution`, `get_air_pollution_forecast`, `get_weather_map` | Reuse `IOpenWeatherClient` and summarizers. Preserve configured location fallback, units, selected details, and cache path. Separate data/formatting from note feedback. Return maps as images plus descriptive text. All five are queries. |
 | Hue (8) | `turn_lights_on`, `turn_lights_off`, `hueBridge_connect`, `change_color`, `show_emotion`, `change_brightness`, `activate_scene`, `show_hue_inventory` | Reuse Hue manager/services. Validate brightness and target selection; expose useful disconnected/not-found errors. Inventory is Read; device/connection changes are Act. Keep emotion control gated by the configured character light and opt-in tool selection; agent-loop timing is distinct from the old after-assistant action timing. Preserve setup/link-button interaction separately from tool-result feedback. |
-| Spotify (17) | `toggle_playback`, `spotify_connect`, `play_random_music`, `play_special_playlist`, `play_music`, `queue_track`, `volume`, `seek_playback`, `skip_next`, `skip_previous`, `repeat_mode`, `shuffle_mode`, `add_to_favorites`, `get_playlists`, `add_to_playlist`, `list_devices`, `transfer_to_device` | Reuse manager/search services. The connect tool diagnoses available players without activating one. Connect and playlist/device listing are Read; mutations are Act. Preserve configured playlists, playback state and speech ducking independently of the action handler. Keep OAuth setup and passive playback monitoring separate from tool execution. |
+| Spotify (17) | `toggle_playback`, `spotify_connect`, `play_random_music`, `play_special_playlist`, `play_music`, `queue_track`, `volume`, `seek_playback`, `skip_next`, `skip_previous`, `repeat_mode`, `shuffle_mode`, `add_to_favorites`, `get_playlists`, `add_to_playlist`, `list_devices`, `transfer_to_device` | Reuse neutral manager operations; tools search returns candidates as described above. The connect tool diagnoses available players without activating one. Search, connect and playlist/device listing are Read; mutations are Act. Preserve configured playlists, playback state and speech ducking independently of the action handler. Keep OAuth setup and passive playback monitoring separate from tool execution. |
 
 Spotify speech events use the neutral `SpotifyPlaybackSession` and `SpotifySpeechDucking`, independently of
 `SpotifyActionHandler`. Preserve this boundary when extending the tools path.

@@ -9,11 +9,10 @@ namespace Voxta.Modules.Aios.Spotify.Tools;
 
 internal sealed class SpotifyToolHandler(
     ISpotifyManager manager,
-    SpotifySearchService search,
     IReadOnlyDictionary<string, string> specialPlaylists,
     SpotifySpeechDucking ducking)
 {
-    // Serialize stateful search selection and commands; never retry a side effect.
+    // Serialize commands; never retry a side effect.
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     public async ValueTask<ChatToolCallResult> ExecuteAsync(string operation, JsonElement? args, CancellationToken token)
@@ -40,26 +39,30 @@ internal sealed class SpotifyToolHandler(
                 var tracks = await manager.GetUsersTopTracks(token);
                 if (tracks?.Items is not { Count: > 0 }) return Failure("No top tracks were found.");
                 var track = tracks.Items[Random.Shared.Next(tracks.Items.Count)];
-                return await Changed(await manager.PlaySpecificUri(track.Uri, token, "track"), $"Playing {TrackName(track)}.", token);
+                return await Play(track.Uri, "track", token);
             }
             case "play_special_playlist":
             {
                 var name = Text(args, "name");
                 var match = specialPlaylists.FirstOrDefault(p => StringUtils.NormaliseKey(p.Key) == StringUtils.NormaliseKey(name));
                 if (match.Key == null) return new("That special playlist is not configured. Available names: " + string.Join(", ", specialPlaylists.Keys), true);
-                return await Changed(await manager.PlaySpecificUri($"spotify:playlist:{match.Value}", token, "playlist"), $"Playing playlist {match.Key}.", token);
+                return await Play($"spotify:playlist:{match.Value}", "playlist", token);
             }
+            case "search":
+                return await Search(args, token);
             case "play_music":
             case "queue_track":
             {
-                var name = Text(args, "name");
-                var type = operation == "queue_track" ? "track" : Choice(args, "type", "track", "album", "artist", "playlist", "show", "episode", "genre");
-                var result = await search.GetSpotifyUri(name, type == "genre" ? "playlist" : type, type, token);
-                token.ThrowIfCancellationRequested();
-                if (result.Uri == null || result.Type == null) return Failure("No matching Spotify item was found.");
-                if (operation == "queue_track" && result.Type != "track") return new("Only tracks can be queued with this tool.", true);
-                var success = operation == "queue_track" ? await manager.QueueTrack(result.Uri, token) : await manager.PlaySpecificUri(result.Uri, token, result.Type);
-                return await Changed(success, $"{(operation == "queue_track" ? "Queued" : "Playing")} {result.FriendlyName}.", token);
+                var uri = Text(args, "uri");
+                var parts = uri.Split(':');
+                if (parts.Length != 3 || parts[0] != "spotify" || !new[] { "track", "album", "artist", "playlist", "show", "episode" }.Contains(parts[1])
+                    || parts[2].Length != 22 || !parts[2].All(char.IsAsciiLetterOrDigit))
+                    throw new ModuleToolInputException("'uri' must be an exact Spotify item URI from spotify_search or the user, such as spotify:track:<22-character ID>. Search by name with spotify_search first.");
+                if (operation == "queue_track" && parts[1] != "track")
+                    throw new ModuleToolInputException("Only spotify:track: URIs can be queued with this tool.");
+                return operation == "queue_track"
+                    ? await Changed(await manager.QueueTrack(uri, token), $"Spotify accepted the queue request for {uri}.", token)
+                    : await Play(uri, parts[1], token);
             }
             case "volume":
             {
@@ -139,6 +142,55 @@ internal sealed class SpotifyToolHandler(
         }
     }
 
+    private async Task<ChatToolCallResult> Search(JsonElement? args, CancellationToken token)
+    {
+        var query = Text(args, "query");
+        var type = Choice(args, "type", "track", "album", "artist", "playlist", "show", "episode");
+        var searchType = type switch
+        {
+            "track" => SearchRequest.Types.Track, "album" => SearchRequest.Types.Album,
+            "artist" => SearchRequest.Types.Artist, "playlist" => SearchRequest.Types.Playlist,
+            "show" => SearchRequest.Types.Show, _ => SearchRequest.Types.Episode,
+        };
+        var response = await manager.SearchSpotify(query, searchType, cancellationToken: token);
+        token.ThrowIfCancellationRequested();
+        if (response == null) return Failure("Spotify search could not be completed.");
+        // Keep Spotify's ordering and metadata; no scoring, history suppression or automatic selection.
+        IEnumerable<object> results = type switch
+        {
+            "track" => (response.Tracks?.Items ?? []).Where(t => t != null).Select(t => (object)new { t.Uri, t.Name, Artists = t.Artists?.Select(a => a.Name), Album = t.Album?.Name }),
+            "album" => (response.Albums?.Items ?? []).Where(a => a != null).Select(a => (object)new { a.Uri, a.Name, Artists = a.Artists?.Select(x => x.Name), a.ReleaseDate }),
+            "artist" => (response.Artists?.Items ?? []).Where(a => a != null).Select(a => (object)new { a.Uri, a.Name }),
+            "playlist" => (response.Playlists?.Items ?? []).Where(p => p != null).Select(p => (object)new { p.Uri, p.Name, Owner = p.Owner?.DisplayName, p.Description }),
+            "show" => (response.Shows?.Items ?? []).Where(s => s != null).Select(s => (object)new { s.Uri, s.Name, s.Description }),
+            _ => (response.Episodes?.Items ?? []).Where(e => e != null).Select(e => (object)new { e.Uri, e.Name, e.ReleaseDate, e.Description }),
+        };
+        return new(JsonSerializer.Serialize(new { query, type, results = results.Take(10).ToArray() }), false);
+    }
+
+    private async Task<ChatToolCallResult> Play(string uri, string type, CancellationToken token)
+    {
+        var result = await manager.PlayWithResult(uri, token, type);
+        token.ThrowIfCancellationRequested();
+        var item = result.Playback?.Item switch
+        {
+            FullTrack track => TrackName(track), FullEpisode episode => episode.Name, _ => null,
+        };
+        return new(JsonSerializer.Serialize(new
+        {
+            status = result.Confirmed ? "confirmed" : result.Accepted ? "accepted_unconfirmed" : "failed",
+            requested_uri = uri,
+            observed_item = item,
+            observed_uri = result.Playback?.Item switch { FullTrack t => t.Uri, FullEpisode e => e.Uri, _ => null },
+            observed_context_uri = result.Playback?.Context?.Uri,
+            observed_is_playing = result.Playback?.IsPlaying,
+            device = result.Playback?.Device?.Name,
+            detail = result.Error ?? (result.Confirmed ? "Requested playback was observed."
+                : result.Accepted ? "Spotify accepted the request; playback of the requested item has not been confirmed."
+                : "Spotify did not accept the play request."),
+        }), !result.Accepted);
+    }
+
     private async Task<ChatToolCallResult> DescribeDevices(CancellationToken token)
     {
         var devices = await manager.GetAvailablePlaybackDevices(token);
@@ -158,7 +210,8 @@ internal sealed class SpotifyToolHandler(
         return Task.FromResult(success ? new ChatToolCallResult(text, false)
             : Failure("Spotify did not complete the requested change. Check authorization and the active player."));
     }
-    private static string TrackName(FullTrack track) => $"{track.Name} by {string.Join(", ", track.Artists.Select(a => a.Name))}";
+    private static string TrackName(FullTrack track) => track.Artists is { Count: > 0 }
+        ? $"{track.Name} by {string.Join(", ", track.Artists.Select(a => a.Name))}" : track.Name ?? "Unknown track";
     private static string Text(JsonElement? args, string key)
     {
         if (args is not { ValueKind: JsonValueKind.Object } value || !value.TryGetProperty(key, out var field) || field.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(field.GetString()))

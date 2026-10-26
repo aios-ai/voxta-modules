@@ -16,10 +16,11 @@ var operations = new (string Operation, string Json, string? Mutation)[]
 {
     ("toggle_playback", "{}", "ControlSpotifyPlayback"),
     ("connect", "{}", null),
-    ("play_random_music", "{}", "PlaySpecificUri"),
-    ("play_special_playlist", "{\"name\":\"Daily Mix 1\"}", "PlaySpecificUri"),
-    ("play_music", "{\"name\":\"Track\",\"type\":\"track\"}", "PlaySpecificUri"),
-    ("queue_track", "{\"name\":\"Track\"}", "QueueTrack"),
+    ("search", "{\"query\":\"Track\",\"type\":\"track\"}", null),
+    ("play_random_music", "{}", "PlayWithResult"),
+    ("play_special_playlist", "{\"name\":\"Daily Mix 1\"}", "PlayWithResult"),
+    ("play_music", "{\"uri\":\"spotify:track:1234567890123456789012\"}", "PlayWithResult"),
+    ("queue_track", "{\"uri\":\"spotify:track:1234567890123456789012\"}", "QueueTrack"),
     ("volume", "{\"type\":\"set\",\"value\":30}", "ChangeVolume"),
     ("seek_playback", "{\"target\":\"forward\"}", "SeekPlayback"),
     ("skip_next", "{}", "SkipToPreviousOrNextTrack"),
@@ -54,6 +55,11 @@ var invalid = new (string, string)[]
     ("play_music", "{\"name\":\"Track\",\"type\":\"invalid\"}"),
     ("play_music", "{\"name\":3,\"type\":\"track\"}"),
     ("queue_track", "{\"name\":\" \"}"),
+    ("search", "{\"query\":\"Track\",\"type\":\"genre\"}"),
+    ("search", "{\"query\":\" \",\"type\":\"track\"}"),
+    ("play_music", "{\"uri\":\"https://example.com\"}"),
+    ("play_music", "{\"uri\":\"spotify:track:123456789012345678901!\"}"),
+    ("queue_track", "{\"uri\":\"spotify:artist:1234567890123456789012\"}"),
     ("play_special_playlist", "{}"),
     ("volume", "{\"type\":\"set\"}"),
     ("volume", "{\"type\":\"set\",\"value\":101}"),
@@ -81,10 +87,58 @@ Console.WriteLine("PASS invalid arguments rejected before provider access");
 
 {
     var f = new Fixture();
+    f.Backend.SearchResults = new()
+    {
+        Tracks = new() { Items = [
+            new() { Uri = "spotify:track:1111111111111111111111", Name = "First", Artists = [new() { Name = "Limp Bizkit" }], Album = new() { Name = "Album One" } },
+            new() { Uri = "spotify:track:2222222222222222222222", Name = "Second", Artists = [new() { Name = "Other artist" }], Album = new() { Name = "Album Two" } },
+        ] },
+    };
+    var query = "artist:\"Limp Bizkit\"";
+    var result = await f.Call("search", JsonSerializer.Serialize(new { query, type = "track" }));
+    using var document = JsonDocument.Parse(result.Text);
+    var candidates = document.RootElement.GetProperty("results");
+    Check(!result.IsError && candidates.GetArrayLength() == 2, "Search did not return candidates");
+    Check(candidates[0].GetProperty("Name").GetString() == "First" && candidates[1].GetProperty("Name").GetString() == "Second", "Search reordered or selected candidates");
+    Check(candidates[0].GetProperty("Artists")[0].GetString() == "Limp Bizkit" && candidates[0].GetProperty("Album").GetString() == "Album One", "Disambiguating metadata missing");
+    var call = f.Backend.Calls.Single();
+    Check(call.Name == "SearchSpotify" && (string)call.Args[0]! == query && (SearchRequest.Types)call.Args[1]! == SearchRequest.Types.Track && call.Args[2] == null, "Search filters, type or user market changed");
+    await f.Call("play_music", "{\"uri\":\"spotify:track:2222222222222222222222\"}");
+    Check((string)f.Backend.Calls.Single(c => c.Name == "PlayWithResult").Args[0]! == "spotify:track:2222222222222222222222" && f.Backend.Calls.Count(c => c.Name == "SearchSpotify") == 1, "Agent selection ignored or playback searched again");
+    f.Backend.SearchResults = new()
+    {
+        Albums = new() { Items = [new() { Uri = "spotify:album:album", Name = "Album", Artists = [new() { Name = "Artist" }] }] },
+        Artists = new() { Items = [new() { Uri = "spotify:artist:artist", Name = "Artist" }] },
+        Playlists = new() { Items = [null!, new() { Uri = "spotify:playlist:playlist", Name = "Playlist", Owner = new() { DisplayName = "Owner" } }] },
+        Shows = new() { Items = [new() { Uri = "spotify:show:show", Name = "Show", Description = "Show description" }] },
+        Episodes = new() { Items = [new() { Uri = "spotify:episode:episode", Name = "Episode", ReleaseDate = "2026-10-26" }] },
+    };
+    foreach (var type in new[] { "album", "artist", "playlist", "show", "episode" })
+    {
+        var response = await f.Call("search", JsonSerializer.Serialize(new { query = "example", type }));
+        using var media = JsonDocument.Parse(response.Text);
+        var items = media.RootElement.GetProperty("results");
+        Check(!response.IsError && items.GetArrayLength() == 1 && items[0].GetProperty("Uri").GetString() == $"spotify:{type}:{type}", "Wrong media type or null candidate handling: " + type);
+    }
+    f.Backend.PlaybackResult = new(true, false, f.Backend.State, "Playback state is delayed.");
+    var unconfirmed = await f.Call("play_music", "{\"uri\":\"spotify:artist:1234567890123456789012\"}");
+    Check(!unconfirmed.IsError && unconfirmed.Text.Contains("accepted_unconfirmed") && unconfirmed.Text.Contains("Track by Artist"), "Acknowledged command reported as failed or observed item missing");
+    f.Backend.SearchResults = new();
+    using var empty = JsonDocument.Parse((await f.Call("search", "{\"query\":\"missing\",\"type\":\"artist\"}")).Text);
+    Check(empty.RootElement.GetProperty("results").GetArrayLength() == 0, "Empty results not returned as data");
+    f.Backend.SearchResults = null;
+    f.Backend.Error = "Search authorization failed.";
+    var failedSearch = await f.Call("search", "{\"query\":\"missing\",\"type\":\"artist\"}");
+    Check(failedSearch.IsError && failedSearch.Text == f.Backend.Error, "Search failure hidden as empty results");
+    Console.WriteLine("PASS search ordering/metadata, explicit agent selection, no hidden playback/search, accepted results and search errors");
+}
+
+{
+    var f = new Fixture();
     var definitions = f.Catalog.GetTools();
-    Check(definitions.Count == 17 && definitions.Select(d => d.Name).Distinct().Count() == 17, "Catalog coverage");
+    Check(definitions.Count == 18 && definitions.Select(d => d.Name).Distinct().Count() == 18, "Catalog coverage");
     Check(definitions.All(d => d.Source == VoxtaModule.ServiceName && d.AugmentationKey == VoxtaModule.ToolsAugmentationKey && !d.AlwaysAllowed && d.ExternalContent), "Tool ownership/permissions");
-    Check(definitions.Count(d => d.Permission == ToolPermissionClass.Read) == 3, "Read/Act classification");
+    Check(definitions.Count(d => d.Permission == ToolPermissionClass.Read) == 4, "Read/Act classification");
     Check(SpotifyToolCatalog.Choices.All(c => c.EnabledByDefault), "Tools should default to enabled");
     var settings = new SpotifyToolsSettings(new HashSet<string>(), [ChatStyles.Assistant]);
     var disabled = SpotifyToolCatalog.Create(f.Handler, settings, f.Playlists, NullLogger.Instance);
@@ -180,8 +234,8 @@ Console.WriteLine("PASS invalid arguments rejected before provider access");
     var f = new Fixture();
     using var cts = new CancellationTokenSource();
     f.Backend.OnCall = name => { if (name == "SearchSpotify") cts.Cancel(); };
-    await Canceled(() => f.Call("play_music", "{\"name\":\"Track\",\"type\":\"track\"}", cts.Token));
-    Check(!f.Backend.Calls.Any(c => c.Name == "PlaySpecificUri"), "Canceled search started playback");
+    await Canceled(() => f.Call("search", "{\"query\":\"Track\",\"type\":\"track\"}", cts.Token));
+    Check(!f.Backend.Calls.Any(c => c.Name == "PlayWithResult"), "Canceled search started playback");
     Check(f.Backend.Calls.Single(c => c.Name == "SearchSpotify").Args.OfType<CancellationToken>().Single() == cts.Token, "Search token lost");
     foreach (var (operation, json, _) in operations)
     {
@@ -219,7 +273,7 @@ Console.WriteLine("PASS invalid arguments rejected before provider access");
     Check(service is IToolsChatAugmentationsService, "Missing tools marker");
     var plan = await service.PlanAsync(null!, default);
     var tools = plan.Single(p => p.Key == VoxtaModule.ToolsAugmentationKey);
-    Check(tools.Activation == AugmentationActivation.OptIn && !tools.IncludeInCatchAll && tools.Tools!.Count == 17, "Tools plan not independent/opt-in");
+    Check(tools.Activation == AugmentationActivation.OptIn && !tools.IncludeInCatchAll && tools.Tools!.Count == 18, "Tools plan not independent/opt-in");
     Check(await plan.Single(p => p.Key == VoxtaModule.AugmentationKey).ActivateAsync(session, default) == null, "Legacy session activated alongside tools");
     var monitor = new SpotifyPlaybackMonitor(f.Manager, session, NullLogger<SpotifyPlaybackMonitor>.Instance);
     var playback = new SpotifyPlaybackSession(monitor, f.Ducking);
@@ -258,7 +312,7 @@ sealed class Fixture
     public Fixture()
     {
         Ducking = new(Manager, () => Backend.State, 40);
-        Handler = new(Manager, new SpotifySearchService(Manager, NullLogger<SpotifySearchService>.Instance), Playlists, Ducking);
+        Handler = new(Manager, Playlists, Ducking);
         Catalog = SpotifyToolCatalog.Create(Handler, new(SpotifyToolCatalog.Choices.Select(c => c.Name).ToHashSet(), [ChatStyles.Assistant]), Playlists, NullLogger.Instance);
     }
     public Task<ChatToolCallResult> Call(string operation, string json, CancellationToken token = default) =>
@@ -289,6 +343,8 @@ public class BackendProxy : DispatchProxy
     public bool FailureSeen;
     public string? Error;
     public bool AuthorizationRequired;
+    public SpotifyPlaybackResult? PlaybackResult;
+    public SearchResponse? SearchResults = new() { Tracks = new() { Items = [Track()] } };
     public Action<string>? OnCall;
     public IReadOnlyList<Device> Devices = [new() { Name = "Desktop", Id = "device-id", Type = "Computer", IsActive = true }];
     public CurrentlyPlayingContext? State = new()
@@ -309,9 +365,10 @@ public class BackendProxy : DispatchProxy
         if (method.ReturnType == typeof(Task<bool>) && !Succeed) FailureSeen = true;
         return name switch
         {
+            "PlayWithResult" => Task.FromResult(PlaybackResult ?? new SpotifyPlaybackResult(Succeed, Succeed, State, Succeed ? null : Error ?? "Spotify provider failure.")),
             "GetCurrentPlaybackState" => Task.FromResult(State),
             "GetUsersTopTracks" => Task.FromResult<Paging<FullTrack>?>(new() { Items = [Track()] }),
-            "SearchSpotify" => Task.FromResult<SearchResponse?>(new() { Tracks = new Paging<FullTrack, SearchResponse> { Items = [Track()] } }),
+            "SearchSpotify" => Task.FromResult(SearchResults),
             "GetSpotifyUserIdAsync" => Task.FromResult<string?>("user-id"),
             "ListAvailablePlaylists" => Task.FromResult(new Dictionary<string, string> { ["Favorites"] = "spotify:playlist:playlist-id" }),
             "GetAvailablePlaybackDevices" => Task.FromResult(Devices),

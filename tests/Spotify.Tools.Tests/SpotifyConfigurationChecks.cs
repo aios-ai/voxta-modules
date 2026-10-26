@@ -12,17 +12,17 @@ internal static class SpotifyConfigurationChecks
     {
         var empty = new StaticSettingsSource(new());
         var defaults = SpotifyToolsSettings.From(empty);
-        Check(defaults.Selected.Count == 17, "New configurations must enable all tools");
+        Check(defaults.Selected.Count == 18, "New configurations must enable all tools");
         Check(defaults.ChatStyles.ToHashSet().SetEquals([ChatStyles.Assistant, ChatStyles.Companion]), "Default styles");
         var cards = (FormArrayOfObjectsField)SpotifyToolsSettings.ConfigurationField(empty);
         Check(cards.AllowDisable && !cards.AllowRename && !cards.AllowAddRemove, "Fixed tool card UI");
-        Check(JsonSerializer.Deserialize<SpotifyToolSettings[]>(cards.DefaultValue!)!.Length == 17, "Missing cards");
+        Check(JsonSerializer.Deserialize<SpotifyToolSettings[]>(cards.DefaultValue!)!.Length == 18, "Missing cards");
         var old = new StaticSettingsSource(new() { ["Tools"] = "spotify_skip_next", ["ToolChatStyles"] = "Assistant" });
         var migrated = SpotifyToolsSettings.From(old);
         Check(migrated.Selected.SetEquals(["spotify_skip_next"]), "Legacy selection changed");
         Check(migrated.ChatStyles.SequenceEqual([ChatStyles.Assistant]), "Saved styles changed");
         var none = SpotifyToolsSettings.From(new StaticSettingsSource(new() { ["Tools"] = "" }));
-        Check(none.Selected.Count == 17, "Empty beta.1 defaults should adopt enabled defaults");
+        Check(none.Selected.Count == 18, "Empty beta.1 defaults should adopt enabled defaults");
         var disabledCards = JsonSerializer.Serialize(SpotifyToolCatalog.Choices.Select(c => new SpotifyToolSettings { Name = c.Name, Disabled = "true" }));
         Check(SpotifyToolsSettings.From(new StaticSettingsSource(new() { ["SpotifyTools"] = disabledCards })).Selected.Count == 0, "Explicit card disabling was not preserved");
         var settings = SpotifyToolsSettings.From(new StaticSettingsSource(new()
@@ -32,14 +32,17 @@ internal static class SpotifyConfigurationChecks
             {
                 new SpotifyToolSettings { Name = "spotify_skip_next", Description = "Custom explanation", Disabled = "false" },
                 new SpotifyToolSettings { Name = "spotify_skip_previous", Disabled = "true" },
+                new SpotifyToolSettings { Name = "spotify_play_music", Description = "Search Spotify and play the requested music or podcast.", Disabled = "false" },
             }),
         }));
         Check(settings.Selected.Contains("spotify_skip_next") && !settings.Selected.Contains("spotify_skip_previous"), "Card switches do not take precedence");
         Check(settings.Descriptions!["spotify_skip_next"] == "Custom explanation", "Description was lost");
+        Check(settings.Selected.Contains("spotify_search"), "New search tool missing from saved card configuration");
         var catalog = SpotifyToolCatalog.Create(null!, settings, new Dictionary<string, string>(), NullLogger.Instance);
         var description = catalog.GetTools().Single(t => t.Name == "spotify_skip_next").Description;
         Check(description != null && description.StartsWith("Custom explanation") && description.Contains("start playback manually") && description.Contains("Wait for the user to confirm playback has started"), "Custom description lost manual playback prerequisite");
         var transfer = catalog.GetTools().Single(t => t.Name == "spotify_transfer_to_device");
+        Check(catalog.GetTools().Single(t => t.Name == "spotify_play_music").Description!.Contains("name/type searches are performed with spotify_search"), "Saved description hid updated URI contract");
         Check(transfer.Description!.Contains("human-readable device name") && transfer.Description.Contains("user-requested destination changes"), "Name-only transfer guidance missing");
         var fields = await new ModuleConfigurationProvider().GetModuleConfigurationFieldsAsync(null!, empty, default);
         Check(fields.OfType<FormAuthorizeField>().Single().Name == "SpotifyAccount", "Missing account field");

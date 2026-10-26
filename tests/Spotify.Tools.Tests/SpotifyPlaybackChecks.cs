@@ -49,6 +49,45 @@ internal static class SpotifyPlaybackChecks
         Check(await manager.PlaySpecificUri("spotify:playlist:list", default, "playlist"), "Playlist confirmation failed");
         Check(http.TrackLookups == 0, "Playlist caused a track lookup");
 
+        foreach (var context in new[] { "null", "{\"uri\":\"spotify:album:album\"}" })
+        {
+            http = new() { State = "{\"is_playing\":true,\"context\":" + context + ",\"device\":{\"name\":\"XENTOWER\"},\"item\":{\"type\":\"track\",\"name\":\"Rollin\",\"uri\":\"spotify:track:rollin\",\"artists\":[{\"name\":\"Limp Bizkit\",\"uri\":\"spotify:artist:limpbizkit\"}]}}" };
+            manager = await Create(http);
+            var result = await manager.PlayWithResult("spotify:artist:limpbizkit", default, "artist");
+            Check(result.Accepted && result.Confirmed && result.Playback?.Item is FullTrack { Name: "Rollin" }, "Artist membership did not confirm tool playback");
+            Check(http.PlayBodies.Count == 1 && http.Polls == 1 && http.TrackLookups == 0, "Artist request retried or fetched a track");
+            using var artistBody = JsonDocument.Parse(http.PlayBodies.Single());
+            Check(artistBody.RootElement.GetProperty("context_uri").GetString() == "spotify:artist:limpbizkit", "Artist context not sent to Spotify");
+        }
+
+        foreach (var state in new[]
+        {
+            "{\"is_playing\":false,\"item\":null}",
+            "{\"is_playing\":true,\"item\":{\"type\":\"track\",\"uri\":\"spotify:track:other\",\"artists\":[{\"uri\":\"spotify:artist:other\"}]}}",
+            "{\"is_playing\":false,\"item\":{\"type\":\"track\",\"artists\":[{\"uri\":\"spotify:artist:limpbizkit\"}]}}",
+        })
+        {
+            http = new() { State = state };
+            manager = await Create(http);
+            var result = await manager.PlayWithResult("spotify:artist:limpbizkit", default, "artist");
+            Check(result.Accepted && !result.Confirmed && result.Error == null && manager.LastUserVisibleError == null, "Unconfirmed artist playback classified as failed/confirmed");
+            Check(http.PlayBodies.Count == 1 && http.Polls == 5, "Artist mutation retried or polling not bounded");
+        }
+
+        http = new() { State = "{\"is_playing\":true,\"item\":{\"type\":\"track\",\"artists\":[{\"uri\":\"spotify:artist:limpbizkit\"}]}}" };
+        manager = await Create(http);
+        Check(!await manager.PlaySpecificUri("spotify:artist:limpbizkit", default, "artist") && manager.LastUserVisibleError?.Contains("could not be confirmed") == true, "Legacy action confirmation behavior changed");
+
+        http = new() { PlayStatus = HttpStatusCode.NotFound };
+        manager = await Create(http);
+        var rejected = await manager.PlayWithResult("spotify:artist:limpbizkit", default, "artist");
+        Check(!rejected.Accepted && !rejected.Confirmed && rejected.Error != null && http.Polls == 0, "Rejected command reported accepted or polled");
+
+        http = new() { PollStatus = HttpStatusCode.Forbidden };
+        manager = await Create(http);
+        var readFailed = await manager.PlayWithResult("spotify:artist:limpbizkit", default, "artist");
+        Check(readFailed.Accepted && !readFailed.Confirmed && readFailed.Error != null && http.PlayBodies.Count == 1, "Read error lost accepted status or retried mutation");
+
         using var canceled = new CancellationTokenSource();
         http = new() { EmptyPolls = 5, AfterPoll = canceled.Cancel };
         manager = await Create(http);
@@ -59,6 +98,7 @@ internal static class SpotifyPlaybackChecks
         }
         catch (OperationCanceledException) when (canceled.IsCancellationRequested) { }
         Check(http.PlayBodies.Count == 1, "Cancellation retried playback");
+        Console.WriteLine("PASS tool artist confirmation without context, observations, paused/wrong items, accepted vs rejected/read errors, and unchanged legacy confirmation");
         Console.WriteLine("PASS album-context playback, relinked track, delayed confirmation, empty/wrong playback, lookup errors, playlists and cancellation");
     }
 
@@ -86,6 +126,7 @@ internal static class SpotifyPlaybackChecks
         public readonly List<string> PlayBodies = [];
         public int Polls, TrackLookups, EmptyPolls;
         public HttpStatusCode TrackStatus = HttpStatusCode.OK;
+        public HttpStatusCode PlayStatus = HttpStatusCode.NoContent, PollStatus = HttpStatusCode.OK;
         public Action? AfterPoll;
         public string State = "{\"is_playing\":true,\"item\":{\"type\":\"track\",\"uri\":\"spotify:track:resolved\"}}";
         public void SetRequestTimeout(TimeSpan timeout) { }
@@ -99,8 +140,8 @@ internal static class SpotifyPlaybackChecks
             {
                 Check(request.Endpoint.ToString().TrimStart('/') == "me/player/play", "Unexpected mutation");
                 PlayBodies.Add((string)request.Body!);
-                status = HttpStatusCode.NoContent;
-                body = "";
+                status = PlayStatus;
+                body = status == HttpStatusCode.NoContent ? "" : "{\"error\":{\"status\":404,\"message\":\"No active device found\"}}";
             }
             else if (request.Endpoint.ToString().TrimStart('/').StartsWith("tracks/"))
             {
@@ -113,7 +154,9 @@ internal static class SpotifyPlaybackChecks
             else
             {
                 Polls++;
+                status = PollStatus;
                 body = Polls <= EmptyPolls ? "{\"is_playing\":false,\"item\":null}" : State;
+                if (status != HttpStatusCode.OK) body = "{\"error\":{\"status\":403,\"message\":\"Forbidden\"}}";
                 AfterPoll?.Invoke();
             }
             return Task.FromResult<IResponse>(new Response(new Dictionary<string, string>())

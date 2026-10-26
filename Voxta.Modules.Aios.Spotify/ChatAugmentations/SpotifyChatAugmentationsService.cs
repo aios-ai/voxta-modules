@@ -85,22 +85,21 @@ public class SpotifyChatAugmentationsService(
         };
         var spotifyManager = await spotifyManagerFactory.CreateSpotifyManager(spotifyManagerConfig, cancellationToken);
 
-        var spotifySearchService = new SpotifySearchService(spotifyManager, loggerFactory.CreateLogger<SpotifySearchService>());
-        await spotifySearchService.InitializeAsync(cancellationToken);
-
         var spotifyPlaybackMonitor = new SpotifyPlaybackMonitor(spotifyManager, session, loggerFactory.CreateLogger<SpotifyPlaybackMonitor>());
         
         var ducking = new SpotifySpeechDucking(spotifyManager, () => spotifyPlaybackMonitor.PlaybackState, config.SpeechDuckingVolumePercent);
         if (tools)
         {
             var playback = new SpotifyPlaybackSession(spotifyPlaybackMonitor, ducking);
-            var handler = new SpotifyToolHandler(spotifyManager, spotifySearchService, playlistMap, ducking);
+            var handler = new SpotifyToolHandler(spotifyManager, playlistMap, ducking);
             var toolInstance = new SpotifyToolsSession(SpotifyToolCatalog.Create(handler, SpotifyToolsSettings.From(ModuleConfiguration), playlistMap, logger), playback);
             try { await playback.InitializeAsync(cancellationToken); }
             catch { await toolInstance.DisposeAsync(); throw; }
             return toolInstance;
         }
 
+        var spotifySearchService = new SpotifySearchService(spotifyManager, loggerFactory.CreateLogger<SpotifySearchService>());
+        await spotifySearchService.InitializeAsync(cancellationToken);
         var spotifyActionHandler = new SpotifyActionHandler(spotifyManager, spotifySearchService, session, config,
             loggerFactory.CreateLogger<SpotifyActionHandler>(), () => spotifyPlaybackMonitor.PlaybackState, ducking);
         var instance = new SpotifyChatAugmentationsServiceInstance(session, config, spotifyPlaybackMonitor, spotifyActionHandler, ducking);
