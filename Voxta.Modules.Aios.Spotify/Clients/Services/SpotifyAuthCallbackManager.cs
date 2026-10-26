@@ -3,6 +3,7 @@ namespace Voxta.Modules.Aios.Spotify.Clients.Services;
 public interface ISpotifyAuthCallbackManager
 {
     SpotifyAuthCallbackResult Callback(string code, string state);
+    SpotifyAuthCallbackResult Reject(string state);
     Task<string> WaitForCodeAsync(string state, CancellationToken cancellationToken);
     void Release(string state);
 }
@@ -18,6 +19,18 @@ public class SpotifyAuthCallbackManager : ISpotifyAuthCallbackManager
 {
     private readonly Lock _lock = new();
     private PendingAuthorization? _pendingAuthorization;
+
+    public SpotifyAuthCallbackResult Reject(string state)
+    {
+        lock (_lock)
+        {
+            if (_pendingAuthorization == null) return SpotifyAuthCallbackResult.NoPendingAuthorization;
+            if (!string.Equals(_pendingAuthorization.State, state, StringComparison.Ordinal)) return SpotifyAuthCallbackResult.InvalidState;
+            _pendingAuthorization.Code.TrySetException(new SpotifyAuthorizationDeniedException());
+            _pendingAuthorization = null;
+            return SpotifyAuthCallbackResult.Accepted;
+        }
+    }
     
     public SpotifyAuthCallbackResult Callback(string code, string state)
     {
@@ -74,3 +87,5 @@ public class SpotifyAuthCallbackManager : ISpotifyAuthCallbackManager
 
     private sealed record PendingAuthorization(string State, TaskCompletionSource<string> Code);
 }
+
+internal sealed class SpotifyAuthorizationDeniedException : Exception;

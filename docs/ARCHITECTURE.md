@@ -18,8 +18,12 @@ authorization. Other modules' behavior and versions are unchanged.
   `SpotifyToolHandler` validates and executes through `ISpotifyManager` and `SpotifySearchService`; it never
   references the action handler or sends notes, cancels replies, or triggers generation. Mutating calls are
   serialized within the session and recorded through the playback monitor's last-command context.
-- `SpotifyToolsSettings` reads the SDK's `Tools` and tool chat-style settings, independently of legacy `Actions`.
-  All tool choices default to disabled during beta testing. `SpotifyChatAugmentationsService` implements the
+- `SpotifyToolsSettings` exposes `SpotifyTools` through the same `FormArrayOfObjectsField` card editor used
+  by actions, with fixed names, per-tool disable switches, and editable descriptions. It reads existing nonempty
+  SDK `Tools` selections as a migration fallback until cards are saved; an empty beta.1 selection adopts the new
+  all-enabled defaults. Saved card switches take precedence. `ToolChatStyles` retains the SDK setting key and
+  choices, with module-local Assistant and Companion defaults; explicitly saved styles remain intact.
+  These settings are independent of legacy `Actions`. `SpotifyChatAugmentationsService` implements the
   SDK tools-service marker and plans tools separately as opt-in, excluded from catch-all activation.
 - `SpotifyToolsSession` owns one `SpotifyPlaybackSession`. The legacy instance uses the same neutral playback
   owner when selected alone. That owner starts/stops one monitor and forwards speech/transcription events to
@@ -32,12 +36,29 @@ authorization. Other modules' behavior and versions are unchanged.
   continue to update through the monitor. The SDK's pagination helper has no transport cancellation parameter;
   cancellation stops waiting for subsequent read-only playlist pages.
 
-To test the beta in Voxta, enable desired tools under the module's **Available Tools** and **Tool Chat Styles**
-settings, then select **Spotify Tools** for a new chat with a tool-capable model. Legacy Spotify Actions can be
+To test the beta in Voxta, review the **Spotify Tools** cards and **Offer Tools In** settings, then select **Spotify Tools** for a new chat with a tool-capable model. Legacy Spotify Actions can be
 deselected; selecting both still creates only the tools session. Check permissions, playback/search, playlists,
 queue, seek/volume, library changes, device transfer, multiple calls in one reply, cancellation, and speech ducking.
 Results should appear in the current reply without extra notes or another generation. For legacy comparison,
 deselect Spotify Tools and select Spotify Actions (Legacy). Runtime/provider parity remains a manual acceptance step.
+
+## Spotify authorization boundary
+
+Voxta's module `IServiceCollection` belongs to its isolated module container. Registering MVC application parts
+there does not add routes to the host web app. The current host's `IModuleHttpEndpoints` dispatcher is under
+`/api/extensions/{prefix}/...` and requires a logged-in Voxta user, so it cannot serve a general Spotify browser
+OAuth callback. Do not restore the unused MVC controller or rely on `/extensions/...` at the Voxta UI port.
+
+`SpotifyOAuthListener` starts a temporary Kestrel listener on an explicit loopback IP at the configured redirect
+URI, defaulting to `http://127.0.0.1:5385/extensions/spotify/oauth2/callback`. This address must match the Spotify
+Developer Dashboard exactly. The listener only runs during authorization; it validates the pending random state,
+rejects stale callbacks, handles denial, disables request logging/caching, and stops on completion, cancellation,
+or timeout. Authorization waits at most three minutes. Bad redirect settings and occupied ports produce actionable
+module errors. Existing usable access/refresh tokens skip the callback, so setup validation happens only when a
+new browser authorization is needed. Loopback authorization must open on the server machine.
+
+The chat interaction wrapper sets `UserInteractionRequestInput.ModuleId` from `InstanceSettings.ModuleId`, matching
+the module-test request's identity so Voxta can resolve its logo. The host controls final popup rendering.
 
 ## SDK contract
 
@@ -50,8 +71,10 @@ which is already the manifest compatibility floor. The foundation compiles again
   permission class, display mode, speech synchronization, and external-content metadata.
 - `ChatToolSchema.FromArguments` builds schemas from SDK `FunctionArgumentDefinition` objects. Tool argument
   definitions must live in tool files; do not obtain them by calling the old action builders.
-- `ChatToolSettingsContributions` supplies tool selection and chat-style settings. Use these instead of
-  reproducing the SDK's settings UI. Tool settings must not read legacy `Actions` settings.
+- `ChatToolSettingsContributions` supplies standard tool selection and chat-style settings. Spotify uses the
+  SDK choices and settings compatibility but presents per-tool configuration in the SDK's object card editor,
+  as requested by the user. Its module-local style field does not mutate SDK static defaults. Tool settings must
+  not read legacy `Actions` settings.
 - `ChatToolCallResult` returns text, errors, images, and other SDK result metadata directly to the agent loop.
 
 The SDK and host own tool permissions, grants, model visibility, and the agent loop. The catalog does not
@@ -110,9 +133,9 @@ presentation adapters. Do not share action-specific note/reply plumbing with too
 During integration, expose a separate opt-in tools augmentation (`<existing augmentation key>_tools`) and keep the
 existing action augmentation key for compatibility. Implement the SDK tools-service marker on the service and plan
 the tool instance independently. Selecting tools alone must not create an action instance or require ActionInference.
-Keep tools disabled by default during initial testing; users can select tools alone or legacy actions alone for
-comparison. Do not automatically select both, which could cause duplicate device commands. There is no new selector
-in step one. A later default switch must be an explicit externally visible versioned change.
+Users can select tools alone or legacy actions alone for comparison. Do not automatically select both, which
+could cause duplicate device commands. Spotify tools default enabled following user runtime feedback; the
+augmentation itself remains opt-in. Other migrations should choose defaults explicitly and version the change.
 
 Use `Read` for queries and `Act` for changes to playback, libraries, or lights. Do not force `AlwaysAllowed`.
 Mark results containing third-party text with the SDK's external-content metadata as appropriate. Describe results
@@ -143,6 +166,8 @@ Build all modules with locked packages:
 dotnet build Voxta.Modules.slnx -c Release -p:RestoreLockedMode=true -m:1
 dotnet run --project tests/Tools.Tests -c Release -p:RestoreLockedMode=true
 dotnet run --project tests/Spotify.Tools.Tests -c Release -p:RestoreLockedMode=true
+# Additional real loopback HTTP checks, without contacting Spotify:
+dotnet run --project tests/Spotify.Tools.Tests -c Release -p:RestoreLockedMode=true -- --oauth-listener
 ```
 
 `Tools.Tests` is a standalone executable: assertions fail the process and successful checks print their names.
@@ -150,7 +175,9 @@ It covers SDK dispatch, metadata ownership, disabled/unknown tools, invalid argu
 cancellation, and no automatic retry. It does not test live providers or host registration. `Spotify.Tools.Tests` exercises the compiled Spotify
 catalog/handler against a fake manager: all 17 operations, mutation failures, input validation, missing state,
 ambiguous devices, cancellation, metadata/settings defaults, ducking overlap and volume changes, session dispatch,
-legacy suppression, and disposal. Live host permissions, actual playback, and provider parity require runtime testing.
+legacy suppression, disposal, tool-card settings, description overrides, defaults/migration, redirect validation, and
+chat request identity. The optional loopback checks cover real callback delivery, state/replay validation, denial,
+listener shutdown, and timeout cleanup. Live host permissions, actual playback, and provider parity require runtime testing.
 
 For each migration, add handler checks with fake domain clients for all operations, invalid inputs, provider failure,
 and cancellation. Then test in Voxta with tools selected and legacy actions deselected: discovery/settings, host

@@ -41,12 +41,19 @@ application that provides a Client ID and Client Secret.
 Spotify's default redirect URI is:
 
 ```text
-http://127.0.0.1:5384/extensions/spotify/oauth2/callback
+http://127.0.0.1:5385/extensions/spotify/oauth2/callback
 ```
 
-Register that exact URI in the Spotify Developer Dashboard and use the same value in Voxta. If upgrading from
-Spotify module 0.1.4 or earlier, replace the old `/api/extensions/...` URI in both places; Voxta 1.13 protects that
-API path, so it cannot receive Spotify's anonymous browser callback.
+Register that exact URI in the Spotify Developer Dashboard and use the same value in Voxta, with no period
+at the end. When upgrading from earlier versions, change port **5384** to **5385** in both places and remove
+`/api` if present. The module temporarily listens on its own loopback port during authorization; Voxta's web
+UI routes cannot receive the callback. Open the authorization link on the server machine. A different free
+loopback port can be configured if 5385 is occupied. Authorization times out after three minutes with guidance.
+Saved valid tokens continue to work without reopening authorization.
+
+Select **Spotify Tools** for native tool calling. All tools default on and **Offer Tools In** defaults to
+Assistant and Companion. The **Spotify Tools** cards provide individual switches and editable descriptions.
+Saved selections/styles are retained; legacy action inference stays inactive while Spotify Tools is selected.
 
 Voxta displays module load errors on the Custom Modules page. The project uses the `1.13.0-alpha.10` Modules SDK and
 keeps its package lock file in source control so local and release builds resolve the same dependencies.

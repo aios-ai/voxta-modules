@@ -10,7 +10,7 @@ namespace Voxta.Modules.Aios.Spotify.Configuration;
 
 public class ModuleConfigurationProvider : ModuleConfigurationProviderBase, IModuleConfigurationProvider
 {
-    public static string[] FieldsRequiringReload => [ClientId.Name, ClientSecret.Name, Actions.Name, "Tools", ChatToolSettingsContributions.ToolChatStyles.Name, SpeechDuckingVolumePercent.Name, SpecialPlaylists.Name];
+    public static string[] FieldsRequiringReload => [ClientId.Name, ClientSecret.Name, RedirectUri.Name, Actions.Name, "Tools", "SpotifyTools", ChatToolSettingsContributions.ToolChatStyles.Name, SpeechDuckingVolumePercent.Name, SpecialPlaylists.Name];
     private static readonly string DefaultTokenPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "Voxta",
@@ -41,8 +41,8 @@ public class ModuleConfigurationProvider : ModuleConfigurationProviderBase, IMod
         Label = "Redirect URI",
         Required = true,
         //language=markdown
-        Text = "Set this exact Redirect URI in your Spotify Developer Dashboard at [developer.spotify.com](https://developer.spotify.com/dashboard/). Older versions used an `/api/extensions/...` URI, which is no longer public in Voxta 1.13.",
-        DefaultValue = "http://127.0.0.1:5384/extensions/spotify/oauth2/callback"
+        Text = "Use this exact URI in your Spotify Developer Dashboard too. The module temporarily listens on its own local port (5385 by default) during authorization. Use an explicit loopback IP, no period after callback, and a port different from Voxta (5384).",
+        DefaultValue = SpotifyRedirectUri.Default
     };
 
     public static readonly FormTextField MatchFilterWakeWord = new()
@@ -334,7 +334,8 @@ Daily Mix 6="
             MatchFilterWakeWord,
             SpeechDuckingVolumePercent,
             SpecialPlaylists,
-            ChatToolSettingsContributions.GetFormFields(SpotifyToolCatalog.Choices),
+            SpotifyToolsSettings.ConfigurationField(settings),
+            SpotifyToolsSettings.Styles.AsField(),
             Actions,
             TokenPath
         );

@@ -35,13 +35,13 @@ internal static class SpotifyToolCatalog
     ];
 
     public static readonly ChatToolChoice[] Choices = Definitions.Select(d =>
-        new ChatToolChoice("spotify_" + d.Operation.Replace("spotify_", ""), d.Description, false)).ToArray();
+        new ChatToolChoice("spotify_" + d.Operation.Replace("spotify_", ""), d.Description, true)).ToArray();
 
     public static ModuleToolCatalog Create(SpotifyToolHandler handler, SpotifyToolsSettings settings,
         IReadOnlyDictionary<string, string> playlists, ILogger logger) => new(
         Definitions.Select((definition, index) => new ModuleTool(
             new ChatTool(Choices[index].Name,
-                definition.Description + (definition.Operation == "play_special_playlist"
+                (settings.Descriptions?.GetValueOrDefault(Choices[index].Name) ?? definition.Description) + (definition.Operation == "play_special_playlist"
                     ? " Configured playlists: " + (playlists.Count == 0 ? "none" : string.Join(", ", playlists.Keys)) + "." : ""),
                 ChatToolSchema.FromArguments(definition.Arguments), VoxtaModule.ServiceName)
             {

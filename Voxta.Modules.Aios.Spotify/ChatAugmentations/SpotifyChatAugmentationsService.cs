@@ -83,7 +83,7 @@ public class SpotifyChatAugmentationsService(
             RedirectUri = new Uri(ModuleConfiguration.GetRequired(ModuleConfigurationProvider.RedirectUri)),
             TokenPath = tokenPath,
         };
-        var sessionWrapper = new SpotifyUserInteractionWrapper(session);
+        var sessionWrapper = new SpotifyUserInteractionWrapper(session, InstanceSettings.ModuleId);
         var spotifyManager = await spotifyManagerFactory.CreateSpotifyManager(sessionWrapper, spotifyManagerConfig, cancellationToken);
 
         var spotifySearchService = new SpotifySearchService(spotifyManager, loggerFactory.CreateLogger<SpotifySearchService>());

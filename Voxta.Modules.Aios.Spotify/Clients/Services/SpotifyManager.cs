@@ -6,6 +6,7 @@ using SpotifyAPI.Web;
 using Voxta.Abstractions.Chats.Sessions;
 using Voxta.Abstractions.Utils;
 using Voxta.Modules.Aios.Spotify.Clients.Models;
+using Voxta.Modules.Aios.Spotify.Configuration;
 
 namespace Voxta.Modules.Aios.Spotify.Clients.Services;
 
@@ -15,7 +16,7 @@ public interface ISpotifyUserInteractionWrapper
     Task<IUserInteractionRequestToken> RequestUserInteraction(Uri url, bool isReauthorization, CancellationToken cancellationToken);
 }
 
-public class SpotifyUserInteractionWrapper(IChatSessionChatAugmentationApi session) : ISpotifyUserInteractionWrapper
+public class SpotifyUserInteractionWrapper(IChatSessionChatAugmentationApi session, Guid moduleId) : ISpotifyUserInteractionWrapper
 {
     public CancellationToken Abort => session.Chat.Abort;
 
@@ -23,6 +24,7 @@ public class SpotifyUserInteractionWrapper(IChatSessionChatAugmentationApi sessi
     {
         return session.RequestUserAction(new UserInteractionRequestInput
         {
+            ModuleId = moduleId,
             Message = isReauthorization
                 ? "Your Spotify authorization has expired or is no longer valid. Please reauthorize Spotify by visiting the following URL in your browser:"
                 : "Please authorize the Spotify integration by visiting the following URL in your browser:",
@@ -37,6 +39,7 @@ public class SpotifyManagerConfig
     public required string ClientSecret { get; init; }
     public required Uri RedirectUri { get; init; }
     public required string TokenPath { get; init; }
+    public TimeSpan AuthorizationTimeout { get; init; } = TimeSpan.FromMinutes(3);
 }
 
 public interface ISpotifyManagerFactory
@@ -116,14 +119,6 @@ public class SpotifyManager(
     public async Task InitializeSpotifyClient(CancellationToken cancellationToken)
     {
         logger.LogInformation("Initialize Spotify Client");
-        if (TryGetPublicRedirectUriReplacement(config.RedirectUri, out var publicRedirectUri))
-        {
-            _configurationError = $"The configured Spotify Redirect URI is obsolete in Voxta 1.13. Change it in both Voxta and the Spotify Developer Dashboard to {publicRedirectUri}.";
-            SetAuthorizationRequired();
-            logger.LogWarning("{ConfigurationError}", _configurationError);
-            return;
-        }
-
         var accessToken = await GetValidAccessTokenAsync(cancellationToken);
         if (accessToken != null)
         {
@@ -194,6 +189,12 @@ public class SpotifyManager(
 
             if (token == null)
             {
+                if (SpotifyRedirectUri.GetError(config.RedirectUri) is { } redirectError)
+                {
+                    _configurationError = redirectError;
+                    SetAuthorizationRequired();
+                    return null;
+                }
                 var auth = new OAuthClient();
                 var loginRequest = new LoginRequest(
                     config.RedirectUri,
@@ -222,6 +223,18 @@ public class SpotifyManager(
                 try
                 {
                     code = await GetAuthCodeAsync(authUri, loginRequest.State, _reauthorizationRequired, cancellationToken);
+                }
+                catch (SpotifyAuthorizationDeniedException)
+                {
+                    _configurationError = "Spotify authorization was denied. Run the module test again when you are ready to allow access.";
+                    SetAuthorizationRequired();
+                    return null;
+                }
+                catch (SpotifyAuthorizationSetupException ex)
+                {
+                    _configurationError = ex.Message;
+                    SetAuthorizationRequired();
+                    return null;
                 }
                 catch (SpotifyAuthorizationDismissedException)
                 {
@@ -284,31 +297,31 @@ public class SpotifyManager(
 
     private async Task<string> GetAuthCodeAsync(Uri authUri, string state, bool isReauthorization, CancellationToken cancellationToken)
     {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(config.AuthorizationTimeout);
         try
         {
-            var codeTask = spotifyAuthCallbackManager.WaitForCodeAsync(state, cancellationToken);
-            await using var userInteractionToken = await userInteractionWrapper.RequestUserInteraction(authUri, isReauthorization, cancellationToken);
-
+            var codeTask = spotifyAuthCallbackManager.WaitForCodeAsync(state, timeout.Token);
+            SpotifyOAuthListener listener;
+            try { listener = await SpotifyOAuthListener.StartAsync(config.RedirectUri, spotifyAuthCallbackManager, timeout.Token); }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception) { throw new SpotifyAuthorizationSetupException("Spotify could not open its local callback port. Close another pending Spotify authorization or choose a free loopback port in both redirect URI settings."); }
+            await using var callbackListener = listener;
+            await using var userInteractionToken = await userInteractionWrapper.RequestUserInteraction(authUri, isReauthorization, timeout.Token);
             logger.LogInformation("Waiting for Spotify authentication...");
-
             var completedTask = await Task.WhenAny(userInteractionToken.Task, codeTask);
-
             if (completedTask == userInteractionToken.Task && !codeTask.IsCompletedSuccessfully)
             {
                 await userInteractionToken.Task;
                 throw new SpotifyAuthorizationDismissedException();
             }
-
-            var code = await codeTask;
-
-            logger.LogInformation("Authorization code received!");
-
-            return code;
+            return await codeTask;
         }
-        finally
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            spotifyAuthCallbackManager.Release(state);
+            throw new SpotifyAuthorizationSetupException("Spotify authorization timed out. Check that the redirect URI matches in Voxta and the Spotify Developer Dashboard, then run the module test again.");
         }
+        finally { spotifyAuthCallbackManager.Release(state); }
     }
 
     private bool IsTokenExpired(SpotifyAuthToken token)
@@ -945,23 +958,6 @@ public class SpotifyManager(
         LastUserVisibleError = AuthorizationDismissedMessage;
     }
 
-    private static bool TryGetPublicRedirectUriReplacement(Uri redirectUri, out Uri publicRedirectUri)
-    {
-        const string legacyPath = "/api/extensions/spotify/oauth2/callback";
-        if (!redirectUri.AbsolutePath.Equals(legacyPath, StringComparison.OrdinalIgnoreCase))
-        {
-            publicRedirectUri = redirectUri;
-            return false;
-        }
-
-        var builder = new UriBuilder(redirectUri)
-        {
-            Path = "/extensions/spotify/oauth2/callback",
-        };
-        publicRedirectUri = builder.Uri;
-        return true;
-    }
-
     private void SetSpotifyApiError(APIException ex, string operation)
     {
         logger.LogWarning(ex, "Spotify API failed while trying to {Operation}.", operation);
@@ -991,4 +987,5 @@ public class SpotifyManager(
     }
 
     private sealed class SpotifyAuthorizationDismissedException : Exception;
+    private sealed class SpotifyAuthorizationSetupException(string message) : Exception(message);
 }

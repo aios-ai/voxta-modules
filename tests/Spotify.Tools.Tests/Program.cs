@@ -84,7 +84,7 @@ Console.WriteLine("PASS invalid arguments rejected before provider access");
     Check(definitions.Count == 17 && definitions.Select(d => d.Name).Distinct().Count() == 17, "Catalog coverage");
     Check(definitions.All(d => d.Source == VoxtaModule.ServiceName && d.AugmentationKey == VoxtaModule.ToolsAugmentationKey && !d.AlwaysAllowed && d.ExternalContent), "Tool ownership/permissions");
     Check(definitions.Count(d => d.Permission == ToolPermissionClass.Read) == 2, "Read/Act classification");
-    Check(SpotifyToolCatalog.Choices.All(c => !c.EnabledByDefault), "Testing tools enabled by default");
+    Check(SpotifyToolCatalog.Choices.All(c => c.EnabledByDefault), "Tools should default to enabled");
     var settings = new SpotifyToolsSettings(new HashSet<string>(), [ChatStyles.Assistant]);
     var disabled = SpotifyToolCatalog.Create(f.Handler, settings, f.Playlists, NullLogger.Instance);
     Check(disabled.GetTools().All(t => !t.Enabled), "Disabled choices not preserved");
@@ -167,6 +167,8 @@ Console.WriteLine("PASS invalid arguments rejected before provider access");
     await instance.DisposeAsync();
     Console.WriteLine("PASS tools session, no ActionInference, legacy suppression, multiple calls and disposal");
 }
+await SpotifyConfigurationChecks.RunAsync();
+if (args.Contains("--oauth-listener")) await SpotifyOAuthChecks.RunAsync();
 Console.WriteLine("All Spotify tool checks passed.");
 
 static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }

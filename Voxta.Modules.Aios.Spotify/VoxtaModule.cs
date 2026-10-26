@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Mvc.ApplicationParts;
 using Microsoft.Extensions.DependencyInjection;
 using Voxta.Abstractions.Modules;
 using Voxta.Abstractions.Registration;
@@ -6,7 +5,6 @@ using Voxta.Model.Shared;
 using Voxta.Modules.Aios.Spotify.ChatAugmentations;
 using Voxta.Modules.Aios.Spotify.Clients.Services;
 using Voxta.Modules.Aios.Spotify.Configuration;
-using Voxta.Modules.Aios.Spotify.Controllers;
 
 namespace Voxta.Modules.Aios.Spotify;
 
@@ -56,6 +54,5 @@ public class VoxtaModule : IVoxtaModule
         builder.Services.AddSingleton<ISpotifyManagerFactory, SpotifyManagerFactory>();
         builder.Services.AddSingleton<ISpotifyAuthCallbackManager, SpotifyAuthCallbackManager>();
 
-        builder.Services.AddControllers().PartManager.ApplicationParts.Add(new AssemblyPart(typeof(SpotifyController).Assembly));
     }
 }
