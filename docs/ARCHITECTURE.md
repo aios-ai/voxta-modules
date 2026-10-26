@@ -2,14 +2,42 @@
 
 ## Current boundary
 
-The three installable modules use `IActionInferenceAugmentation`. OpenWeather and Hue define and execute
-actions in their chat augmentation instances. Spotify defines actions in its augmentation instance and
-executes them through `SpotifyActionHandler`; this handler also implements speech ducking. The existing
-action configuration, registration, execution, and files are preserved.
+OpenWeather and Hue continue to use `IActionInferenceAugmentation`. Spotify now offers independent
+`spotify_tools` and legacy `spotify` augmentations. Its tools use the shared catalog and native agent loop;
+legacy actions retain their own configuration, argument builders, handler, and feedback. Selecting Spotify
+Tools suppresses legacy instance creation even if both keys are selected, preventing duplicate commands,
+monitoring, and speech event handlers. With tools deselected, legacy actions remain available for comparison.
 
-Step one supplies a common tools foundation compiled into all three modules. It registers no tools and
-changes no configuration or externally visible behavior. Module versions and compatibility ranges remain
-unchanged; there is no new module release for this internal foundation.
+The shared foundation is compiled privately into all three modules. Only Spotify currently registers tools.
+Its migration is a beta for runtime testing; remove action inference code only after user verification and
+authorization. Other modules' behavior and versions are unchanged.
+
+## Spotify integration
+
+- `Tools/SpotifyToolCatalog.cs` owns 17 native definitions and SDK schemas, permissions, choices, and bindings.
+  `SpotifyToolHandler` validates and executes through `ISpotifyManager` and `SpotifySearchService`; it never
+  references the action handler or sends notes, cancels replies, or triggers generation. Mutating calls are
+  serialized within the session and recorded through the playback monitor's last-command context.
+- `SpotifyToolsSettings` reads the SDK's `Tools` and tool chat-style settings, independently of legacy `Actions`.
+  All tool choices default to disabled during beta testing. `SpotifyChatAugmentationsService` implements the
+  SDK tools-service marker and plans tools separately as opt-in, excluded from catch-all activation.
+- `SpotifyToolsSession` owns one `SpotifyPlaybackSession`. The legacy instance uses the same neutral playback
+  owner when selected alone. That owner starts/stops one monitor and forwards speech/transcription events to
+  `SpotifySpeechDucking`, which preserves the desired volume across overlapping events and tool volume changes.
+  The action handler's volume-ducking methods remain compatibility wrappers; tools and script events do not
+  call them. The manager is not disposable; the session stops monitoring before releasing its cancellation source.
+- OAuth remains a setup/session concern. `spotify_connect` returns the existing no-active-client guidance;
+  it does not invent a connection API. Search/profile requests receive both call and session cancellation.
+  Fresh provider playback state is used for tool commands that depend on current playback; passive contexts
+  continue to update through the monitor. The SDK's pagination helper has no transport cancellation parameter;
+  cancellation stops waiting for subsequent read-only playlist pages.
+
+To test the beta in Voxta, enable desired tools under the module's **Available Tools** and **Tool Chat Styles**
+settings, then select **Spotify Tools** for a new chat with a tool-capable model. Legacy Spotify Actions can be
+deselected; selecting both still creates only the tools session. Check permissions, playback/search, playlists,
+queue, seek/volume, library changes, device transfer, multiple calls in one reply, cancellation, and speech ducking.
+Results should appear in the current reply without extra notes or another generation. For legacy comparison,
+deselect Spotify Tools and select Spotify Actions (Legacy). Runtime/provider parity remains a manual acceptance step.
 
 ## SDK contract
 
@@ -73,7 +101,7 @@ Tools/<Module>ToolHandler.cs       validation and execution, returning ChatToolC
 Tools/<Module>ToolsSettings.cs     tool-specific settings, independent of legacy action configuration
 ```
 
-Keep the current action files and their registrations intact. Tools must never call `TryHandleActionInference`,
+Keep the current action files and legacy augmentation registrations intact; suppress activation when tools take precedence. Tools must never call `TryHandleActionInference`,
 `SpotifyActionHandler`, or construct synthetic `ServerActionMessage` objects. Actions must never dispatch through
 the tool catalog. Both may call transport-neutral domain clients/services. If a useful operation currently lives
 inside an action handler, extract a domain operation returning data/results, then give actions and tools their own
@@ -102,8 +130,8 @@ Recommended order: OpenWeather, Hue, Spotify. Prefix the names below as describe
 | Hue (8) | `turn_lights_on`, `turn_lights_off`, `hueBridge_connect`, `change_color`, `show_emotion`, `change_brightness`, `activate_scene`, `show_hue_inventory` | Reuse Hue manager/services. Validate brightness and target selection; expose useful disconnected/not-found errors. Inventory is Read; device/connection changes are Act. Keep emotion control gated by the configured character light and opt-in tool selection; agent-loop timing is distinct from the old after-assistant action timing. Preserve setup/link-button interaction separately from tool-result feedback. |
 | Spotify (17) | `toggle_playback`, `spotify_connect`, `play_random_music`, `play_special_playlist`, `play_music`, `queue_track`, `volume`, `seek_playback`, `skip_next`, `skip_previous`, `repeat_mode`, `shuffle_mode`, `add_to_favorites`, `get_playlists`, `add_to_playlist`, `list_devices`, `transfer_to_device` | Reuse manager/search services. `spotify_connect` currently reports that no client is active; do not invent a connection operation. Playlist/device listing are Read; mutations are Act. Preserve configured playlists, playback state, last-command tracking, and speech ducking independently of the action handler. Keep OAuth setup and passive playback monitoring separate from tool execution. |
 
-Spotify's speech events currently call `SpotifyActionHandler` even outside action dispatch. Extract speech ducking
-to a neutral playback component before wiring the tools path, so tools do not acquire an action-handler dependency.
+Spotify speech events use the neutral `SpotifyPlaybackSession` and `SpotifySpeechDucking`, independently of
+`SpotifyActionHandler`. Preserve this boundary when extending the tools path.
 Playback monitors and initial Hue inventory notes are session features; choose their owner explicitly when both
 augmentations are selected to avoid duplicate polling/notes and double disposal.
 
@@ -114,11 +142,15 @@ Build all modules with locked packages:
 ```powershell
 dotnet build Voxta.Modules.slnx -c Release -p:RestoreLockedMode=true -m:1
 dotnet run --project tests/Tools.Tests -c Release -p:RestoreLockedMode=true
+dotnet run --project tests/Spotify.Tools.Tests -c Release -p:RestoreLockedMode=true
 ```
 
 `Tools.Tests` is a standalone executable: assertions fail the process and successful checks print their names.
 It covers SDK dispatch, metadata ownership, disabled/unknown tools, invalid argument envelopes, safe failures,
-cancellation, and no automatic retry. It does not test live providers or host registration.
+cancellation, and no automatic retry. It does not test live providers or host registration. `Spotify.Tools.Tests` exercises the compiled Spotify
+catalog/handler against a fake manager: all 17 operations, mutation failures, input validation, missing state,
+ambiguous devices, cancellation, metadata/settings defaults, ducking overlap and volume changes, session dispatch,
+legacy suppression, and disposal. Live host permissions, actual playback, and provider parity require runtime testing.
 
 For each migration, add handler checks with fake domain clients for all operations, invalid inputs, provider failure,
 and cancellation. Then test in Voxta with tools selected and legacy actions deselected: discovery/settings, host

@@ -9,6 +9,7 @@ using Voxta.Modules.Aios.Spotify.Clients.Handlers;
 using Voxta.Modules.Aios.Spotify.Clients.Services;
 using Voxta.Modules.Aios.Spotify.Configuration;
 using Voxta.Modules.Aios.Spotify.Helpers;
+using Voxta.Modules.Aios.Spotify.Tools;
 
 namespace Voxta.Modules.Aios.Spotify.ChatAugmentations;
 
@@ -16,7 +17,7 @@ public class SpotifyChatAugmentationsService(
     ILocalEncryptionProvider localEncryptionProvider,
     ISpotifyManagerFactory spotifyManagerFactory,
     ILoggerFactory loggerFactory
-) : ServiceBase(loggerFactory.CreateLogger<SpotifyChatAugmentationsService>()), IChatAugmentationsService
+) : ServiceBase(loggerFactory.CreateLogger<SpotifyChatAugmentationsService>()), IToolsChatAugmentationsService
 {
     public Task<AugmentationPlanItem[]> PlanAsync(
         IChatAugmentationPlanContext context,
@@ -27,15 +28,34 @@ public class SpotifyChatAugmentationsService(
         [
             VoxtaModule.Augmentations.Get(VoxtaModule.AugmentationKey).Plan(
                 AugmentationActivation.OptIn,
-                CreateSpotifyChatAugmentationsServiceInstance
+                CreateLegacyInstance
             ),
+            CreateToolsPlan(),
         ]);
     }
     
-    private async Task<IChatAugmentationServiceInstanceBase?> CreateSpotifyChatAugmentationsServiceInstance(IChatSessionChatAugmentationApi session, CancellationToken cancellationToken)
+    private AugmentationPlanItem CreateToolsPlan()
+    {
+        var plan = VoxtaModule.Augmentations.Get(VoxtaModule.ToolsAugmentationKey).Plan(
+            AugmentationActivation.OptIn, (session, token) => CreateInstance(session, true, token));
+        return new AugmentationPlanItem
+        {
+            Key = plan.Key, Label = plan.Label, Description = plan.Description,
+            Activation = plan.Activation, ActivateAsync = plan.ActivateAsync,
+            IncludeInCatchAll = false,
+            Tools = SpotifyToolCatalog.Choices.Select(choice => new AugmentationToolDeclaration(choice.Name, VoxtaModule.ServiceName)).ToArray(),
+        };
+    }
+
+    private Task<IChatAugmentationServiceInstanceBase?> CreateLegacyInstance(IChatSessionChatAugmentationApi session, CancellationToken token) =>
+        session.IsAugmentationEnabled(VoxtaModule.ToolsAugmentationKey, false) && !session.IsAugmentationSuppressed(VoxtaModule.ToolsAugmentationKey)
+            ? Task.FromResult<IChatAugmentationServiceInstanceBase?>(null)
+            : CreateInstance(session, false, token);
+
+    private async Task<IChatAugmentationServiceInstanceBase?> CreateInstance(IChatSessionChatAugmentationApi session, bool tools, CancellationToken cancellationToken)
     {
         var logger = loggerFactory.CreateLogger<SpotifyChatAugmentationsServiceInstance>();
-        logger.LogInformation("Chat session {SessionId} has been augmented with {Augmentation}", session.SessionId, VoxtaModule.AugmentationKey);
+        logger.LogInformation("Chat session {SessionId} has been augmented with {Augmentation}", session.SessionId, tools ? VoxtaModule.ToolsAugmentationKey : VoxtaModule.AugmentationKey);
         
         var rawPlaylists = ModuleConfiguration.GetOptional(ModuleConfigurationProvider.SpecialPlaylists) ?? "";
         var playlistMap = rawPlaylists
@@ -49,8 +69,8 @@ public class SpotifyChatAugmentationsService(
         
         var config = new SpotifyChatAugmentationsSettings
         {
-            Actions = NormalizeActions(ModuleConfiguration.GetOptional<SpotifyActionSettings>(ModuleConfigurationProvider.Actions)),
-            MatchFilterWakeWord = ModuleConfiguration.GetOptional(ModuleConfigurationProvider.MatchFilterWakeWord),
+            Actions = tools ? [] : NormalizeActions(ModuleConfiguration.GetOptional<SpotifyActionSettings>(ModuleConfigurationProvider.Actions)),
+            MatchFilterWakeWord = tools ? null : ModuleConfiguration.GetOptional(ModuleConfigurationProvider.MatchFilterWakeWord),
             SpeechDuckingVolumePercent = ModuleConfiguration.GetRequired(ModuleConfigurationProvider.SpeechDuckingVolumePercent),
             SpecialPlaylists = playlistMap
         };
@@ -67,27 +87,26 @@ public class SpotifyChatAugmentationsService(
         var spotifyManager = await spotifyManagerFactory.CreateSpotifyManager(sessionWrapper, spotifyManagerConfig, cancellationToken);
 
         var spotifySearchService = new SpotifySearchService(spotifyManager, loggerFactory.CreateLogger<SpotifySearchService>());
-        await spotifySearchService.InitializeAsync();
+        await spotifySearchService.InitializeAsync(cancellationToken);
 
         var spotifyPlaybackMonitor = new SpotifyPlaybackMonitor(spotifyManager, session, loggerFactory.CreateLogger<SpotifyPlaybackMonitor>());
         
-        var spotifyActionHandler = new SpotifyActionHandler(spotifyManager, spotifySearchService, session, config, loggerFactory.CreateLogger<SpotifyActionHandler>(), () => spotifyPlaybackMonitor.PlaybackState, spotifyPlaybackMonitor.SetLastActionAsync);
-        
-        var instance = new SpotifyChatAugmentationsServiceInstance(
-            session,
-            config,
-            spotifyPlaybackMonitor,
-            spotifyActionHandler
-        );
-        try
+        var ducking = new SpotifySpeechDucking(spotifyManager, () => spotifyPlaybackMonitor.PlaybackState, config.SpeechDuckingVolumePercent);
+        if (tools)
         {
-            instance.Initialize();
+            var playback = new SpotifyPlaybackSession(spotifyPlaybackMonitor, ducking);
+            var handler = new SpotifyToolHandler(spotifyManager, spotifySearchService, playlistMap, ducking, spotifyPlaybackMonitor.SetLastActionAsync);
+            var toolInstance = new SpotifyToolsSession(SpotifyToolCatalog.Create(handler, SpotifyToolsSettings.From(ModuleConfiguration), playlistMap, logger), playback);
+            try { playback.Initialize(); }
+            catch { await toolInstance.DisposeAsync(); throw; }
+            return toolInstance;
         }
-        catch
-        {
-            await instance.DisposeAsync();
-            throw;
-        }
+
+        var spotifyActionHandler = new SpotifyActionHandler(spotifyManager, spotifySearchService, session, config,
+            loggerFactory.CreateLogger<SpotifyActionHandler>(), () => spotifyPlaybackMonitor.PlaybackState, spotifyPlaybackMonitor.SetLastActionAsync, ducking);
+        var instance = new SpotifyChatAugmentationsServiceInstance(session, config, spotifyPlaybackMonitor, spotifyActionHandler, ducking);
+        try { instance.Initialize(); }
+        catch { await instance.DisposeAsync(); throw; }
         return instance;
     }
 

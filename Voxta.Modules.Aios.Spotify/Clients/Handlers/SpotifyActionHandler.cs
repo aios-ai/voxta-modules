@@ -16,23 +16,16 @@ public class SpotifyActionHandler(
     SpotifyChatAugmentationsSettings settings,
     ILogger<SpotifyActionHandler> logger,
     Func<CurrentlyPlayingContext?> getPlaybackState,
-    Func<string, CancellationToken, Task> setLastAction)
+    Func<string, CancellationToken, Task> setLastAction,
+    SpotifySpeechDucking? speechDucking = null)
 {
     private Dictionary<string, string> _deviceMap = new();
     private Dictionary<string, string> _playlistMap = new();
     private readonly AsyncLocal<bool> _cancelReply = new();
-    private int? _lastKnownVolume;
-    
-    public Task LowerVolumeAsync(CancellationToken cancellationToken) => FadeVolumeAsync(settings.SpeechDuckingVolumePercent, cancellationToken);
-    public async Task RestoreVolumeAsync(CancellationToken cancellationToken)
-    {
-        if (_lastKnownVolume.HasValue)
-        {
-            await spotifyManager.ChangeVolume(_lastKnownVolume.Value, cancellationToken);
-            _lastKnownVolume = null;
-        }
-    }
-    
+    private readonly SpotifySpeechDucking _ducking = speechDucking ?? new(spotifyManager, getPlaybackState, settings.SpeechDuckingVolumePercent);
+    public Task LowerVolumeAsync(CancellationToken cancellationToken) => _ducking.LowerVolumeAsync("legacy", cancellationToken);
+    public Task RestoreVolumeAsync(CancellationToken cancellationToken) => _ducking.RestoreVolumeAsync("legacy", cancellationToken);
+
     public async Task HandleAction(ServerActionMessage message, CancellationToken cancellationToken)
     {
         if (message.Role != Model.Shared.ChatMessageRole.User) return;
@@ -271,22 +264,6 @@ public class SpotifyActionHandler(
         {
             await SendSpotifyFailure("Spotify could not find a matching track to queue.", cancellationToken);
         }
-    }
-    
-    private async Task FadeVolumeAsync(int targetVolume, CancellationToken cancellationToken)
-    {
-        targetVolume = Math.Clamp(targetVolume, 0, 100);
-        if (targetVolume >= 100) return;
-
-        var playbackState = getPlaybackState();
-        if (playbackState?.Device?.Id == null) return;
-        
-        if ((playbackState.Device.VolumePercent ?? 100) <= targetVolume)
-            return;
-        
-        _lastKnownVolume = playbackState.Device.VolumePercent;
-        
-        await spotifyManager.ChangeVolume(targetVolume, cancellationToken);
     }
     
     private async Task HandleVolume(ServerActionMessage message, CancellationToken cancellationToken)

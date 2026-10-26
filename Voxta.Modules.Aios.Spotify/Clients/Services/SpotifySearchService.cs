@@ -9,19 +9,19 @@ public class SpotifySearchService(ISpotifyManager spotifyManager, ILogger<Spotif
     private string? _currentUserId;
     private readonly Queue<string> _recentlyPlayedUris = new();
 
-    public async Task InitializeAsync()
+    public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
-        _currentUserId = await spotifyManager.GetSpotifyUserIdAsync();
+        _currentUserId = await spotifyManager.GetSpotifyUserIdAsync(cancellationToken);
     }
 
-    public async Task<(string? Uri, string? FriendlyName, string? Type)> GetSpotifyUri(string nameString, string? requestedType = null, string? originalType = null)
+    public async Task<(string? Uri, string? FriendlyName, string? Type)> GetSpotifyUri(string nameString, string? requestedType = null, string? originalType = null, CancellationToken cancellationToken = default)
     {
         nameString = StringUtils.CleanString(nameString);
         logger.LogInformation("Searching for: {NameString}", nameString);
 
         var searches = BuildSearches(requestedType);
         var searchTasks = searches
-            .Select(search => spotifyManager.SearchSpotify(nameString, search.SearchType, "from_token"))
+            .Select(search => spotifyManager.SearchSpotify(nameString, search.SearchType, "from_token", cancellationToken))
             .ToList();
 
         SearchResponse?[] searchResponses;
@@ -29,6 +29,7 @@ public class SpotifySearchService(ISpotifyManager spotifyManager, ILogger<Spotif
         {
             searchResponses = await Task.WhenAll(searchTasks);
         }
+        catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
             logger.LogError(ex, "Spotify search failed.");

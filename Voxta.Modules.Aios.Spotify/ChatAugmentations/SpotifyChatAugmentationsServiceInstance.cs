@@ -16,21 +16,16 @@ public class SpotifyChatAugmentationsServiceInstance(
     IChatSessionChatAugmentationApi session,
     SpotifyChatAugmentationsSettings settings,
     SpotifyPlaybackMonitor spotifyPlaybackMonitor,
-    SpotifyActionHandler spotifyActionHandler
+    SpotifyActionHandler spotifyActionHandler,
+    SpotifySpeechDucking speechDucking
     ) : IActionInferenceAugmentation, IChatScriptEventsAugmentation
 {
     public ServiceTypes[] GetRequiredServiceTypes() => [ServiceTypes.ActionInference];
     public string[] GetAugmentationNames() => [VoxtaModule.AugmentationKey];
-    private readonly CancellationTokenSource _cts = new();
-    private Task? _monitorTask;
-    private bool _disposed;
+    private readonly SpotifyPlaybackSession _playback = new(spotifyPlaybackMonitor,
+        speechDucking);
+    public void Initialize() => _playback.Initialize();
 
-    public void Initialize()
-    {
-        ObjectDisposedException.ThrowIf(_disposed, nameof(SpotifyChatAugmentationsServiceInstance));
-        _monitorTask = spotifyPlaybackMonitor.MonitorSpotifyPlayback(_cts.Token);
-    }
-    
     public IEnumerable<ClientUpdateContextMessage> RegisterChatContext()
     {
         return
@@ -220,42 +215,8 @@ public class SpotifyChatAugmentationsServiceInstance(
         return true;
     }
     
-    public async Task OnChatScriptEvent(
-        IActionScriptEvent e,
-        ChatMessageData? message,
-        ICharacterOrUserData? character,
-        CancellationToken cancellationToken
-    )
-    {
-        if (settings.SpeechDuckingVolumePercent >= 100) return;
+    public Task OnChatScriptEvent(IActionScriptEvent e, ChatMessageData? message, ICharacterOrUserData? character, CancellationToken cancellationToken) =>
+        _playback.OnChatScriptEvent(e, message, character, cancellationToken);
 
-        switch (e)
-        {
-            case TranscriptionStartedScriptEvent:
-                await spotifyActionHandler.LowerVolumeAsync(cancellationToken);
-                break;
-
-            case TranscriptionFinishedScriptEvent:
-                await spotifyActionHandler.RestoreVolumeAsync(cancellationToken);
-                break;
-
-            case SpeechStartActionScriptEvent:
-                await spotifyActionHandler.LowerVolumeAsync(cancellationToken);
-                break;
-
-            case SpeechCompleteActionScriptEvent:
-                await spotifyActionHandler.RestoreVolumeAsync(cancellationToken);
-                break;
-        }
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        if (_disposed) return;
-        _disposed = true;
-        await _cts.CancelAsync();
-        if (_monitorTask != null)
-            await _monitorTask;
-        _cts.Dispose();
-    }
+    public ValueTask DisposeAsync() => _playback.DisposeAsync();
 }

@@ -1,3 +1,5 @@
+using Voxta.Abstractions.Services.Agents;
+using Voxta.Modules.Aios.Spotify.Tools;
 using Voxta.Abstractions.Registration;
 using Voxta.Abstractions.Security;
 using Voxta.Model.Shared.Forms;
@@ -8,7 +10,7 @@ namespace Voxta.Modules.Aios.Spotify.Configuration;
 
 public class ModuleConfigurationProvider : ModuleConfigurationProviderBase, IModuleConfigurationProvider
 {
-    public static string[] FieldsRequiringReload => [ClientId.Name, ClientSecret.Name, Actions.Name];
+    public static string[] FieldsRequiringReload => [ClientId.Name, ClientSecret.Name, Actions.Name, "Tools", ChatToolSettingsContributions.ToolChatStyles.Name, SpeechDuckingVolumePercent.Name, SpecialPlaylists.Name];
     private static readonly string DefaultTokenPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "Voxta",
@@ -332,6 +334,7 @@ Daily Mix 6="
             MatchFilterWakeWord,
             SpeechDuckingVolumePercent,
             SpecialPlaylists,
+            ChatToolSettingsContributions.GetFormFields(SpotifyToolCatalog.Choices),
             Actions,
             TokenPath
         );

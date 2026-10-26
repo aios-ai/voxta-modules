@@ -77,8 +77,8 @@ public interface ISpotifyManager
     Task<bool> ControlSpotifyPlayback(bool playback, CancellationToken cancellationToken);
     Task<bool> PlaySpecificUri(string uri, CancellationToken cancellationToken, string? type = null);
     Task<bool> QueueTrack(string uri, CancellationToken cancellationToken);
-    Task<SearchResponse?> SearchSpotify(string query, SearchRequest.Types type, string? market = null);
-    Task<string?> GetSpotifyUserIdAsync();
+    Task<SearchResponse?> SearchSpotify(string query, SearchRequest.Types type, string? market = null, CancellationToken cancellationToken = default);
+    Task<string?> GetSpotifyUserIdAsync(CancellationToken cancellationToken = default);
     Task<bool> ChangeVolume(int volumePercent, CancellationToken cancellationToken);
     Task<bool> SkipToPreviousOrNextTrack(string skipToPrevious, CancellationToken cancellationToken);
     Task<bool> SeekPlayback(int positionMs, CancellationToken cancellationToken);
@@ -474,7 +474,7 @@ public class SpotifyManager(
 
             var request = new PlayerResumePlaybackRequest();
 
-            if (type == "track")
+            if (type is "track" or "episode")
                 request.Uris = new List<string> { uri };
             else
                 request.ContextUri = uri;
@@ -488,6 +488,7 @@ public class SpotifyManager(
             SetSpotifyApiError(ex, "start playback");
             return false;
         }
+        catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
             logger.LogError("Error starting playback: {ExMessage}", ex.Message);
@@ -517,9 +518,11 @@ public class SpotifyManager(
         }
     }
 
-    public async Task<SearchResponse?> SearchSpotify(string query, SearchRequest.Types type, string? market = null)
+    public async Task<SearchResponse?> SearchSpotify(string query, SearchRequest.Types type, string? market = null, CancellationToken cancellationToken = default)
     {
-        if (!await EnsureValidSpotifyClient(userInteractionWrapper.Abort) || _spotifyClient == null)
+        using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, userInteractionWrapper.Abort);
+        cancellationToken = linkedCancellation.Token;
+        if (!await EnsureValidSpotifyClient(cancellationToken) || _spotifyClient == null)
         {
             logger.LogError("Spotify client not valid. Cannot search Spotify.");
             return null;
@@ -533,7 +536,7 @@ public class SpotifyManager(
 
         try
         {
-            var response = await _spotifyClient.Search.Item(request);
+            var response = await _spotifyClient.Search.Item(request, cancellationToken);
             ClearUserVisibleError();
             return response;
         }
@@ -544,9 +547,11 @@ public class SpotifyManager(
         }
     }
 
-    public async Task<string?> GetSpotifyUserIdAsync()
+    public async Task<string?> GetSpotifyUserIdAsync(CancellationToken cancellationToken = default)
     {
-        if (!await EnsureValidSpotifyClient(userInteractionWrapper.Abort) || _spotifyClient == null)
+        using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, userInteractionWrapper.Abort);
+        cancellationToken = linkedCancellation.Token;
+        if (!await EnsureValidSpotifyClient(cancellationToken) || _spotifyClient == null)
         {
             SetAuthorizationRequired();
             return null;
@@ -554,7 +559,7 @@ public class SpotifyManager(
 
         try
         {
-            var me = await _spotifyClient.UserProfile.Current();
+            var me = await _spotifyClient.UserProfile.Current(cancellationToken);
             logger.LogInformation("Retrieved Spotify user ID: {MeId}", me.Id);
             return me.Id;
         }
@@ -737,7 +742,7 @@ public class SpotifyManager(
                 if (string.IsNullOrEmpty(page.Next))
                     break;
 
-                page = await _spotifyClient.NextPage(page);
+                page = await _spotifyClient.NextPage(page).WaitAsync(cancellationToken);
             }
             ClearUserVisibleError();
         }
@@ -769,6 +774,7 @@ public class SpotifyManager(
             SetSpotifyApiError(ex, "add track to playlist");
             return false;
         }
+        catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
             logger.LogError("Failed to add track to playlist: {ExMessage}", ex.Message);
@@ -800,6 +806,7 @@ public class SpotifyManager(
             SetSpotifyApiError(ex, "save track to Liked Songs");
             return false;
         }
+        catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
             logger.LogError("Failed to save track to library: {ExMessage}", ex.Message);

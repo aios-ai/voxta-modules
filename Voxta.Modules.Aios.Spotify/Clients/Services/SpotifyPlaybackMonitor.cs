@@ -14,6 +14,7 @@ public class SpotifyPlaybackMonitor(
     ILogger<SpotifyPlaybackMonitor> logger)
 {
     private CurrentlyPlayingContext? _lastKnownState;
+    private string? _lastCommand;
     public CurrentlyPlayingContext? PlaybackState { get; private set; }
 
     public async Task MonitorSpotifyPlayback(CancellationToken cancellationToken)
@@ -117,6 +118,7 @@ public class SpotifyPlaybackMonitor(
 
     public async Task SetLastActionAsync(string action, CancellationToken cancellationToken)
     {
+        _lastCommand = action;
         await PublishContextsAsync(PlaybackState, cancellationToken);
     }
 
@@ -130,6 +132,9 @@ public class SpotifyPlaybackMonitor(
     {
         var contexts = new List<ContextDefinition>();
         var isConnected = playbackState?.Device?.IsActive == true;
+
+        if (_lastCommand != null)
+            AddContext(contexts, "last_command", "Spotify Last Command", _lastCommand);
 
         AddContext(
             contexts,

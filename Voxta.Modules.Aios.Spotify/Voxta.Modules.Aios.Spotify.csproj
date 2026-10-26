@@ -17,6 +17,7 @@
     </ItemGroup>
 
     <ItemGroup>
+        <InternalsVisibleTo Include="Spotify.Tools.Tests" />
         <EmbeddedResource Include="Assets\spotify.png" />
     </ItemGroup>
 
