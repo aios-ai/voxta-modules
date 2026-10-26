@@ -12,8 +12,7 @@ internal sealed class SpotifyToolHandler(
     SpotifySearchService search,
     IReadOnlyDictionary<string, string> specialPlaylists,
     SpotifySpeechDucking ducking,
-    Func<string, CancellationToken, Task> recordCommand,
-    Func<IReadOnlyList<Device>, CancellationToken, Task>? recordDevices = null)
+    Func<string, CancellationToken, Task> recordCommand)
 {
     // Serialize stateful search selection and commands; never retry a side effect.
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -114,11 +113,9 @@ internal sealed class SpotifyToolHandler(
                 var name = Text(args, "device");
                 var devices = await manager.GetAvailablePlaybackDevices(token);
                 if (manager.LastUserVisibleError != null) return Failure("Could not list devices.");
-                if (recordDevices != null) await recordDevices(devices, token);
-                var matches = devices.Where(d => !string.IsNullOrWhiteSpace(d.Id) && d.Id.Equals(name, StringComparison.Ordinal)).ToArray();
-                if (matches.Length == 0) matches = devices.Where(d => string.Equals(d.Name, name, StringComparison.OrdinalIgnoreCase)).ToArray();
+                var matches = devices.Where(d => string.Equals(d.Name, name, StringComparison.OrdinalIgnoreCase)).ToArray();
                 if (matches.Length == 0) matches = devices.Where(d => d.Name?.Contains(name, StringComparison.OrdinalIgnoreCase) == true).ToArray();
-                if (matches.Length != 1) return new(matches.Length == 0 ? "No matching device was found." : "Device name is ambiguous. Specify a device ID from: " + FormatDevices(matches), true);
+                if (matches.Length != 1) return new(matches.Length == 0 ? "No matching device name was found. Choose a name from spotify_list_devices." : "Several Spotify devices match that name. Choose a distinct name, or rename identically named devices in Spotify before transferring. Matching devices: " + FormatDevices(matches), true);
                 var device = matches[0];
                 if (device.IsRestricted || string.IsNullOrWhiteSpace(device.Id)) return new("That Spotify device cannot be controlled through the Web API. Choose another available device.", true);
                 return await Changed(await manager.TransferPlayback(device.Id, token), $"Transferred playback to {device.Name}. Transfer preserves the current playing or paused state; it does not confirm that the requested music has started.", token);
@@ -144,14 +141,13 @@ internal sealed class SpotifyToolHandler(
     {
         var devices = await manager.GetAvailablePlaybackDevices(token);
         if (manager.LastUserVisibleError != null) return Failure("Could not list devices.");
-        if (recordDevices != null) await recordDevices(devices, token);
         return new(devices.Count == 0
-            ? "No Spotify Connect devices are available. User setup is required: the user opens Spotify on the intended device and confirms it is open before discovery resumes. Brief manual playback is a fallback if it remains unavailable."
+            ? "No Spotify Connect devices are available for transfer. The user needs to open Spotify on the intended destination. If playback control reports no active player, the user needs to select music and start playback manually."
             : "Available Spotify Connect devices (active means selected as the player, not necessarily playing): " + FormatDevices(devices), false);
     }
 
     private static string FormatDevices(IEnumerable<Device> devices) => string.Join("; ", devices.Select(d =>
-        $"{d.Name} [type: {d.Type}, active: {d.IsActive.ToString().ToLowerInvariant()}, controllable: {(!d.IsRestricted && !string.IsNullOrWhiteSpace(d.Id)).ToString().ToLowerInvariant()}, id: {d.Id ?? "unavailable"}]"));
+        $"{d.Name} [type: {d.Type}, active: {d.IsActive.ToString().ToLowerInvariant()}, controllable: {(!d.IsRestricted && !string.IsNullOrWhiteSpace(d.Id)).ToString().ToLowerInvariant()}]"));
 
     private ChatToolCallResult Failure(string fallback) => new(manager.LastUserVisibleError ?? fallback, true);
     private async Task<ChatToolCallResult> Changed(bool success, string text, CancellationToken token)

@@ -117,27 +117,36 @@ Console.WriteLine("PASS invalid arguments rejected before provider access");
         new() { Name = "XENTOWER", Id = "desktop", Type = "Computer", IsActive = false },
         new() { Name = "Echo", Id = "speaker", Type = "Speaker", IsActive = true, IsRestricted = true },
         new() { Name = "Echo", Id = "other-speaker", Type = "Speaker" },
+        new() { Name = "Restricted", Id = "restricted-id", Type = "Speaker", IsRestricted = true },
         new() { Name = "Unavailable", Type = "Speaker" },
     ];
     foreach (var operation in new[] { "list_devices", "connect" })
     {
         var devices = await f.Call(operation, "{}");
         Check(!devices.IsError && devices.Text.Contains("XENTOWER [type: Computer, active: false, controllable: true"), "Inactive desktop metadata missing");
-        Check(devices.Text.Contains("id: speaker") && devices.Text.Contains("id: other-speaker") && devices.Text.Contains("controllable: false"), "Duplicate/restricted devices lost");
+        Check(devices.Text.Split("Echo [").Length == 3 && devices.Text.Contains("controllable: false"), "Duplicate/restricted devices lost");
+        Check(!devices.Text.Contains("id:") && !devices.Text.Contains("other-speaker") && !devices.Text.Contains("desktop"), "Internal IDs exposed by discovery");
     }
     Check(!f.Backend.Calls.Any(c => c.Name == "TransferPlayback"), "Discovery activated a player");
     Check((await f.Call("transfer_to_device", "{\"device\":\"Echo\"}")).IsError, "Duplicate names collapsed");
-    Check((await f.Call("transfer_to_device", "{\"device\":\"speaker\"}")).IsError, "Restricted device accepted");
+    Check((await f.Call("transfer_to_device", "{\"device\":\"Restricted\"}")).IsError, "Restricted device accepted");
     Check((await f.Call("transfer_to_device", "{\"device\":\"Unavailable\"}")).IsError, "Missing device ID accepted");
     Check(!f.Backend.Calls.Any(c => c.Name == "TransferPlayback"), "Invalid device selection transferred playback");
-    Check(!(await f.Call("transfer_to_device", "{\"device\":\"other-speaker\"}")).IsError, "Device ID did not disambiguate");
+    Check((await f.Call("transfer_to_device", "{\"device\":\"other-speaker\"}")).IsError, "Internal ID accepted as user-facing device name");
     Check(!(await f.Call("transfer_to_device", "{\"device\":\"xentower\"}")).IsError, "Inactive device could not be selected");
-    Check(f.Backend.Calls.Count(c => c.Name == "TransferPlayback") == 2, "Transfer retried or original command executed automatically");
+    Check(f.Backend.Calls.Count(c => c.Name == "TransferPlayback") == 1 && (string)f.Backend.Calls.Single(c => c.Name == "TransferPlayback").Args[0]! == "desktop", "Name not privately resolved to ID, transfer retried or original command executed automatically");
     var missing = await f.Call("toggle_playback", "{}");
-    Check(missing.IsError && missing.Text.Contains("Opening Spotify alone") && missing.Text.Contains("transferring playback"), "Missing player recovery absent");
+    Check(missing.IsError && missing.Text.Contains("select a track or playlist") && missing.Text.Contains("start playback manually") && !missing.Text.Contains("transfer"), "Missing player recovery absent");
+    f.Backend.Succeed = false;
+    f.Backend.Error = SpotifyManager.NoActiveDeviceMessage;
+    var discoveryCount = f.Backend.Calls.Count(c => c.Name == "GetAvailablePlaybackDevices");
+    Check((await f.Call("play_random_music", "{}")).Text.Contains("start playback manually"), "Playback failure did not request user setup");
+    Check(f.Backend.Calls.Count(c => c.Name == "GetAvailablePlaybackDevices") == discoveryCount && f.Backend.Calls.Count(c => c.Name == "TransferPlayback") == 1, "Playback failure triggered discovery or transfer");
+    f.Backend.Error = null;
+    f.Backend.FailureSeen = false;
     f.Backend.Devices = [];
     var empty = await f.Call("list_devices", "{}");
-    Check(!empty.IsError && empty.Text.Contains("confirms it is open") && empty.Text.Contains("fallback"), "Empty discovery not actionable");
+    Check(!empty.IsError && empty.Text.Contains("start playback manually"), "Empty discovery not actionable");
     Console.WriteLine("PASS device recovery, metadata, duplicate IDs, restricted devices and no implicit transfer/retry");
 }
 
@@ -256,7 +265,6 @@ public class BackendProxy : DispatchProxy
     public bool FailureSeen;
     public string? Error;
     public bool AuthorizationRequired;
-    public Task<IReadOnlyList<Device>>? PendingDevices;
     public Action<string>? OnCall;
     public IReadOnlyList<Device> Devices = [new() { Name = "Desktop", Id = "device-id", Type = "Computer", IsActive = true }];
     public CurrentlyPlayingContext? State = new()
@@ -282,7 +290,7 @@ public class BackendProxy : DispatchProxy
             "SearchSpotify" => Task.FromResult<SearchResponse?>(new() { Tracks = new Paging<FullTrack, SearchResponse> { Items = [Track()] } }),
             "GetSpotifyUserIdAsync" => Task.FromResult<string?>("user-id"),
             "ListAvailablePlaylists" => Task.FromResult(new Dictionary<string, string> { ["Favorites"] = "spotify:playlist:playlist-id" }),
-            "GetAvailablePlaybackDevices" => PendingDevices?.WaitAsync((CancellationToken)args![0]!) ?? Task.FromResult(Devices),
+            "GetAvailablePlaybackDevices" => Task.FromResult(Devices),
             _ when method.ReturnType == typeof(Task<bool>) => Task.FromResult(Succeed),
             _ => throw new Exception("Unexpected provider call: " + name),
         };

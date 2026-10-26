@@ -18,7 +18,7 @@ internal sealed class SpotifyPlaybackSession(SpotifyPlaybackMonitor monitor, Spo
     public async Task InitializeAsync(CancellationToken cancellationToken)
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _cts.Token);
-        await monitor.RefreshAsync(linked.Token, true);
+        await monitor.RefreshAsync(linked.Token);
         _monitorTask = monitor.MonitorSpotifyPlayback(_cts.Token, false);
     }
 

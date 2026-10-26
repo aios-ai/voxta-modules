@@ -71,7 +71,7 @@ public class SpotifyManager(
     private const string AuthorizationRequiredMessage = "Spotify authorization is required. Save your client credentials and sign in using Spotify Account in module settings, then test the module or start a new chat.";
     private const string ReauthorizationRequiredMessage = "Spotify authorization has expired or is no longer valid. Sign out and sign in again using Spotify Account in module settings.";
     private const string AuthorizationFailedMessage = "Spotify could not refresh authorization. Sign out and sign in again using Spotify Account in module settings, then test the module or start a new chat.";
-    internal const string NoActiveDeviceMessage = "Spotify has no active player. An available Spotify Connect device can be activated by transferring playback to it. Opening Spotify alone may leave it available but inactive. If the intended device is missing, the next setup step is for the user to open Spotify there and confirm it is open; device discovery can then be refreshed. Brief manual playback is a fallback if the device remains unavailable.";
+    internal const string NoActiveDeviceMessage = "Spotify has no active player. Please open Spotify on the intended device, select a track or playlist and start playback manually. Playback control can continue once music has started.";
     private readonly SemaphoreSlim _authorizationGate = new(1, 1);
     private SpotifyClient? _spotifyClient;
     private string? _clientAccessToken;
@@ -709,9 +709,9 @@ public class SpotifyManager(
             return;
         }
 
-        if (message.Contains("404", StringComparison.OrdinalIgnoreCase) ||
-            message.Contains("no active device", StringComparison.OrdinalIgnoreCase) ||
-            message.Contains("device", StringComparison.OrdinalIgnoreCase))
+        if (message.Contains("no active device", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("no active player", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("NO_ACTIVE_DEVICE", StringComparison.OrdinalIgnoreCase))
         {
             LastUserVisibleError = NoActiveDeviceMessage;
             return;

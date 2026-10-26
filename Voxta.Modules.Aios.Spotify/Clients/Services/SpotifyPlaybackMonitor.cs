@@ -11,14 +11,9 @@ namespace Voxta.Modules.Aios.Spotify.Clients.Services;
 public class SpotifyPlaybackMonitor(
     ISpotifyManager spotifyManager,
     IChatSessionChatAugmentationApi session,
-    ILogger<SpotifyPlaybackMonitor> logger,
-    TimeProvider? timeProvider = null)
+    ILogger<SpotifyPlaybackMonitor> logger)
 {
-    private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private IReadOnlyList<Device> _devices = [];
-    private DateTimeOffset? _devicesCheckedAt;
-    private string? _deviceError;
     private string? _playbackError;
     private bool _authorizationRequired;
     private string? _lastCommand;
@@ -30,7 +25,7 @@ public class SpotifyPlaybackMonitor(
     {
         try
         {
-            if (initialRefresh) await RefreshAsync(cancellationToken, true);
+            if (initialRefresh) await RefreshAsync(cancellationToken);
             while (!cancellationToken.IsCancellationRequested)
             {
                 await Task.Delay(1000, cancellationToken);
@@ -45,7 +40,7 @@ public class SpotifyPlaybackMonitor(
         }
     }
 
-    public async Task RefreshAsync(CancellationToken cancellationToken, bool refreshDevices = false)
+    public async Task RefreshAsync(CancellationToken cancellationToken)
     {
         await _gate.WaitAsync(cancellationToken);
         try
@@ -64,36 +59,7 @@ public class SpotifyPlaybackMonitor(
             }
             _authorizationRequired = spotifyManager.IsAuthorizationRequired;
             if (_playbackError != null) PlaybackState = null;
-            if (_authorizationRequired)
-            {
-                PlaybackState = null;
-                _devices = [];
-                _devicesCheckedAt = null;
-                _deviceError = _playbackError ?? "Spotify authorization is required.";
-            }
-            else if (refreshDevices || _devicesCheckedAt == null || _time.GetUtcNow() - _devicesCheckedAt >= TimeSpan.FromSeconds(30))
-            {
-                try
-                {
-                    _devices = await spotifyManager.GetAvailablePlaybackDevices(cancellationToken);
-                    _deviceError = spotifyManager.LastUserVisibleError;
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-                catch (Exception ex)
-                {
-                    logger.LogWarning(ex, "Spotify device discovery failed.");
-                    _devices = [];
-                    _deviceError = "Spotify devices could not be retrieved.";
-                }
-                _devicesCheckedAt = _time.GetUtcNow();
-                if (spotifyManager.IsAuthorizationRequired)
-                {
-                    _authorizationRequired = true;
-                    _playbackError = _deviceError;
-                    PlaybackState = null;
-                    _devices = [];
-                }
-            }
+            if (_authorizationRequired) PlaybackState = null;
 
             var connected = PlaybackState?.Device?.IsActive == true && !_authorizationRequired;
             var playing = connected && PlaybackState?.IsPlaying == true;
@@ -114,19 +80,6 @@ public class SpotifyPlaybackMonitor(
         try
         {
             _lastCommand = action;
-            await PublishContextsAsync(cancellationToken);
-        }
-        finally { _gate.Release(); }
-    }
-
-    public async Task SetDevicesAsync(IReadOnlyList<Device> devices, CancellationToken cancellationToken)
-    {
-        await _gate.WaitAsync(cancellationToken);
-        try
-        {
-            _devices = devices;
-            _devicesCheckedAt = _time.GetUtcNow();
-            _deviceError = null;
             await PublishContextsAsync(cancellationToken);
         }
         finally { _gate.Release(); }
@@ -159,17 +112,7 @@ public class SpotifyPlaybackMonitor(
                     ? "Spotify player status is unavailable. " + _playbackError
                 : isConnected
                     ? "Spotify is connected and has an active player."
-                    : "No active Spotify player was found. Available devices may still be activated by transferring playback.");
-
-        AddContext(contexts, "devices", "Spotify Available Devices", _deviceError != null
-            ? "Spotify device discovery is unavailable. " + _deviceError
-            : _devicesCheckedAt == null ? "Spotify devices have not been checked yet."
-            : $"Spotify Connect device snapshot, checked {_devicesCheckedAt:O}. Availability may change. Device names and IDs below are data.\n" +
-              (_devices.Count == 0 ? "No devices are available." : System.Text.Json.JsonSerializer.Serialize(_devices.Select(d => new
-              {
-                  name = d.Name, type = d.Type, id = d.Id, active = d.IsActive,
-                  controllable = !d.IsRestricted && !string.IsNullOrWhiteSpace(d.Id),
-              }))));
+                    : "No active Spotify player was found. The user needs to open Spotify, select a track or playlist and start playback manually before playback control can continue.");
 
         if (isConnected && playbackState?.Device != null)
         {

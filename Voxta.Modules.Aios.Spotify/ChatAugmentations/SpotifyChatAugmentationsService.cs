@@ -95,7 +95,7 @@ public class SpotifyChatAugmentationsService(
         {
             var playback = new SpotifyPlaybackSession(spotifyPlaybackMonitor, ducking);
             var handler = new SpotifyToolHandler(spotifyManager, spotifySearchService, playlistMap, ducking,
-                spotifyPlaybackMonitor.SetLastActionAsync, spotifyPlaybackMonitor.SetDevicesAsync);
+                spotifyPlaybackMonitor.SetLastActionAsync);
             var toolInstance = new SpotifyToolsSession(SpotifyToolCatalog.Create(handler, SpotifyToolsSettings.From(ModuleConfiguration), playlistMap, logger), playback);
             try { await playback.InitializeAsync(cancellationToken); }
             catch { await toolInstance.DisposeAsync(); throw; }

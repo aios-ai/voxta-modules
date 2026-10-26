@@ -38,7 +38,9 @@ internal static class SpotifyConfigurationChecks
         Check(settings.Descriptions!["spotify_skip_next"] == "Custom explanation", "Description was lost");
         var catalog = SpotifyToolCatalog.Create(null!, settings, new Dictionary<string, string>(), NullLogger.Instance);
         var description = catalog.GetTools().Single(t => t.Name == "spotify_skip_next").Description;
-        Check(description != null && description.StartsWith("Custom explanation") && description.Contains("spotify_list_devices") && description.Contains("ask the user"), "Custom description lost recovery/selection guidance");
+        Check(description != null && description.StartsWith("Custom explanation") && description.Contains("start playback manually") && description.Contains("Wait for the user to confirm playback has started"), "Custom description lost manual playback prerequisite");
+        var transfer = catalog.GetTools().Single(t => t.Name == "spotify_transfer_to_device");
+        Check(transfer.Description!.Contains("human-readable device name") && transfer.Description.Contains("user-requested destination changes"), "Name-only transfer guidance missing");
         var fields = await new ModuleConfigurationProvider().GetModuleConfigurationFieldsAsync(null!, empty, default);
         Check(fields.OfType<FormAuthorizeField>().Single().Name == "SpotifyAccount", "Missing account field");
         Check(fields.OfType<FormDocumentationField>().Any(f => f.Value.Contains(SpotifyRedirectUri.DesktopDefault) && f.Value.Contains(SpotifyRedirectUri.VoxtaDefault)), "Both callbacks must be explained");
