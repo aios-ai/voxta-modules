@@ -6,6 +6,18 @@ internal static class SpotifyRedirectUri
 {
     public const string Default = "http://127.0.0.1:5385/extensions/spotify/oauth2/callback";
     public const string CallbackPath = "/extensions/spotify/oauth2/callback";
+    public const string VoxtaCallbackPath = "/auth/modules/callback";
+    public const string VoxtaDefault = "http://127.0.0.1:5384/auth/modules/callback";
+
+    public static string? GetVoxtaError(Uri uri)
+    {
+        if (!uri.IsAbsoluteUri ||
+            !(uri.Scheme == "https" || uri.Scheme == "http" && IPAddress.TryParse(uri.Host.Trim('[', ']'), out var ip) && IPAddress.IsLoopback(ip)) ||
+            uri.AbsolutePath != VoxtaCallbackPath || !string.IsNullOrEmpty(uri.Query) ||
+            !string.IsNullOrEmpty(uri.Fragment) || !string.IsNullOrEmpty(uri.UserInfo))
+            return $"Use your Voxta origin followed by {VoxtaCallbackPath}, for example {VoxtaDefault}. HTTP requires an explicit loopback IP; remote addresses require HTTPS.";
+        return null;
+    }
 
     public static string? GetError(Uri uri)
     {

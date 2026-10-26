@@ -10,7 +10,36 @@ namespace Voxta.Modules.Aios.Spotify.Configuration;
 
 public class ModuleConfigurationProvider : ModuleConfigurationProviderBase, IModuleConfigurationProvider
 {
-    public static string[] FieldsRequiringReload => [ClientId.Name, ClientSecret.Name, RedirectUri.Name, Actions.Name, "Tools", "SpotifyTools", ChatToolSettingsContributions.ToolChatStyles.Name, SpeechDuckingVolumePercent.Name, SpecialPlaylists.Name];
+    public static string[] FieldsRequiringReload => [ClientId.Name, ClientSecret.Name, RedirectUri.Name, AuthorizationMode.Name, VoxtaRedirectUri.Name, SpotifyAccount.Name, Actions.Name, "Tools", "SpotifyTools", ChatToolSettingsContributions.ToolChatStyles.Name, SpeechDuckingVolumePercent.Name, SpecialPlaylists.Name];
+    public const string VoxtaAuthorization = "voxta";
+    public const string ListenerAuthorization = "listener";
+    public static bool UseVoxtaAuthorization(ISettingsSource settings) => settings.GetRequired(AuthorizationMode) switch
+    {
+        VoxtaAuthorization => true,
+        ListenerAuthorization => false,
+        _ => throw new InvalidOperationException("Choose Voxta OAuth or the temporary local listener in Authorization Mode. Unknown modes cannot fall back automatically."),
+    };
+    public static readonly FormChoicesField AuthorizationMode = new()
+    {
+        Name = "AuthorizationMode", Label = "Authorization Mode", DefaultValue = ListenerAuthorization,
+        Choices =
+        [
+            new FormChoice { Value = VoxtaAuthorization, Label = "Voxta OAuth (test pipeline)" },
+            new FormChoice { Value = ListenerAuthorization, Label = "Temporary local listener (fallback)" },
+        ],
+        Text = "Voxta OAuth uses Voxta's own account UI, callback page and token storage. It never starts the local listener or uses the fallback token file. The fallback stays available until native OAuth has been verified.",
+    };
+    public static readonly FormTextField VoxtaRedirectUri = new()
+    {
+        Name = "VoxtaRedirectUri", Label = "Voxta OAuth Redirect URI", Required = true,
+        DefaultValue = SpotifyRedirectUri.VoxtaDefault,
+        Text = "Register this exact URI in Spotify too. Start authorization from Spotify Account below, in a Voxta browser opened at this same origin, and finish in that browser. This uses Voxta's existing web server.",
+    };
+    public static readonly FormAuthorizeField SpotifyAccount = new()
+    {
+        Name = "SpotifyAccount", Label = "Spotify Account (Voxta OAuth)", Method = AuthorizationMethod.OAuth2,
+        Text = "Save the client credentials and redirect URI before authorizing. This account is separate from fallback authorization. Select Voxta OAuth, authorize here, then use Test or start a new chat. To repeat the full flow, sign out here and authorize again.",
+    };
     private static readonly string DefaultTokenPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "Voxta",
@@ -38,7 +67,7 @@ public class ModuleConfigurationProvider : ModuleConfigurationProviderBase, IMod
     public static readonly FormTextField RedirectUri = new()
     {
         Name = "RedirectUri",
-        Label = "Redirect URI",
+        Label = "Fallback Redirect URI",
         Required = true,
         //language=markdown
         Text = "Use this exact URI in your Spotify Developer Dashboard too. The module temporarily listens on its own local port (5385 by default) during authorization. Use an explicit loopback IP, no period after callback, and a port different from Voxta (5384).",
@@ -330,6 +359,9 @@ Daily Mix 6="
         var fields = FormBuilder.Build(
             ClientId,
             ClientSecret,
+            AuthorizationMode,
+            VoxtaRedirectUri,
+            SpotifyAccount,
             RedirectUri,
             MatchFilterWakeWord,
             SpeechDuckingVolumePercent,

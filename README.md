@@ -38,18 +38,36 @@ application that provides a Client ID and Client Secret.
 2. In Voxta, open **Add Modules → Add Custom Module**, select the module project, and apply it.
 3. Configure the selected module in Voxta.
 
-Spotify's default redirect URI is:
+Spotify has two explicit **Authorization Mode** choices. The existing **Temporary local listener (fallback)**
+remains the default while the server-managed pipeline is tested.
+
+To test **Voxta OAuth (test pipeline)** using Voxta's existing web server:
+
+1. Open Voxta at `http://127.0.0.1:5384` in the browser you will use for the whole authorization.
+2. Add `http://127.0.0.1:5384/auth/modules/callback` to your Spotify Developer Dashboard's redirect URIs.
+3. Select **Voxta OAuth (test pipeline)** in the module. Set **Voxta OAuth Redirect URI** to that same address,
+   confirm the client credentials, and save the module settings.
+4. Authorize **Spotify Account (Voxta OAuth)** in module configuration. Complete Spotify authorization in the
+   same browser, returning to Voxta's callback page. Do not copy the outgoing Spotify URL into another browser:
+   the callback needs the state stored by the browser that started the flow.
+5. Run **Test**, then start a new chat and test playback/tools. This mode uses only Voxta's encrypted account
+   token store; it never starts the temporary listener or uses its saved token file. To repeat a fresh login,
+   sign out of the Spotify Account field and authorize again.
+
+If you use another Voxta origin, use that origin followed by `/auth/modules/callback` in both settings. Remote
+origins require HTTPS; HTTP is allowed only with an explicit loopback IP. The module validates that the address
+supplied by Voxta matches the configured redirect exactly. Saved fallback tokens cannot mask a failed native test.
+
+To return to the fallback, select **Temporary local listener (fallback)** and save. Its **Fallback Redirect URI** is:
 
 ```text
 http://127.0.0.1:5385/extensions/spotify/oauth2/callback
 ```
 
-Register that exact URI in the Spotify Developer Dashboard and use the same value in Voxta, with no period
-at the end. When upgrading from earlier versions, change port **5384** to **5385** in both places and remove
-`/api` if present. The module temporarily listens on its own loopback port during authorization; Voxta's web
-UI routes cannot receive the callback. Open the authorization link on the server machine. A different free
-loopback port can be configured if 5385 is occupied. Authorization times out after three minutes with guidance.
-Saved valid tokens continue to work without reopening authorization.
+Keep that exact URI registered in Spotify as well, with no trailing period. The fallback temporarily listens on
+its own loopback port during authorization, on the server machine. It retains its existing saved token file and
+three-minute authorization timeout. Native account sign-out does not erase fallback credentials. Both paths stay
+available until native runtime testing is complete; there is no automatic switch between them on failure.
 
 Select **Spotify Tools** for native tool calling. All tools default on and **Offer Tools In** defaults to
 Assistant and Companion. The **Spotify Tools** cards provide individual switches and editable descriptions.

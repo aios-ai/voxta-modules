@@ -45,6 +45,7 @@ public class VoxtaModule : IVoxtaModule
             Logo = ModuleLogo.EmbeddedResource(typeof(VoxtaModule), "Assets.spotify.png"),
             Augmentations = Augmentations,
             ModuleConfigurationProviderType = typeof(ModuleConfigurationProvider),
+            AuthProviderType = typeof(SpotifyModuleAuthorizationProvider),
             ModuleConfigurationFieldsRequiringReload = ModuleConfigurationProvider.FieldsRequiringReload,
             ModuleTestingProviderType = typeof(ModuleTestingProvider),
         });
@@ -53,6 +54,7 @@ public class VoxtaModule : IVoxtaModule
 
         builder.Services.AddSingleton<ISpotifyManagerFactory, SpotifyManagerFactory>();
         builder.Services.AddSingleton<ISpotifyAuthCallbackManager, SpotifyAuthCallbackManager>();
+        builder.Services.AddSingleton<ISpotifyOAuthTokenClient, SpotifyOAuthTokenClient>();
 
     }
 }

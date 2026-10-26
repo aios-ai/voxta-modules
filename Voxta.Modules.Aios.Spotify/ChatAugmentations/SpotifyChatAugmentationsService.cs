@@ -75,12 +75,16 @@ public class SpotifyChatAugmentationsService(
             SpecialPlaylists = playlistMap
         };
 
-        var tokenPath = SpotifyAuthPath.GetUserTokenPath(ModuleConfiguration.GetRequired(ModuleConfigurationProvider.TokenPath), Auth.UserId);
+        var useVoxtaAuthorization = ModuleConfigurationProvider.UseVoxtaAuthorization(ModuleConfiguration);
+        var tokenPath = useVoxtaAuthorization ? "" : SpotifyAuthPath.GetUserTokenPath(ModuleConfiguration.GetRequired(ModuleConfigurationProvider.TokenPath), Auth.UserId);
         var spotifyManagerConfig = new SpotifyManagerConfig
         {
+            UseVoxtaAuthorization = useVoxtaAuthorization,
+            UserId = Auth.UserId,
+            VoxtaTokenId = Guid.TryParse(ModuleConfiguration.GetOptional(ModuleConfigurationProvider.SpotifyAccount), out var tokenId) ? tokenId : null,
             ClientId = ModuleConfiguration.GetRequired(ModuleConfigurationProvider.ClientId),
             ClientSecret = localEncryptionProvider.Decrypt(ModuleConfiguration.GetRequired(ModuleConfigurationProvider.ClientSecret)),
-            RedirectUri = new Uri(ModuleConfiguration.GetRequired(ModuleConfigurationProvider.RedirectUri)),
+            RedirectUri = new Uri(ModuleConfiguration.GetRequired(useVoxtaAuthorization ? ModuleConfigurationProvider.VoxtaRedirectUri : ModuleConfigurationProvider.RedirectUri)),
             TokenPath = tokenPath,
         };
         var sessionWrapper = new SpotifyUserInteractionWrapper(session, InstanceSettings.ModuleId);

@@ -27,12 +27,16 @@ public class ModuleTestingProvider(
         CancellationToken cancellationToken
         )
     {
+        var useVoxtaAuthorization = ModuleConfigurationProvider.UseVoxtaAuthorization(settings);
         var config = new SpotifyManagerConfig
         {
+            UseVoxtaAuthorization = useVoxtaAuthorization,
+            UserId = auth.UserId,
+            VoxtaTokenId = Guid.TryParse(settings.GetOptional(ModuleConfigurationProvider.SpotifyAccount), out var tokenId) ? tokenId : null,
             ClientId = settings.GetRequired(ModuleConfigurationProvider.ClientId),
             ClientSecret = localEncryptionProvider.Decrypt(settings.GetRequired(ModuleConfigurationProvider.ClientSecret)),
-            RedirectUri = new Uri(settings.GetRequired(ModuleConfigurationProvider.RedirectUri)),
-            TokenPath = SpotifyAuthPath.GetUserTokenPath(settings.GetRequired(ModuleConfigurationProvider.TokenPath), auth.UserId),
+            RedirectUri = new Uri(settings.GetRequired(useVoxtaAuthorization ? ModuleConfigurationProvider.VoxtaRedirectUri : ModuleConfigurationProvider.RedirectUri)),
+            TokenPath = useVoxtaAuthorization ? "" : SpotifyAuthPath.GetUserTokenPath(settings.GetRequired(ModuleConfigurationProvider.TokenPath), auth.UserId),
         };
         // TODO: There is no way currently to get a tunnel here
         var ws = broadcastFactory.Create(auth.UserId);

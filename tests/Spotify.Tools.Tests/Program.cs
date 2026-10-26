@@ -168,6 +168,7 @@ Console.WriteLine("PASS invalid arguments rejected before provider access");
     Console.WriteLine("PASS tools session, no ActionInference, legacy suppression, multiple calls and disposal");
 }
 await SpotifyConfigurationChecks.RunAsync();
+await SpotifyVoxtaOAuthChecks.RunAsync();
 if (args.Contains("--oauth-listener")) await SpotifyOAuthChecks.RunAsync();
 Console.WriteLine("All Spotify tool checks passed.");
 

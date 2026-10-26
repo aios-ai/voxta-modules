@@ -4,6 +4,8 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using SpotifyAPI.Web;
 using Voxta.Abstractions.Chats.Sessions;
+using Voxta.Abstractions.Authorization;
+using Voxta.Abstractions.Encryption;
 using Voxta.Abstractions.Utils;
 using Voxta.Modules.Aios.Spotify.Clients.Models;
 using Voxta.Modules.Aios.Spotify.Configuration;
@@ -39,6 +41,9 @@ public class SpotifyManagerConfig
     public required string ClientSecret { get; init; }
     public required Uri RedirectUri { get; init; }
     public required string TokenPath { get; init; }
+    public bool UseVoxtaAuthorization { get; init; }
+    public Guid UserId { get; init; }
+    public Guid? VoxtaTokenId { get; init; }
     public TimeSpan AuthorizationTimeout { get; init; } = TimeSpan.FromMinutes(3);
 }
 
@@ -48,18 +53,24 @@ public interface ISpotifyManagerFactory
 }
     
 public class SpotifyManagerFactory(
+    IModuleOAuthTokenStore voxtaTokens,
+    ILocalEncryptionProvider encryption,
     ISpotifyAuthCallbackManager spotifyAuthCallbackManager,
     ILoggerFactory loggerFactory
 ) : ISpotifyManagerFactory
 {
     public async Task<ISpotifyManager> CreateSpotifyManager(ISpotifyUserInteractionWrapper userInteractionWrapper, SpotifyManagerConfig config, CancellationToken cancellationToken)
     {
-        var tokenFolder = Path.GetDirectoryName(Path.GetFullPath(config.TokenPath)) ?? throw new InvalidOperationException("Token path is invalid");
-        if (!Directory.Exists(tokenFolder))
-            Directory.CreateDirectory(tokenFolder);
+        if (!config.UseVoxtaAuthorization)
+        {
+            var tokenFolder = Path.GetDirectoryName(Path.GetFullPath(config.TokenPath)) ?? throw new InvalidOperationException("Token path is invalid");
+            if (!Directory.Exists(tokenFolder))
+                Directory.CreateDirectory(tokenFolder);
+        }
 
         var logger = loggerFactory.CreateLogger<SpotifyManager>();
-        var spotifyManager = new SpotifyManager(spotifyAuthCallbackManager, userInteractionWrapper, config, logger);
+        var spotifyManager = new SpotifyManager(spotifyAuthCallbackManager, userInteractionWrapper, config, logger,
+            config.UseVoxtaAuthorization ? new SpotifyVoxtaTokenStore(voxtaTokens, encryption, config.UserId, config.VoxtaTokenId) : null);
         await spotifyManager.InitializeSpotifyClient(cancellationToken);
             
         if (!spotifyManager.HasClient)
@@ -98,7 +109,8 @@ public class SpotifyManager(
     ISpotifyAuthCallbackManager spotifyAuthCallbackManager,
     ISpotifyUserInteractionWrapper userInteractionWrapper,
     SpotifyManagerConfig config,
-    ILogger<SpotifyManager> logger) : ISpotifyManager
+    ILogger<SpotifyManager> logger,
+    ISpotifyTokenStore? voxtaTokenStore = null) : ISpotifyManager
 {
     private const string AuthorizationRequiredMessage = "Spotify authorization is required. Please open Voxta on this machine and authorize Spotify.";
     private const string ReauthorizationRequiredMessage = "Spotify authorization has expired or is no longer valid. Please reauthorize Spotify.";
@@ -118,7 +130,7 @@ public class SpotifyManager(
 
     public async Task InitializeSpotifyClient(CancellationToken cancellationToken)
     {
-        logger.LogInformation("Initialize Spotify Client");
+        logger.LogInformation("Initialize Spotify Client ({AuthorizationMode})", config.UseVoxtaAuthorization ? "Voxta OAuth; local listener disabled" : "local listener fallback");
         var accessToken = await GetValidAccessTokenAsync(cancellationToken);
         if (accessToken != null)
         {
@@ -144,7 +156,7 @@ public class SpotifyManager(
             return null;
         }
 
-        var token = await LoadTokenAsync();
+        var token = await LoadTokenAsync(cancellationToken);
 
         if ((_authorizationPromptDismissed || _authorizationRetrySuppressed) &&
             (token == null || IsTokenExpired(token) || _forceTokenRefresh))
@@ -161,7 +173,7 @@ public class SpotifyManager(
                 try
                 {
                     token = await RefreshTokenAsync(token.RefreshToken, cancellationToken);
-                    await SaveTokenAsync(token);
+                    await SaveTokenAsync(token, cancellationToken);
                     _forceTokenRefresh = false;
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -171,7 +183,7 @@ public class SpotifyManager(
                 catch (Exception ex) when (IsInvalidGrant(ex))
                 {
                     logger.LogWarning(ex, "Spotify refresh token is invalid or expired. Discarding stored token and requesting authorization again.");
-                    DiscardStoredToken();
+                    await DiscardStoredTokenAsync(cancellationToken);
                     SetAuthorizationRequired();
                     token = null;
                 }
@@ -189,6 +201,12 @@ public class SpotifyManager(
 
             if (token == null)
             {
+                if (config.UseVoxtaAuthorization)
+                {
+                    _configurationError = "Spotify is not authorized in Voxta OAuth mode. Save the module settings, authorize Spotify Account in module configuration, then run Test or start a new chat. The local listener and fallback token file are disabled in this mode.";
+                    SetAuthorizationRequired();
+                    return null;
+                }
                 if (SpotifyRedirectUri.GetError(config.RedirectUri) is { } redirectError)
                 {
                     _configurationError = redirectError;
@@ -203,18 +221,7 @@ public class SpotifyManager(
                 )
                 {
                     State = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)),
-                    Scope =
-                    [
-                        Scopes.UserReadPrivate,
-                        Scopes.UserReadPlaybackState,
-                        Scopes.UserModifyPlaybackState,
-                        Scopes.UserTopRead,
-                        Scopes.PlaylistReadPrivate,
-                        Scopes.PlaylistModifyPrivate,
-                        Scopes.PlaylistReadCollaborative,
-                        Scopes.UserLibraryModify,
-                        Scopes.UserLibraryRead
-                    ]
+                    Scope = SpotifyModuleAuthorizationProvider.ScopesRequired
 
                 };
 
@@ -284,7 +291,7 @@ public class SpotifyManager(
                     ExpiresAt = DateTime.UtcNow.AddSeconds(response.ExpiresIn)
                 };
 
-                await SaveTokenAsync(token);
+                await SaveTokenAsync(token, cancellationToken);
                 _forceTokenRefresh = false;
                 _reauthorizationRequired = false;
                 _authorizationPromptDismissed = false;
@@ -329,8 +336,15 @@ public class SpotifyManager(
         return DateTime.UtcNow >= token.ExpiresAt;
     }
 
-    private async Task SaveTokenAsync(SpotifyAuthToken token)
+    private async Task SaveTokenAsync(SpotifyAuthToken token, CancellationToken cancellationToken)
     {
+        if (config.UseVoxtaAuthorization)
+        {
+            if (voxtaTokenStore == null) throw new InvalidOperationException("Voxta OAuth token storage is unavailable.");
+            await voxtaTokenStore.SaveAsync(token, cancellationToken);
+            _spotifyAuthToken = token;
+            return;
+        }
         var options = new JsonSerializerOptions { WriteIndented = true };
         var json = JsonSerializer.Serialize(token, options);
         await File.WriteAllTextAsync(config.TokenPath, json);
@@ -352,8 +366,13 @@ public class SpotifyManager(
         };
     }
 
-    private async Task<SpotifyAuthToken?> LoadTokenAsync()
+    private async Task<SpotifyAuthToken?> LoadTokenAsync(CancellationToken cancellationToken)
     {
+        if (config.UseVoxtaAuthorization)
+        {
+            _spotifyAuthToken = voxtaTokenStore == null ? null : await voxtaTokenStore.LoadAsync(cancellationToken);
+            return _spotifyAuthToken;
+        }
         if (!File.Exists(config.TokenPath))
             return null;
 
@@ -372,11 +391,16 @@ public class SpotifyManager(
         }
     }
 
-    private void DiscardStoredToken()
+    private async Task DiscardStoredTokenAsync(CancellationToken cancellationToken)
     {
         _spotifyAuthToken = null;
         _spotifyClient = null;
 
+        if (config.UseVoxtaAuthorization)
+        {
+            if (voxtaTokenStore != null) await voxtaTokenStore.DeleteAsync(cancellationToken);
+            return;
+        }
         if (!File.Exists(config.TokenPath))
             return;
 

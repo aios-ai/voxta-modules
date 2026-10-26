@@ -44,18 +44,56 @@ deselect Spotify Tools and select Spotify Actions (Legacy). Runtime/provider par
 
 ## Spotify authorization boundary
 
-Voxta's module `IServiceCollection` belongs to its isolated module container. Registering MVC application parts
-there does not add routes to the host web app. The current host's `IModuleHttpEndpoints` dispatcher is under
-`/api/extensions/{prefix}/...` and requires a logged-in Voxta user, so it cannot serve a general Spotify browser
-OAuth callback. Do not restore the unused MVC controller or rely on `/extensions/...` at the Voxta UI port.
+### Why the original route stopped working
 
-`SpotifyOAuthListener` starts a temporary Kestrel listener on an explicit loopback IP at the configured redirect
-URI, defaulting to `http://127.0.0.1:5385/extensions/spotify/oauth2/callback`. This address must match the Spotify
-Developer Dashboard exactly. The listener only runs during authorization; it validates the pending random state,
-rejects stale callbacks, handles denial, disables request logging/caching, and stops on completion, cancellation,
-or timeout. Authorization waits at most three minutes. Bad redirect settings and occupied ports produce actionable
-module errors. Existing usable access/refresh tokens skip the callback, so setup validation happens only when a
-new browser authorization is needed. Loopback authorization must open on the server machine.
+The original module used `AddControllers().PartManager.ApplicationParts.Add(...)` and an anonymous
+`SpotifyController` at `/api/extensions/spotify/oauth2/callback`. It already exchanged the received code for
+access/refresh tokens. This was a real pipeline through Voxta's existing web server.
+
+Comparison of the locally available server builds established the registration change:
+
+| Server build | Owning implementation | Effect on the original module |
+| --- | --- | --- |
+| 1.12.0 + `165a82d` | `Microsoft.Extensions.DependencyInjection.VoxtaModuleBuilder(IServiceCollection services, ...)` retains the host collection; the host initializes it with its own `services`. | Module-added MVC application parts can be seen by the host's `MapControllers`. |
+| 1.13.0 + `34ff5a1` and + `a0c46bd` | `Voxta.Core.Modules.ModuleBuilder.Services` returns `LoadedModule.Services`, a separate collection. `LoadedModule` builds a module-owned container. | The same MVC registration remains private to the module and no longer exposes a host route. |
+
+The exact upstream change commit has not been identified; these are inspected build snapshots. No old server
+was launched or installation modified during this comparison. Module commit `601615f` also moved the configured
+redirect from `/api/extensions/...` to `/extensions/...`; that path did not establish a host route. The current
+`ModuleEndpointsController` dispatches `IModuleHttpEndpoints` under `/api/extensions/{prefix}/...`, with Voxta
+login required. It cannot replace the old anonymous controller simply by restoring that controller's attributes.
+Spotify still accepts HTTP loopback IP redirect URIs and authorization-code flow. The reported failure already
+contained an authorization code; the receiving route was the failure, rather than Spotify rejecting the login.
+
+### Native Voxta OAuth test mode
+
+`SpotifyModuleAuthorizationProvider` implements the SDK's `IOAuth2ModuleAuthorizationProvider`, registered by
+`AuthProviderType`. `Spotify Account (Voxta OAuth)` is a native `FormAuthorizeField`. Voxta's existing UI starts
+OAuth, stores/validates browser state, receives Spotify's response at `/auth/modules/callback`, and calls its
+`ModulesAuthController` to exchange the code through the provider and persist encrypted tokens. This requires
+no custom MVC registration or additional listener. The provider validates its field and requires the callback
+URI supplied by Voxta to match `Voxta OAuth Redirect URI` exactly. Default:
+`http://127.0.0.1:5384/auth/modules/callback`. HTTPS server origins are supported too. The dashboard must contain
+the exact URI. Use the same signed-in Voxta browser and origin for the whole authorization; copying the outgoing
+Spotify URL to another browser does not copy Voxta's stored OAuth state.
+
+`Authorization Mode` explicitly selects `voxta` or `listener`. Unknown modes fail rather than silently falling
+back. Existing installations default to the listener until user acceptance of the native pipeline. In native
+mode, both module testing and chat initialization obtain only the `SpotifyAccount` token reference for the current
+user from `IModuleOAuthTokenStore`. `SpotifyVoxtaTokenStore` decrypts reads and encrypts refresh updates. Native
+mode never reads/deletes the fallback token file, starts `SpotifyOAuthListener`, or opens the fallback interaction
+request. With no native account, it reports instructions to authorize the account field. Its successful test
+therefore cannot be explained by a previously saved fallback token. Native sign-out and fallback credentials
+are independent. Token refresh continues through Spotify's existing code and updates only the selected store.
+
+### Retained listener fallback
+
+`SpotifyOAuthListener` starts a temporary Kestrel listener on an explicit loopback IP at the fallback redirect
+URI, defaulting to `http://127.0.0.1:5385/extensions/spotify/oauth2/callback`. It only runs in listener mode while
+awaiting authorization. It validates the pending random state, rejects stale callbacks, handles denial, disables
+request logging/caching, and stops on completion, cancellation, or the three-minute timeout. Existing usable
+fallback access/refresh tokens skip the callback. This workaround stays available until the user has tested the
+native pipeline and authorized removal. Do not remove it or automatically use it when native authorization fails.
 
 The chat interaction wrapper sets `UserInteractionRequestInput.ModuleId` from `InstanceSettings.ModuleId`, matching
 the module-test request's identity so Voxta can resolve its logo. The host controls final popup rendering.
@@ -176,7 +214,10 @@ cancellation, and no automatic retry. It does not test live providers or host re
 catalog/handler against a fake manager: all 17 operations, mutation failures, input validation, missing state,
 ambiguous devices, cancellation, metadata/settings defaults, ducking overlap and volume changes, session dispatch,
 legacy suppression, disposal, tool-card settings, description overrides, defaults/migration, redirect validation, and
-chat request identity. The optional loopback checks cover real callback delivery, state/replay validation, denial,
+chat request identity. `SpotifyVoxtaOAuthChecks` covers native provider inputs/results, exact callback/state
+forwarding, field and URI validation, host-store encryption/refresh, cancellation, and isolation from a valid
+fallback token and forbidden fallback callbacks/popups. It does not replace a browser/Spotify acceptance test.
+The optional loopback checks cover real callback delivery, state/replay validation, denial,
 listener shutdown, and timeout cleanup. Live host permissions, actual playback, and provider parity require runtime testing.
 
 For each migration, add handler checks with fake domain clients for all operations, invalid inputs, provider failure,
