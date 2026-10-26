@@ -37,7 +37,7 @@ foreach (var (operation, json, mutation) in operations)
 {
     var fixture = new Fixture();
     var result = await fixture.Call(operation, json);
-    Check(result.IsError == (operation == "connect"), $"Unexpected result for {operation}: {result.Text}");
+    Check(!result.IsError, $"Unexpected result for {operation}: {result.Text}");
     Check(fixture.Commands.Count == (mutation == null ? 0 : 1), $"Command tracking for {operation}");
     if (mutation != null)
     {
@@ -83,7 +83,7 @@ Console.WriteLine("PASS invalid arguments rejected before provider access");
     var definitions = f.Catalog.GetTools();
     Check(definitions.Count == 17 && definitions.Select(d => d.Name).Distinct().Count() == 17, "Catalog coverage");
     Check(definitions.All(d => d.Source == VoxtaModule.ServiceName && d.AugmentationKey == VoxtaModule.ToolsAugmentationKey && !d.AlwaysAllowed && d.ExternalContent), "Tool ownership/permissions");
-    Check(definitions.Count(d => d.Permission == ToolPermissionClass.Read) == 2, "Read/Act classification");
+    Check(definitions.Count(d => d.Permission == ToolPermissionClass.Read) == 3, "Read/Act classification");
     Check(SpotifyToolCatalog.Choices.All(c => c.EnabledByDefault), "Tools should default to enabled");
     var settings = new SpotifyToolsSettings(new HashSet<string>(), [ChatStyles.Assistant]);
     var disabled = SpotifyToolCatalog.Create(f.Handler, settings, f.Playlists, NullLogger.Instance);
@@ -98,7 +98,7 @@ Console.WriteLine("PASS invalid arguments rejected before provider access");
 
 {
     var f = new Fixture();
-    f.Backend.Devices = new() { ["Kitchen One"] = "1", ["Kitchen Two"] = "2" };
+    f.Backend.Devices = [new() { Name = "Kitchen One", Id = "1" }, new() { Name = "Kitchen Two", Id = "2" }];
     Check((await f.Call("transfer_to_device", "{\"device\":\"Kitchen\"}")).IsError, "Ambiguous device selected");
     Check(!f.Backend.Calls.Any(c => c.Name == "TransferPlayback"), "Ambiguous transfer side effect");
     Check((await f.Call("play_special_playlist", "{\"name\":\"Unknown\"}")).IsError, "Unconfigured playlist accepted");
@@ -107,6 +107,38 @@ Console.WriteLine("PASS invalid arguments rejected before provider access");
     foreach (var (operation, json) in new[] { ("toggle_playback", "{}"), ("add_to_favorites", "{}"), ("seek_playback", "{\"target\":\"middle\"}"), ("volume", "{\"type\":\"set\",\"value\":30}") })
         Check((await f.Call(operation, json)).IsError, "Missing playback state accepted");
     Console.WriteLine("PASS domain errors and ambiguous device safety");
+}
+
+{
+    var f = new Fixture();
+    f.Backend.State = null;
+    f.Backend.Devices =
+    [
+        new() { Name = "XENTOWER", Id = "desktop", Type = "Computer", IsActive = false },
+        new() { Name = "Echo", Id = "speaker", Type = "Speaker", IsActive = true, IsRestricted = true },
+        new() { Name = "Echo", Id = "other-speaker", Type = "Speaker" },
+        new() { Name = "Unavailable", Type = "Speaker" },
+    ];
+    foreach (var operation in new[] { "list_devices", "connect" })
+    {
+        var devices = await f.Call(operation, "{}");
+        Check(!devices.IsError && devices.Text.Contains("XENTOWER [type: Computer, active: false, controllable: true"), "Inactive desktop metadata missing");
+        Check(devices.Text.Contains("id: speaker") && devices.Text.Contains("id: other-speaker") && devices.Text.Contains("controllable: false"), "Duplicate/restricted devices lost");
+    }
+    Check(!f.Backend.Calls.Any(c => c.Name == "TransferPlayback"), "Discovery activated a player");
+    Check((await f.Call("transfer_to_device", "{\"device\":\"Echo\"}")).IsError, "Duplicate names collapsed");
+    Check((await f.Call("transfer_to_device", "{\"device\":\"speaker\"}")).IsError, "Restricted device accepted");
+    Check((await f.Call("transfer_to_device", "{\"device\":\"Unavailable\"}")).IsError, "Missing device ID accepted");
+    Check(!f.Backend.Calls.Any(c => c.Name == "TransferPlayback"), "Invalid device selection transferred playback");
+    Check(!(await f.Call("transfer_to_device", "{\"device\":\"other-speaker\"}")).IsError, "Device ID did not disambiguate");
+    Check(!(await f.Call("transfer_to_device", "{\"device\":\"xentower\"}")).IsError, "Inactive device could not be selected");
+    Check(f.Backend.Calls.Count(c => c.Name == "TransferPlayback") == 2, "Transfer retried or original command executed automatically");
+    var missing = await f.Call("toggle_playback", "{}");
+    Check(missing.IsError && missing.Text.Contains("Opening Spotify alone") && missing.Text.Contains("transferring playback"), "Missing player recovery absent");
+    f.Backend.Devices = [];
+    var empty = await f.Call("list_devices", "{}");
+    Check(!empty.IsError && empty.Text.Contains("briefly start playback manually"), "Empty discovery not actionable");
+    Console.WriteLine("PASS device recovery, metadata, duplicate IDs, restricted devices and no implicit transfer/retry");
 }
 
 {
@@ -219,7 +251,7 @@ public class BackendProxy : DispatchProxy
     public bool Succeed = true;
     public bool FailureSeen;
     public Action<string>? OnCall;
-    public Dictionary<string, string> Devices = new() { ["Desktop"] = "device-id" };
+    public IReadOnlyList<Device> Devices = [new() { Name = "Desktop", Id = "device-id", Type = "Computer", IsActive = true }];
     public CurrentlyPlayingContext? State = new()
     {
         Device = new Device { Id = "device-id", Name = "Desktop", VolumePercent = 80, IsActive = true },
@@ -243,7 +275,7 @@ public class BackendProxy : DispatchProxy
             "SearchSpotify" => Task.FromResult<SearchResponse?>(new() { Tracks = new Paging<FullTrack, SearchResponse> { Items = [Track()] } }),
             "GetSpotifyUserIdAsync" => Task.FromResult<string?>("user-id"),
             "ListAvailablePlaylists" => Task.FromResult(new Dictionary<string, string> { ["Favorites"] = "spotify:playlist:playlist-id" }),
-            "ListAvailableDevices" => Task.FromResult(Devices),
+            "GetAvailablePlaybackDevices" => Task.FromResult(Devices),
             _ when method.ReturnType == typeof(Task<bool>) => Task.FromResult(Succeed),
             _ => throw new Exception("Unexpected provider call: " + name),
         };

@@ -58,6 +58,7 @@ public interface ISpotifyManager
     Task<bool> AddItems(string playlistId, PlaylistAddItemsRequest request, CancellationToken cancellationToken);
     Task<bool> AddTrackToLibraryAsync(string trackUri, string trackFriendlyName, CancellationToken cancellationToken);
     Task<Dictionary<string, string>> ListAvailableDevices(CancellationToken cancellationToken);
+    Task<IReadOnlyList<Device>> GetAvailablePlaybackDevices(CancellationToken cancellationToken);
     Task<bool> TransferPlayback(string deviceId, CancellationToken cancellationToken);
 }
     
@@ -70,7 +71,7 @@ public class SpotifyManager(
     private const string AuthorizationRequiredMessage = "Spotify authorization is required. Save your client credentials and sign in using Spotify Account in module settings, then test the module or start a new chat.";
     private const string ReauthorizationRequiredMessage = "Spotify authorization has expired or is no longer valid. Sign out and sign in again using Spotify Account in module settings.";
     private const string AuthorizationFailedMessage = "Spotify could not refresh authorization. Sign out and sign in again using Spotify Account in module settings, then test the module or start a new chat.";
-    private const string NoActiveDeviceMessage = "No active Spotify device was found. Please start Spotify on your browser, desktop, or mobile app, then try again.";
+    internal const string NoActiveDeviceMessage = "Spotify has no active player. Opening Spotify alone may not activate it. An available Spotify Connect device can be activated by transferring playback to it, then retrying the requested command. If no controllable device is available, open Spotify and briefly start playback manually on the intended device.";
     private readonly SemaphoreSlim _authorizationGate = new(1, 1);
     private SpotifyClient? _spotifyClient;
     private string? _clientAccessToken;
@@ -164,7 +165,9 @@ public class SpotifyManager(
                 return null;
             }
 
-            return await _spotifyClient.Player.GetCurrentPlayback(cancellationToken);
+            var state = await _spotifyClient.Player.GetCurrentPlayback(cancellationToken);
+            ClearUserVisibleError();
+            return state;
         }
         catch (APIException ex)
         {
@@ -590,39 +593,34 @@ public class SpotifyManager(
     public async Task<Dictionary<string, string>> ListAvailableDevices(CancellationToken cancellationToken)
     {
         var deviceMap = new Dictionary<string, string>();
+        foreach (var device in await GetAvailablePlaybackDevices(cancellationToken))
+        {
+            if (!string.IsNullOrEmpty(device.Name) && !string.IsNullOrEmpty(device.Id))
+                deviceMap[device.Name] = device.Id;
+        }
+        return deviceMap;
+    }
 
+    public async Task<IReadOnlyList<Device>> GetAvailablePlaybackDevices(CancellationToken cancellationToken)
+    {
         if (!await EnsureValidSpotifyClient(cancellationToken) || _spotifyClient == null)
         {
             logger.LogError("Spotify client not valid. Cannot list available devices.");
-            return deviceMap;
+            return [];
         }
 
         try
         {
             var response = await _spotifyClient.Player.GetAvailableDevices(cancellationToken);
-            if (response.Devices.Count > 0)
-            {
-                foreach (var device in response.Devices)
-                {
-                    if (string.IsNullOrEmpty(device.Name) || string.IsNullOrEmpty(device.Id))
-                        continue;
-
-                    deviceMap[device.Name] = device.Id;
-                }
-                ClearUserVisibleError();
-            }
-            else
-            {
-                logger.LogWarning("No devices available.");
-                LastUserVisibleError = NoActiveDeviceMessage;
-            }
+            ClearUserVisibleError();
+            return response.Devices;
         }
         catch (APIException ex)
         {
             SetSpotifyApiError(ex, "list available devices");
         }
 
-        return deviceMap;
+        return [];
     }
 
     public async Task<bool> TransferPlayback(string deviceId, CancellationToken cancellationToken)

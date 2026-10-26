@@ -29,11 +29,11 @@ internal sealed class SpotifyToolHandler(
         switch (operation)
         {
             case "spotify_connect":
-                return Failure("No active Spotify client detected. Start playback in your browser, desktop or mobile Spotify app to activate a player.");
+                return await DescribeDevices(token);
             case "toggle_playback":
             {
                 var state = await manager.GetCurrentPlaybackState(token);
-                if (state?.Device == null) return Failure("No active Spotify device was found.");
+                if (state?.Device == null) return Failure(SpotifyManager.NoActiveDeviceMessage);
                 return await Changed(await manager.ControlSpotifyPlayback(!state.IsPlaying, token), state.IsPlaying ? "Paused playback." : "Resumed playback.", token);
             }
             case "play_random_music":
@@ -67,7 +67,7 @@ internal sealed class SpotifyToolHandler(
                 var type = Choice(args, "type", "set", "increase", "decrease");
                 var value = Number(args, type == "set" ? null : 10, 100);
                 var state = await manager.GetCurrentPlaybackState(token);
-                if (state?.Device == null) return Failure("No active Spotify device was found.");
+                if (state?.Device == null) return Failure(SpotifyManager.NoActiveDeviceMessage);
                 return await Changed(await ducking.ChangeVolumeAsync(type, value, token, state.Device.VolumePercent), $"Volume change applied: {type} {value}%.", token);
             }
             case "seek_playback":
@@ -107,19 +107,19 @@ internal sealed class SpotifyToolHandler(
                 return manager.LastUserVisibleError != null ? Failure("Could not list playlists.") : new("Available playlists: " + (playlists.Count == 0 ? "none" : string.Join(", ", playlists.Keys)), false);
             }
             case "list_devices":
-            {
-                var devices = await manager.ListAvailableDevices(token);
-                return manager.LastUserVisibleError != null ? Failure("Could not list devices.") : new("Available devices: " + (devices.Count == 0 ? "none" : string.Join(", ", devices.Keys)), false);
-            }
+                return await DescribeDevices(token);
             case "transfer_to_device":
             {
                 var name = Text(args, "device");
-                var devices = await manager.ListAvailableDevices(token);
+                var devices = await manager.GetAvailablePlaybackDevices(token);
                 if (manager.LastUserVisibleError != null) return Failure("Could not list devices.");
-                var matches = devices.Where(d => d.Key.Equals(name, StringComparison.OrdinalIgnoreCase)).ToArray();
-                if (matches.Length == 0) matches = devices.Where(d => d.Key.Contains(name, StringComparison.OrdinalIgnoreCase)).ToArray();
-                if (matches.Length != 1) return new(matches.Length == 0 ? "No matching device was found." : "Device name is ambiguous. Use one of: " + string.Join(", ", matches.Select(d => d.Key)), true);
-                return await Changed(await manager.TransferPlayback(matches[0].Value, token), $"Transferred playback to {matches[0].Key}.", token);
+                var matches = devices.Where(d => !string.IsNullOrWhiteSpace(d.Id) && d.Id.Equals(name, StringComparison.Ordinal)).ToArray();
+                if (matches.Length == 0) matches = devices.Where(d => string.Equals(d.Name, name, StringComparison.OrdinalIgnoreCase)).ToArray();
+                if (matches.Length == 0) matches = devices.Where(d => d.Name?.Contains(name, StringComparison.OrdinalIgnoreCase) == true).ToArray();
+                if (matches.Length != 1) return new(matches.Length == 0 ? "No matching device was found." : "Device name is ambiguous. Specify a device ID from: " + FormatDevices(matches), true);
+                var device = matches[0];
+                if (device.IsRestricted || string.IsNullOrWhiteSpace(device.Id)) return new("That Spotify device cannot be controlled through the Web API. Choose another available device.", true);
+                return await Changed(await manager.TransferPlayback(device.Id, token), $"Transferred playback to {device.Name}. Transfer preserves the current playing or paused state; it does not confirm that the requested music has started.", token);
             }
             case "add_to_favorites":
             case "add_to_playlist":
@@ -137,6 +137,18 @@ internal sealed class SpotifyToolHandler(
             default: return new("Unsupported Spotify operation.", true);
         }
     }
+
+    private async Task<ChatToolCallResult> DescribeDevices(CancellationToken token)
+    {
+        var devices = await manager.GetAvailablePlaybackDevices(token);
+        if (manager.LastUserVisibleError != null) return Failure("Could not list devices.");
+        return new(devices.Count == 0
+            ? "No Spotify Connect devices are available. Open Spotify on the intended device; if it still does not appear, briefly start playback manually there."
+            : "Available Spotify Connect devices (active means selected as the player, not necessarily playing): " + FormatDevices(devices), false);
+    }
+
+    private static string FormatDevices(IEnumerable<Device> devices) => string.Join("; ", devices.Select(d =>
+        $"{d.Name} [type: {d.Type}, active: {d.IsActive.ToString().ToLowerInvariant()}, controllable: {(!d.IsRestricted && !string.IsNullOrWhiteSpace(d.Id)).ToString().ToLowerInvariant()}, id: {d.Id ?? "unavailable"}]"));
 
     private ChatToolCallResult Failure(string fallback) => new(manager.LastUserVisibleError ?? fallback, true);
     private async Task<ChatToolCallResult> Changed(bool success, string text, CancellationToken token)

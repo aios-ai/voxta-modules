@@ -37,7 +37,8 @@ internal static class SpotifyConfigurationChecks
         Check(settings.Selected.Contains("spotify_skip_next") && !settings.Selected.Contains("spotify_skip_previous"), "Card switches do not take precedence");
         Check(settings.Descriptions!["spotify_skip_next"] == "Custom explanation", "Description was lost");
         var catalog = SpotifyToolCatalog.Create(null!, settings, new Dictionary<string, string>(), NullLogger.Instance);
-        Check(catalog.GetTools().Single(t => t.Name == "spotify_skip_next").Description == "Custom explanation", "Description not offered to model");
+        var description = catalog.GetTools().Single(t => t.Name == "spotify_skip_next").Description;
+        Check(description != null && description.StartsWith("Custom explanation") && description.Contains("spotify_list_devices") && description.Contains("ask the user"), "Custom description lost recovery/selection guidance");
         var fields = await new ModuleConfigurationProvider().GetModuleConfigurationFieldsAsync(null!, empty, default);
         Check(fields.OfType<FormAuthorizeField>().Single().Name == "SpotifyAccount", "Missing account field");
         Check(fields.OfType<FormDocumentationField>().Any(f => f.Value.Contains(SpotifyRedirectUri.DesktopDefault) && f.Value.Contains(SpotifyRedirectUri.VoxtaDefault)), "Both callbacks must be explained");

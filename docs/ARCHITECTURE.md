@@ -205,10 +205,17 @@ Recommended order: OpenWeather, Hue, Spotify. Prefix the names below as describe
 | --- | --- | --- |
 | OpenWeather (5) | `get_weather`, `get_weather_forecast`, `get_air_pollution`, `get_air_pollution_forecast`, `get_weather_map` | Reuse `IOpenWeatherClient` and summarizers. Preserve configured location fallback, units, selected details, and cache path. Separate data/formatting from note feedback. Return maps as images plus descriptive text. All five are queries. |
 | Hue (8) | `turn_lights_on`, `turn_lights_off`, `hueBridge_connect`, `change_color`, `show_emotion`, `change_brightness`, `activate_scene`, `show_hue_inventory` | Reuse Hue manager/services. Validate brightness and target selection; expose useful disconnected/not-found errors. Inventory is Read; device/connection changes are Act. Keep emotion control gated by the configured character light and opt-in tool selection; agent-loop timing is distinct from the old after-assistant action timing. Preserve setup/link-button interaction separately from tool-result feedback. |
-| Spotify (17) | `toggle_playback`, `spotify_connect`, `play_random_music`, `play_special_playlist`, `play_music`, `queue_track`, `volume`, `seek_playback`, `skip_next`, `skip_previous`, `repeat_mode`, `shuffle_mode`, `add_to_favorites`, `get_playlists`, `add_to_playlist`, `list_devices`, `transfer_to_device` | Reuse manager/search services. `spotify_connect` currently reports that no client is active; do not invent a connection operation. Playlist/device listing are Read; mutations are Act. Preserve configured playlists, playback state, last-command tracking, and speech ducking independently of the action handler. Keep OAuth setup and passive playback monitoring separate from tool execution. |
+| Spotify (17) | `toggle_playback`, `spotify_connect`, `play_random_music`, `play_special_playlist`, `play_music`, `queue_track`, `volume`, `seek_playback`, `skip_next`, `skip_previous`, `repeat_mode`, `shuffle_mode`, `add_to_favorites`, `get_playlists`, `add_to_playlist`, `list_devices`, `transfer_to_device` | Reuse manager/search services. The connect tool diagnoses available players without activating one. Connect and playlist/device listing are Read; mutations are Act. Preserve configured playlists, playback state, last-command tracking, and speech ducking independently of the action handler. Keep OAuth setup and passive playback monitoring separate from tool execution. |
 
 Spotify speech events use the neutral `SpotifyPlaybackSession` and `SpotifySpeechDucking`, independently of
 `SpotifyActionHandler`. Preserve this boundary when extending the tools path.
+Spotify tools expose device type, active status, control availability and ID from the neutral manager's full device
+list; the legacy name-to-ID adapter remains separate. An active player can be paused. Tool descriptions explain
+discovery, explicit transfer and retry of the original command when Spotify reports no active player. They require
+user selection when multiple devices fit and prohibit guessing the user's computer name. Descriptions retain this
+recovery guidance alongside user overrides. No tool silently transfers or retries a mutation. Transfer resolves IDs
+or unambiguous names, preserves duplicate names, and rejects restricted devices or devices without IDs. Transfer
+preserves Spotify's playing/paused state; its success is not proof that the requested music has started.
 Playback monitors and initial Hue inventory notes are session features; choose their owner explicitly when both
 augmentations are selected to avoid duplicate polling/notes and double disposal.
 
