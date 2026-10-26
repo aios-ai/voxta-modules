@@ -24,8 +24,10 @@ public class ModuleConfigurationProvider : ModuleConfigurationProviderBase, IMod
         """);
     public static readonly FormAuthorizeField SpotifyAccount = new()
     {
-        Name = "SpotifyAccount", Label = "Spotify Account", Method = AuthorizationMethod.OAuth2,
-        Text = "Save your client credentials and register both redirect URLs above, then sign in here. You can use either the desktop app or browser without changing settings.",
+        Name = "SpotifyAccount",
+        Label = "Spotify Account",
+        Method = AuthorizationMethod.OAuth2,
+        Text = "Save your client credentials and register both redirect URLs above, then sign in here.",
     };
 
     public static readonly FormTextField ClientId = new()

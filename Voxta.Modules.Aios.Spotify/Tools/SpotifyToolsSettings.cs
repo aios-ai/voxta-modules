@@ -20,9 +20,12 @@ internal sealed record SpotifyToolsSettings(IReadOnlySet<string> Selected, ChatS
 
     private static FormArrayOfObjectsField Field => new()
     {
-        Name = "SpotifyTools", Label = "Spotify Tools",
-        Text = "Select a tool to edit the description offered to the model. Disable individual tools using their switches. All tools start enabled; Voxta still controls tool permissions.",
-        AllowAddRemove = false, AllowRename = false, AllowDisable = true,
+        Name = "SpotifyTools",
+        Label = "Spotify Tools",
+        Text = "Select a tool to edit the description offered to the model. Disable individual tools using their switches.",
+        AllowAddRemove = false,
+        AllowRename = false,
+        AllowDisable = true,
         UniqueFields = [nameof(SpotifyToolSettings.Name)],
         FieldTemplate =
         [

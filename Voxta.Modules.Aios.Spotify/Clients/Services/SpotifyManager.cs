@@ -253,8 +253,14 @@ public class SpotifyManager(
 
             if (type == "track" || uri.StartsWith("spotify:track:", StringComparison.Ordinal))
             {
-                // Desktop clients can accept bare track URIs but clear playback instead of playing.
-                // Start at the requested track in its album; do not retry the destructive request.
+                // TEMPORARY WORKAROUND: desktop clients can accept bare track URIs but clear playback.
+                // Report: https://community.spotify.com/forum/en/discussion/7552922/web-api-me-player-play-returns-204-but-does-not-start-playback-and-clears-current-playback-desktop
+                // TODO: Remove this album lookup/context/offset path once direct single-track `uris`
+                // requests reliably start the requested song on affected desktop clients, from both
+                // playing and paused states, without clearing the player. Verify against live Spotify;
+                // a 204 response or mocked tests alone do not establish that the upstream bug is fixed.
+                // Restore single-track playback so later album tracks are not added by this workaround.
+                // Keep the playback-state confirmation below after removal; never retry a play command.
                 var track = await _spotifyClient.Tracks.Get(uri.Split(':').Last(), cancellationToken);
                 if (string.IsNullOrWhiteSpace(track.Album?.Uri) || string.IsNullOrWhiteSpace(track.Uri))
                 {
