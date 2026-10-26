@@ -7,7 +7,8 @@ namespace Voxta.Modules.Aios.Spotify.Tools;
 
 internal static class SpotifyToolCatalog
 {
-    private const string PlayerRecovery = " Requires an active Spotify player, which may be paused. If no player is active, use spotify_list_devices, then spotify_transfer_to_device, then retry this command once after a successful transfer. Select a controllable device matching the user's explicit name or device type, or the only controllable device. If several devices could match, ask the user which one; never infer their computer name or location. If no device is available, ask the user to open Spotify and briefly start playback manually.";
+    private const string PlayerRecovery = " Spotify context includes available devices, the active player and playing/paused state. Use an active player matching the user's intended destination directly; a paused player is active too. Refresh with spotify_list_devices when context is missing, stale or the intended device is absent. If the intended device is available but inactive, use spotify_transfer_to_device, then execute the requested command once. Select a controllable device matching the user's chosen name or type; ask which device when several fit. If the intended device is unavailable, ask the user to open Spotify there and wait for their confirmation before refreshing discovery. Brief manual playback is a fallback only if the device remains unavailable after confirmation.";
+    private const string DeviceSetup = " Match devices to the user's intended destination using their names and types. If several fit, ask which one. If the intended device is missing, ask the user to open Spotify on that device and wait for their confirmation before refreshing discovery. If it remains missing, ask the user to briefly start playback there.";
     private sealed record Definition(string Operation, string Description, FunctionArgumentDefinition[] Arguments, bool Read = false);
     private static FunctionArgumentDefinition Text(string name, string description) => new()
         { Name = name, Description = description, Type = FunctionArgumentType.String, Required = true };
@@ -31,8 +32,8 @@ internal static class SpotifyToolCatalog
         new("add_to_favorites", "Save the current Spotify track to Liked Songs.", []),
         new("get_playlists", "List the user's available Spotify playlists.", [], true),
         new("add_to_playlist", "Add the current Spotify track to an existing playlist.", [Text("playlist", "Exact playlist name from the user's available playlists.")]),
-        new("list_devices", "Discover Spotify Connect devices, including name, device type, active status, control availability and ID. Available inactive devices can be activated with spotify_transfer_to_device without manually starting music. Match the user's requested device name or type; ask which device when several match. Do not guess the user's computer name.", [], true),
-        new("transfer_to_device", "Activate or transfer playback to a controllable device from spotify_list_devices. Use the user's chosen device or the only suitable device; ask when ambiguous. Preserves the current playing or paused state. After success, run the originally requested playback command; transfer alone does not start the requested music.", [Text("device", "Device ID, exact device name, or an unambiguous part of its name from spotify_list_devices.")]),
+        new("list_devices", "Refresh the available Spotify Connect devices shown in context: name, type, active status, control availability and ID. Use when context is stale, the intended device is absent, or after the user confirms Spotify is open. An active device can be used directly; an available inactive device can be activated with spotify_transfer_to_device.", [], true),
+        new("transfer_to_device", "Activate or transfer playback to a controllable device from Spotify context or spotify_list_devices. Use the user's chosen device or the only suitable device; ask when ambiguous. Preserves the current playing or paused state. After success, run the originally requested playback command; transfer alone does not start the requested music.", [Text("device", "Device ID, exact device name, or an unambiguous part of its name from Spotify context or spotify_list_devices.")]),
     ];
 
     public static readonly ChatToolChoice[] Choices = Definitions.Select(d =>
@@ -42,7 +43,7 @@ internal static class SpotifyToolCatalog
         IReadOnlyDictionary<string, string> playlists, ILogger logger) => new(
         Definitions.Select((definition, index) => new ModuleTool(
             new ChatTool(Choices[index].Name,
-                (settings.Descriptions?.GetValueOrDefault(Choices[index].Name) ?? definition.Description) + (NeedsPlayer(definition.Operation) ? PlayerRecovery : "") + (definition.Operation == "play_special_playlist"
+                (settings.Descriptions?.GetValueOrDefault(Choices[index].Name) ?? definition.Description) + (NeedsPlayer(definition.Operation) ? PlayerRecovery : "") + (definition.Operation is "list_devices" or "transfer_to_device" ? DeviceSetup : "") + (definition.Operation == "play_special_playlist"
                     ? " Configured playlists: " + (playlists.Count == 0 ? "none" : string.Join(", ", playlists.Keys)) + "." : ""),
                 ChatToolSchema.FromArguments(definition.Arguments), VoxtaModule.ServiceName)
             {

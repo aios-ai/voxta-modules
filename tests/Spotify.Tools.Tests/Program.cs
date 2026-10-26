@@ -137,7 +137,7 @@ Console.WriteLine("PASS invalid arguments rejected before provider access");
     Check(missing.IsError && missing.Text.Contains("Opening Spotify alone") && missing.Text.Contains("transferring playback"), "Missing player recovery absent");
     f.Backend.Devices = [];
     var empty = await f.Call("list_devices", "{}");
-    Check(!empty.IsError && empty.Text.Contains("briefly start playback manually"), "Empty discovery not actionable");
+    Check(!empty.IsError && empty.Text.Contains("confirms it is open") && empty.Text.Contains("fallback"), "Empty discovery not actionable");
     Console.WriteLine("PASS device recovery, metadata, duplicate IDs, restricted devices and no implicit transfer/retry");
 }
 
@@ -200,6 +200,7 @@ Console.WriteLine("PASS invalid arguments rejected before provider access");
     Console.WriteLine("PASS tools session, no ActionInference, legacy suppression, multiple calls and disposal");
 }
 await SpotifyConfigurationChecks.RunAsync();
+await SpotifyContextChecks.RunAsync();
 await SpotifyVoxtaOAuthChecks.RunAsync();
 Console.WriteLine("All Spotify tool checks passed.");
 
@@ -234,15 +235,18 @@ sealed class Fixture
 public class SessionProxy : DispatchProxy
 {
     public ContextDefinition[] Contexts = [];
+    public int ContextWrites;
+    public int FlagWrites;
     protected override object? Invoke(MethodInfo? method, object?[]? args) => method!.Name switch
     {
         "IsAugmentationEnabled" => (string)args![0]! == VoxtaModule.ToolsAugmentationKey,
         "IsAugmentationSuppressed" => false,
-        "SetFlags" => Task.CompletedTask,
+        "SetFlags" => SaveFlags(),
         "SetContexts" => SaveContexts((ContextDefinition[])args![1]!),
         _ => throw new Exception("Unexpected session feedback/access: " + method.Name),
     };
-    private Task SaveContexts(ContextDefinition[] contexts) { Contexts = contexts; return Task.CompletedTask; }
+    private Task SaveContexts(ContextDefinition[] contexts) { Contexts = contexts; ContextWrites++; return Task.CompletedTask; }
+    private Task SaveFlags() { FlagWrites++; return Task.CompletedTask; }
 }
 
 public class BackendProxy : DispatchProxy
@@ -250,6 +254,9 @@ public class BackendProxy : DispatchProxy
     public readonly List<(string Name, object?[] Args)> Calls = [];
     public bool Succeed = true;
     public bool FailureSeen;
+    public string? Error;
+    public bool AuthorizationRequired;
+    public Task<IReadOnlyList<Device>>? PendingDevices;
     public Action<string>? OnCall;
     public IReadOnlyList<Device> Devices = [new() { Name = "Desktop", Id = "device-id", Type = "Computer", IsActive = true }];
     public CurrentlyPlayingContext? State = new()
@@ -262,8 +269,8 @@ public class BackendProxy : DispatchProxy
     protected override object? Invoke(MethodInfo? method, object?[]? args)
     {
         var name = method!.Name;
-        if (name == "get_LastUserVisibleError") return FailureSeen ? "Spotify provider failure." : null;
-        if (name == "get_IsAuthorizationRequired") return false;
+        if (name == "get_LastUserVisibleError") return Error ?? (FailureSeen ? "Spotify provider failure." : null);
+        if (name == "get_IsAuthorizationRequired") return AuthorizationRequired;
         Calls.Add((name, args ?? []));
         OnCall?.Invoke(name);
         foreach (var token in (args ?? []).OfType<CancellationToken>()) token.ThrowIfCancellationRequested();
@@ -275,7 +282,7 @@ public class BackendProxy : DispatchProxy
             "SearchSpotify" => Task.FromResult<SearchResponse?>(new() { Tracks = new Paging<FullTrack, SearchResponse> { Items = [Track()] } }),
             "GetSpotifyUserIdAsync" => Task.FromResult<string?>("user-id"),
             "ListAvailablePlaylists" => Task.FromResult(new Dictionary<string, string> { ["Favorites"] = "spotify:playlist:playlist-id" }),
-            "GetAvailablePlaybackDevices" => Task.FromResult(Devices),
+            "GetAvailablePlaybackDevices" => PendingDevices?.WaitAsync((CancellationToken)args![0]!) ?? Task.FromResult(Devices),
             _ when method.ReturnType == typeof(Task<bool>) => Task.FromResult(Succeed),
             _ => throw new Exception("Unexpected provider call: " + name),
         };

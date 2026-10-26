@@ -12,7 +12,8 @@ internal sealed class SpotifyToolHandler(
     SpotifySearchService search,
     IReadOnlyDictionary<string, string> specialPlaylists,
     SpotifySpeechDucking ducking,
-    Func<string, CancellationToken, Task> recordCommand)
+    Func<string, CancellationToken, Task> recordCommand,
+    Func<IReadOnlyList<Device>, CancellationToken, Task>? recordDevices = null)
 {
     // Serialize stateful search selection and commands; never retry a side effect.
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -113,6 +114,7 @@ internal sealed class SpotifyToolHandler(
                 var name = Text(args, "device");
                 var devices = await manager.GetAvailablePlaybackDevices(token);
                 if (manager.LastUserVisibleError != null) return Failure("Could not list devices.");
+                if (recordDevices != null) await recordDevices(devices, token);
                 var matches = devices.Where(d => !string.IsNullOrWhiteSpace(d.Id) && d.Id.Equals(name, StringComparison.Ordinal)).ToArray();
                 if (matches.Length == 0) matches = devices.Where(d => string.Equals(d.Name, name, StringComparison.OrdinalIgnoreCase)).ToArray();
                 if (matches.Length == 0) matches = devices.Where(d => d.Name?.Contains(name, StringComparison.OrdinalIgnoreCase) == true).ToArray();
@@ -142,8 +144,9 @@ internal sealed class SpotifyToolHandler(
     {
         var devices = await manager.GetAvailablePlaybackDevices(token);
         if (manager.LastUserVisibleError != null) return Failure("Could not list devices.");
+        if (recordDevices != null) await recordDevices(devices, token);
         return new(devices.Count == 0
-            ? "No Spotify Connect devices are available. Open Spotify on the intended device; if it still does not appear, briefly start playback manually there."
+            ? "No Spotify Connect devices are available. User setup is required: the user opens Spotify on the intended device and confirms it is open before discovery resumes. Brief manual playback is a fallback if it remains unavailable."
             : "Available Spotify Connect devices (active means selected as the player, not necessarily playing): " + FormatDevices(devices), false);
     }
 

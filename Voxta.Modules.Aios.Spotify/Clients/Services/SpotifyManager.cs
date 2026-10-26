@@ -71,7 +71,7 @@ public class SpotifyManager(
     private const string AuthorizationRequiredMessage = "Spotify authorization is required. Save your client credentials and sign in using Spotify Account in module settings, then test the module or start a new chat.";
     private const string ReauthorizationRequiredMessage = "Spotify authorization has expired or is no longer valid. Sign out and sign in again using Spotify Account in module settings.";
     private const string AuthorizationFailedMessage = "Spotify could not refresh authorization. Sign out and sign in again using Spotify Account in module settings, then test the module or start a new chat.";
-    internal const string NoActiveDeviceMessage = "Spotify has no active player. Opening Spotify alone may not activate it. An available Spotify Connect device can be activated by transferring playback to it, then retrying the requested command. If no controllable device is available, open Spotify and briefly start playback manually on the intended device.";
+    internal const string NoActiveDeviceMessage = "Spotify has no active player. An available Spotify Connect device can be activated by transferring playback to it. Opening Spotify alone may leave it available but inactive. If the intended device is missing, the next setup step is for the user to open Spotify there and confirm it is open; device discovery can then be refreshed. Brief manual playback is a fallback if the device remains unavailable.";
     private readonly SemaphoreSlim _authorizationGate = new(1, 1);
     private SpotifyClient? _spotifyClient;
     private string? _clientAccessToken;
@@ -174,6 +174,7 @@ public class SpotifyManager(
             SetSpotifyApiError(ex, "retrieve playback state");
             return null;
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
             logger.LogError("Error retrieving playback state: {ExMessage}", ex.Message);

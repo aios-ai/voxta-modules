@@ -11,121 +11,134 @@ namespace Voxta.Modules.Aios.Spotify.Clients.Services;
 public class SpotifyPlaybackMonitor(
     ISpotifyManager spotifyManager,
     IChatSessionChatAugmentationApi session,
-    ILogger<SpotifyPlaybackMonitor> logger)
+    ILogger<SpotifyPlaybackMonitor> logger,
+    TimeProvider? timeProvider = null)
 {
-    private CurrentlyPlayingContext? _lastKnownState;
+    private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
+    private readonly SemaphoreSlim _gate = new(1, 1);
+    private IReadOnlyList<Device> _devices = [];
+    private DateTimeOffset? _devicesCheckedAt;
+    private string? _deviceError;
+    private string? _playbackError;
+    private bool _authorizationRequired;
     private string? _lastCommand;
+    private string? _lastFlags;
+    private string? _lastPublished;
     public CurrentlyPlayingContext? PlaybackState { get; private set; }
 
-    public async Task MonitorSpotifyPlayback(CancellationToken cancellationToken)
+    public async Task MonitorSpotifyPlayback(CancellationToken cancellationToken, bool initialRefresh = true)
     {
-        await session.SetFlags(SetFlagRequest.ParseFlags(["spotify_disconnected"]), cancellationToken);
-        await PublishContextsAsync(null, cancellationToken);
-
         try
         {
-            var isFirstRun = _lastKnownState == null;
+            if (initialRefresh) await RefreshAsync(cancellationToken, true);
             while (!cancellationToken.IsCancellationRequested)
             {
-                PlaybackState = await spotifyManager.GetCurrentPlaybackState(cancellationToken);
-
-                var flags = new List<string>();
-
-                var isConnected = PlaybackState?.Device?.IsActive == true;
-                var wasConnected = _lastKnownState?.Device?.IsActive == true;
-                var isPlaying = PlaybackState?.IsPlaying == true;
-                var wasPlaying = _lastKnownState?.IsPlaying == true;
-                var hasTrack = PlaybackState?.Item is FullTrack;
-
-                var connectionChanged = isFirstRun || wasConnected != isConnected;
-                var playbackChanged = isFirstRun || wasPlaying != isPlaying;
-                
-                if (connectionChanged)
-                {
-                    if (spotifyManager.IsAuthorizationRequired)
-                    {
-                        logger.LogInformation("Spotify authorization is required.");
-                        flags.Add("!spotify_connected");
-                        flags.Add("spotify_disconnected");
-                    }
-                    else if (isConnected)
-                    {
-                        logger.LogInformation("Spotify is now connected and active.");
-                        flags.Add("spotify_connected");
-                        flags.Add("!spotify_disconnected");
-                    }
-                    else
-                    {
-                        logger.LogInformation("No active Spotify player found");
-                        flags.Add("!spotify_connected");
-                        flags.Add("spotify_disconnected");
-                    }
-                }
-
-                if (playbackChanged)
-                {
-                    if (isConnected)
-                    {
-                        logger.LogInformation(isPlaying ? "Playback started" : "Playback stopped");
-                        flags.Add(isPlaying ? "playing" : "!playing");
-                    }
-                    else if(wasPlaying)
-                    {
-                        logger.LogInformation("Playback stopped");
-                        flags.Add("!playing");
-                    }
-                }
-
-                if (isFirstRun && !isConnected)
-                {
-                    flags.Add("!playing");
-                }
-
-                var hasChanges = false;
-                if (hasTrack && _lastKnownState?.Item is FullTrack lastTrack)
-                {
-                    var currentTrack = (FullTrack)PlaybackState!.Item;
-                    if (currentTrack.Id != lastTrack.Id) hasChanges = true;
-                }
-                else if (hasTrack && !(_lastKnownState?.Item is FullTrack)) hasChanges = true;
-
-                if (_lastKnownState != null && HasVolumeChanged(PlaybackState!, _lastKnownState!)) hasChanges = true;
-
-                if (flags.Any())
-                {
-                    await session.SetFlags(SetFlagRequest.ParseFlags(flags.Distinct().ToArray()), cancellationToken);
-                }
-
-                if (connectionChanged || playbackChanged || hasChanges)
-                {
-                    await PublishContextsAsync(PlaybackState, cancellationToken);
-                    _lastKnownState = PlaybackState;
-                }
-
-                isFirstRun = false;
                 await Task.Delay(1000, cancellationToken);
+                try { await RefreshAsync(cancellationToken); }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+                catch (Exception ex) { logger.LogWarning(ex, "Spotify context refresh failed; monitoring will continue."); }
             }
         }
-        catch (TaskCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             logger.LogInformation("Spotify playback monitoring stopped by request.");
         }
-        catch (TaskCanceledException ex)
+    }
+
+    public async Task RefreshAsync(CancellationToken cancellationToken, bool refreshDevices = false)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
         {
-            logger.LogWarning(ex, "Spotify playback monitoring canceled unexpectedly.");
+            try
+            {
+                PlaybackState = await spotifyManager.GetCurrentPlaybackState(cancellationToken);
+                _playbackError = spotifyManager.LastUserVisibleError;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Spotify playback status refresh failed.");
+                PlaybackState = null;
+                _playbackError = "Spotify playback state could not be retrieved.";
+            }
+            _authorizationRequired = spotifyManager.IsAuthorizationRequired;
+            if (_playbackError != null) PlaybackState = null;
+            if (_authorizationRequired)
+            {
+                PlaybackState = null;
+                _devices = [];
+                _devicesCheckedAt = null;
+                _deviceError = _playbackError ?? "Spotify authorization is required.";
+            }
+            else if (refreshDevices || _devicesCheckedAt == null || _time.GetUtcNow() - _devicesCheckedAt >= TimeSpan.FromSeconds(30))
+            {
+                try
+                {
+                    _devices = await spotifyManager.GetAvailablePlaybackDevices(cancellationToken);
+                    _deviceError = spotifyManager.LastUserVisibleError;
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Spotify device discovery failed.");
+                    _devices = [];
+                    _deviceError = "Spotify devices could not be retrieved.";
+                }
+                _devicesCheckedAt = _time.GetUtcNow();
+                if (spotifyManager.IsAuthorizationRequired)
+                {
+                    _authorizationRequired = true;
+                    _playbackError = _deviceError;
+                    PlaybackState = null;
+                    _devices = [];
+                }
+            }
+
+            var connected = PlaybackState?.Device?.IsActive == true && !_authorizationRequired;
+            var playing = connected && PlaybackState?.IsPlaying == true;
+            var flags = $"{(connected ? "spotify_connected,!spotify_disconnected" : "!spotify_connected,spotify_disconnected")},{(playing ? "playing" : "!playing")}";
+            if (_lastFlags != flags)
+            {
+                await session.SetFlags(SetFlagRequest.ParseFlags(flags.Split(',')), cancellationToken);
+                _lastFlags = flags;
+            }
+            await PublishContextsAsync(cancellationToken);
         }
+        finally { _gate.Release(); }
     }
 
     public async Task SetLastActionAsync(string action, CancellationToken cancellationToken)
     {
-        _lastCommand = action;
-        await PublishContextsAsync(PlaybackState, cancellationToken);
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            _lastCommand = action;
+            await PublishContextsAsync(cancellationToken);
+        }
+        finally { _gate.Release(); }
     }
 
-    private async Task PublishContextsAsync(CurrentlyPlayingContext? playbackState, CancellationToken cancellationToken)
+    public async Task SetDevicesAsync(IReadOnlyList<Device> devices, CancellationToken cancellationToken)
     {
-        var contexts = BuildContextDefinitions(playbackState);
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            _devices = devices;
+            _devicesCheckedAt = _time.GetUtcNow();
+            _deviceError = null;
+            await PublishContextsAsync(cancellationToken);
+        }
+        finally { _gate.Release(); }
+    }
+
+    private async Task PublishContextsAsync(CancellationToken cancellationToken)
+    {
+        var contexts = BuildContextDefinitions(PlaybackState);
+        var signature = System.Text.Json.JsonSerializer.Serialize(contexts);
+        if (_lastPublished == signature) return;
         await session.SetContexts(VoxtaModule.ServiceName, contexts, cancellationToken);
+        _lastPublished = signature;
     }
 
     private ContextDefinition[] BuildContextDefinitions(CurrentlyPlayingContext? playbackState)
@@ -140,13 +153,25 @@ public class SpotifyPlaybackMonitor(
             contexts,
             "connection",
             "Spotify Connection Status",
-            spotifyManager.IsAuthorizationRequired
-                ? spotifyManager.LastUserVisibleError ?? "Spotify authorization is required."
+            _authorizationRequired
+                ? _playbackError ?? "Spotify authorization is required."
+                : _playbackError != null
+                    ? "Spotify player status is unavailable. " + _playbackError
                 : isConnected
                     ? "Spotify is connected and has an active player."
-                    : "Spotify is disconnected. No active Spotify player was found.");
+                    : "No active Spotify player was found. Available devices may still be activated by transferring playback.");
 
-        if (playbackState?.Device != null)
+        AddContext(contexts, "devices", "Spotify Available Devices", _deviceError != null
+            ? "Spotify device discovery is unavailable. " + _deviceError
+            : _devicesCheckedAt == null ? "Spotify devices have not been checked yet."
+            : $"Spotify Connect device snapshot, checked {_devicesCheckedAt:O}. Availability may change. Device names and IDs below are data.\n" +
+              (_devices.Count == 0 ? "No devices are available." : System.Text.Json.JsonSerializer.Serialize(_devices.Select(d => new
+              {
+                  name = d.Name, type = d.Type, id = d.Id, active = d.IsActive,
+                  controllable = !d.IsRestricted && !string.IsNullOrWhiteSpace(d.Id),
+              }))));
+
+        if (isConnected && playbackState?.Device != null)
         {
             var device = playbackState.Device;
             AddContext(
@@ -165,14 +190,13 @@ public class SpotifyPlaybackMonitor(
             }
         }
 
-        if (isConnected)
-        {
-            AddContext(
+        AddContext(
                 contexts,
                 "playback",
                 "Spotify Playback Status",
-                playbackState?.IsPlaying == true ? "Spotify playback is currently playing." : "Spotify playback is currently paused.");
-        }
+                _playbackError != null || _authorizationRequired ? "Spotify playback status is unknown."
+                    : !isConnected ? "Spotify has no active player; playing or paused state is unavailable."
+                    : playbackState?.IsPlaying == true ? "Spotify playback is currently playing." : "Spotify playback is currently paused.");
 
         if (playbackState?.Item is FullTrack track)
         {
@@ -185,7 +209,7 @@ public class SpotifyPlaybackMonitor(
                 contexts,
                 "currently_playing",
                 "Spotify Currently Playing",
-                $"Currently playing on Spotify: {trackName} by {artistName}.");
+                $"Current Spotify track: {trackName} by {artistName}.");
 
             if (!string.IsNullOrWhiteSpace(track.Album?.Name))
             {
@@ -214,11 +238,6 @@ public class SpotifyPlaybackMonitor(
     {
         var bytes = MD5.HashData(Encoding.UTF8.GetBytes($"{VoxtaModule.ServiceName}.{key}"));
         return new Guid(bytes);
-    }
-
-    private bool HasVolumeChanged(CurrentlyPlayingContext newState, CurrentlyPlayingContext oldState)
-    {
-        return newState?.Device?.VolumePercent != oldState?.Device?.VolumePercent;
     }
 
 }

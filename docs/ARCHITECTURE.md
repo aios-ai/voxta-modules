@@ -211,11 +211,22 @@ Spotify speech events use the neutral `SpotifyPlaybackSession` and `SpotifySpeec
 `SpotifyActionHandler`. Preserve this boundary when extending the tools path.
 Spotify tools expose device type, active status, control availability and ID from the neutral manager's full device
 list; the legacy name-to-ID adapter remains separate. An active player can be paused. Tool descriptions explain
-discovery, explicit transfer and retry of the original command when Spotify reports no active player. They require
-user selection when multiple devices fit and prohibit guessing the user's computer name. Descriptions retain this
+using the active player directly when it matches the intended destination, or discovery and explicit transfer when
+needed. If the intended device is missing, the assistant asks the user to open Spotify there and waits for their
+confirmation before refreshing discovery. Brief manual playback is a fallback if it remains unavailable. Device
+selection uses the user's chosen name or type, with clarification when several fit. Descriptions retain this
 recovery guidance alongside user overrides. No tool silently transfers or retries a mutation. Transfer resolves IDs
 or unambiguous names, preserves duplicate names, and rejects restricted devices or devices without IDs. Transfer
 preserves Spotify's playing/paused state; its success is not proof that the requested music has started.
+The tools session awaits a read-only player/device preflight before activation completes. The existing
+`SpotifyPlaybackMonitor` owns the same stable connection, active-device, playback and track contexts plus a
+timestamped available-device snapshot. Player state is refreshed every second and device discovery every 30
+seconds. Explicit discovery (including the lookup before transfer) updates the same device context immediately.
+No active player is distinct from unavailable/failed discovery, missing authorization, or an active paused player.
+Context publication compares the complete rendered state, so device switches and track removal are detected and
+unchanged ticks are not republished. Background monitoring and tool callbacks serialize context writes, preserving
+the last-command context. Transient provider errors publish safe unavailable states and allow future refreshes.
+There is no additional app-start waiting loop, automatic transfer, or automatic playback during preflight.
 Playback monitors and initial Hue inventory notes are session features; choose their owner explicitly when both
 augmentations are selected to avoid duplicate polling/notes and double disposal.
 
@@ -234,6 +245,8 @@ It covers SDK dispatch, metadata ownership, disabled/unknown tools, invalid argu
 cancellation, and no automatic retry. It does not test live providers or host registration. `Spotify.Tools.Tests` exercises the compiled Spotify
 catalog/handler against a fake manager: all 17 operations, mutation failures, input validation, missing state,
 ambiguous devices, cancellation, metadata/settings defaults, ducking overlap and volume changes, session dispatch,
+initial device/player preflight, context refresh cadence, inactive/paused/playing states, explicit discovery updates,
+stable context identities, device switches, discovery failures and recovery,
 legacy suppression, disposal, tool-card settings, description overrides, defaults/migration, redirect validation, and
 single-flow authentication settings. `SpotifyVoxtaOAuthChecks` covers automatic browser/desktop callbacks,
 exact consent/exchange URI matching across transient provider instances, request-origin/path validation,

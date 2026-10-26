@@ -94,9 +94,10 @@ public class SpotifyChatAugmentationsService(
         if (tools)
         {
             var playback = new SpotifyPlaybackSession(spotifyPlaybackMonitor, ducking);
-            var handler = new SpotifyToolHandler(spotifyManager, spotifySearchService, playlistMap, ducking, spotifyPlaybackMonitor.SetLastActionAsync);
+            var handler = new SpotifyToolHandler(spotifyManager, spotifySearchService, playlistMap, ducking,
+                spotifyPlaybackMonitor.SetLastActionAsync, spotifyPlaybackMonitor.SetDevicesAsync);
             var toolInstance = new SpotifyToolsSession(SpotifyToolCatalog.Create(handler, SpotifyToolsSettings.From(ModuleConfiguration), playlistMap, logger), playback);
-            try { playback.Initialize(); }
+            try { await playback.InitializeAsync(cancellationToken); }
             catch { await toolInstance.DisposeAsync(); throw; }
             return toolInstance;
         }
