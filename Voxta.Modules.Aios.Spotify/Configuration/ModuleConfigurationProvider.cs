@@ -8,7 +8,7 @@ namespace Voxta.Modules.Aios.Spotify.Configuration;
 
 public class ModuleConfigurationProvider : ModuleConfigurationProviderBase, IModuleConfigurationProvider
 {
-    public static string[] FieldsRequiringReload => [ClientId.Name, ClientSecret.Name, SpotifyAccount.Name, "Tools", "SpotifyTools", ChatToolSettingsContributions.ToolChatStyles.Name, SpeechDuckingVolumePercent.Name, SpecialPlaylists.Name];
+    public static string[] FieldsRequiringReload => [ClientId.Name, ClientSecret.Name, SpotifyAccount.Name, "Tools", "SpotifyTools", ChatToolSettingsContributions.ToolChatStyles.Name, SpeechDuckingMode.Name, SpeechDuckingVolumePercent.Name, SpeechDuckingReductionPercent.Name, SpecialPlaylists.Name];
     public static readonly FormDocumentationField SpotifySetup = FormDocumentationField.Create("""
         Create or open your application in the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard/).
         Add **both** redirect URIs to its settings:
@@ -46,11 +46,32 @@ public class ModuleConfigurationProvider : ModuleConfigurationProviderBase, IMod
         Text = "Get your Client Secret from your Spotify Developer Dashboard at [developer.spotify.com](https://developer.spotify.com/dashboard/).",
     };
 
+    public static readonly FormChoicesField SpeechDuckingMode = new()
+    {
+        Name = "SpeechDuckingMode",
+        Label = "Speech Ducking Mode",
+        Choices =
+        [
+            new FormChoice { Value = "fixed", Label = "Fixed volume limit" },
+            new FormChoice { Value = "relative", Label = "Reduce current volume by a percentage" },
+        ],
+        DefaultValue = "fixed",
+        Text = "Temporarily lower Spotify during speech or transcription, then restore it. Neither mode raises a quieter player.",
+    };
+
+    public static readonly FormIntSliderField SpeechDuckingReductionPercent = new()
+    {
+        Name = "SpeechDuckingReductionPercent",
+        Label = "Speech Ducking Reduction (%)",
+        Text = "Used in percentage reduction mode. 25 reduces a volume of 60% to 45%. Set to 0 to disable ducking in this mode.",
+        Min = 0, Max = 100, SoftMin = 0, SoftMax = 100, Step = 1, DefaultValue = 25,
+    };
+
     public static readonly FormIntSliderField SpeechDuckingVolumePercent = new()
     {
         Name = "SpeechDuckingVolumePercent",
-        Label = "Speech Ducking Volume",
-        Text = "Spotify volume while speech or transcription is active. Set to 100 to disable volume ducking.",
+        Label = "Speech Ducking Volume Limit (%)",
+        Text = "Used in fixed volume limit mode. Limits Spotify to this volume during speech or transcription; quieter playback is unchanged. Set to 100 to disable ducking in this mode.",
         Min = 0,
         Max = 100,
         SoftMin = 0,
@@ -88,7 +109,9 @@ Daily Mix 6="
             ClientId,
             ClientSecret,
             SpotifyAccount,
+            SpeechDuckingMode,
             SpeechDuckingVolumePercent,
+            SpeechDuckingReductionPercent,
             SpecialPlaylists,
             SpotifyToolsSettings.ConfigurationField(settings),
             SpotifyToolsSettings.Styles.AsField()

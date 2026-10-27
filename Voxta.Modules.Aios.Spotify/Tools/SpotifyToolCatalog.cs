@@ -29,7 +29,7 @@ internal static class SpotifyToolCatalog
         new("skip_previous", "Skip to the previous Spotify track.", []),
         new("repeat_mode", "Set Spotify repeat mode.", [Text("mode", "One of: track, context, off.")]),
         new("shuffle_mode", "Set Spotify shuffle mode.", [Text("mode", "One of: on, off.")]),
-        new("add_to_favorites", "Save the current Spotify track to Liked Songs.", []),
+        new("add_to_favorites", "Save the current Spotify track to Liked Songs. Checks whether it is already saved and reports that without adding it again.", []),
         new("get_playlists", "List the user's available Spotify playlists.", [], true),
         new("add_to_playlist", "Add the current Spotify track to an existing playlist.", [Text("playlist", "Exact playlist name from the user's available playlists.")]),
         new("list_devices", "List Spotify Connect device names, types, active status and control availability when the user wants to change playback destination. Use before a requested transfer to find the destination's name.", [], true),

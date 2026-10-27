@@ -319,6 +319,14 @@ Console.WriteLine("PASS invalid arguments rejected before provider access");
     await instance.DisposeAsync();
     Console.WriteLine("PASS tools session, no ActionInference, tools-only registration, multiple calls and disposal");
 }
+{
+    var f = new Fixture();
+    f.Backend.LibraryResult = SpotifyLibrarySaveResult.AlreadySaved;
+    var result = await f.Call("add_to_favorites", "{}");
+    Check(!result.IsError && result.Text.Contains("already in Liked Songs") && !result.Text.Contains("Saved "), "Already liked track reported as newly saved");
+    Check(f.Backend.Calls.Count(c => c.Name == "AddTrackToLibraryAsync") == 1, "Favorites result retried");
+}
+await SpotifyDuckingChecks.RunAsync();
 await SpotifyConfigurationChecks.RunAsync();
 await SpotifyContextChecks.RunAsync();
 await SpotifyVoxtaOAuthChecks.RunAsync();
@@ -376,6 +384,7 @@ public class BackendProxy : DispatchProxy
     public string? Error;
     public bool AuthorizationRequired;
     public SpotifyPlaybackResult? PlaybackResult;
+    public SpotifyLibrarySaveResult? LibraryResult;
     public SearchResponse? SearchResults = new() { Tracks = new() { Items = [Track()] } };
     public Action<string>? OnCall;
     public IReadOnlyList<Device> Devices = [new() { Name = "Desktop", Id = "device-id", Type = "Computer", IsActive = true }];
@@ -394,9 +403,10 @@ public class BackendProxy : DispatchProxy
         Calls.Add((name, args ?? []));
         OnCall?.Invoke(name);
         foreach (var token in (args ?? []).OfType<CancellationToken>()) token.ThrowIfCancellationRequested();
-        if (method.ReturnType == typeof(Task<bool>) && !Succeed) FailureSeen = true;
+        if ((method.ReturnType == typeof(Task<bool>) || name == "AddTrackToLibraryAsync") && !Succeed) FailureSeen = true;
         return name switch
         {
+            "AddTrackToLibraryAsync" => Task.FromResult(LibraryResult ?? (Succeed ? SpotifyLibrarySaveResult.Saved : SpotifyLibrarySaveResult.Failed)),
             "PlayWithResult" => Task.FromResult(PlaybackResult ?? new SpotifyPlaybackResult(Succeed, Succeed, State, Succeed ? null : Error ?? "Spotify provider failure.")),
             "GetCurrentPlaybackState" => Task.FromResult(State),
             "GetUsersTopTracks" => Task.FromResult<Paging<FullTrack>?>(new() { Items = [Track()] }),

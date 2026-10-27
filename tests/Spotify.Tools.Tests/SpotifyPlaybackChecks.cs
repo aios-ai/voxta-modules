@@ -149,8 +149,33 @@ internal static class SpotifyPlaybackChecks
         {
             var http = new FakeHttp { LibraryStatus = status };
             var manager = await Create(http);
-            Check(await manager.AddTrackToLibraryAsync("spotify:track:requested", "Track", default) == (status == HttpStatusCode.OK), "Favorites result incorrect");
-            Check(http.LibraryRequests == 1, "Favorites command retried");
+            Check(await manager.AddTrackToLibraryAsync("spotify:track:requested", "Track", default) == (status == HttpStatusCode.OK ? SpotifyLibrarySaveResult.Saved : SpotifyLibrarySaveResult.Failed), "Favorites result incorrect");
+            Check(http.LibraryChecks == 1 && http.LibraryRequests == 1, "Favorites check/save retried");
+        }
+        foreach (var (body, status, expected) in new[]
+        {
+            ("[true]", HttpStatusCode.OK, SpotifyLibrarySaveResult.AlreadySaved),
+            ("[]", HttpStatusCode.OK, SpotifyLibrarySaveResult.Failed),
+            ("[false,true]", HttpStatusCode.OK, SpotifyLibrarySaveResult.Failed),
+            ("{\"error\":{\"status\":403,\"message\":\"Forbidden\"}}", HttpStatusCode.Forbidden, SpotifyLibrarySaveResult.Failed),
+        })
+        {
+            var http = new FakeHttp { LibraryContainsBody = body, LibraryContainsStatus = status };
+            var manager = await Create(http);
+            Check(await manager.AddTrackToLibraryAsync("spotify:track:requested", "Track", default) == expected, "Membership check result incorrect");
+            Check(http.LibraryChecks == 1 && http.LibraryRequests == 0, "Already saved/failed membership check changed library or retried");
+        }
+        using (var canceled = new CancellationTokenSource())
+        {
+            var http = new FakeHttp { AfterLibraryCheck = canceled.Cancel };
+            var manager = await Create(http);
+            try
+            {
+                await manager.AddTrackToLibraryAsync("spotify:track:requested", "Track", canceled.Token);
+                throw new Exception("Canceled membership check returned normally");
+            }
+            catch (OperationCanceledException) when (canceled.IsCancellationRequested) { }
+            Check(http.LibraryChecks == 1 && http.LibraryRequests == 0, "Canceled membership check saved track");
         }
         Console.WriteLine("PASS shuffle observation, delayed/unchanged/missing player, errors/cancellation, and favorites query transport");
     }
@@ -166,7 +191,10 @@ internal static class SpotifyPlaybackChecks
     {
         public readonly List<string> PlayBodies = [];
         public int Polls, TrackLookups, EmptyPolls;
-        public int ShuffleRequests, LibraryRequests;
+        public int ShuffleRequests, LibraryRequests, LibraryChecks;
+        public string LibraryContainsBody = "[false]";
+        public HttpStatusCode LibraryContainsStatus = HttpStatusCode.OK;
+        public Action? AfterLibraryCheck;
         public string? ShuffleParameter;
         public HttpStatusCode ShuffleStatus = HttpStatusCode.NoContent, LibraryStatus = HttpStatusCode.OK;
         public HttpStatusCode TrackStatus = HttpStatusCode.OK;
@@ -187,6 +215,14 @@ internal static class SpotifyPlaybackChecks
                 Check(request.Body == null, "Favorites URI sent in body");
                 status = LibraryStatus;
                 body = status == HttpStatusCode.OK ? "" : "{\"error\":{\"status\":400,\"message\":\"Bad request\"}}";
+            }
+            else if (request.Method == HttpMethod.Get && request.Endpoint.ToString().TrimStart('/') == "me/library/contains")
+            {
+                LibraryChecks++;
+                Check(request.Parameters?["uris"] == "spotify:track:requested", "Membership URI missing from query parameters");
+                status = LibraryContainsStatus;
+                body = LibraryContainsBody;
+                AfterLibraryCheck?.Invoke();
             }
             else if (request.Method == HttpMethod.Put && request.Endpoint.ToString().TrimStart('/') == "me/player/shuffle")
             {

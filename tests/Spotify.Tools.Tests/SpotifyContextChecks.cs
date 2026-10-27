@@ -30,30 +30,32 @@ internal static class SpotifyContextChecks
                 active ? SpotifyToolCatalog.Choices.Select(c => c.Name) : Array.Empty<string>()), "Incorrect live tool availability");
         }
         await CheckAvailability(false);
-        Check(Context("Spotify Connection Status").Contains("start playback manually"), "Manual playback prerequisite missing");
-        Check(Context("Spotify Connection Status").Contains("all Spotify tools are temporarily unavailable")
-            && Context("Spotify Connection Status").Contains("preferred device")
-            && Context("Spotify Connection Status").Contains("continue their original request")
-            && Context("Spotify Connection Status").Contains("automatically in the background"), "Context-only startup guidance missing");
-        Check(Context("Spotify Playback Status").Contains("no active player"), "No player misreported as paused");
+        Check(session.Contexts.Count(c => c.Name == "Spotify Status") == 1
+            && session.Contexts.All(c => c.Name is not ("Spotify Connection Status" or "Spotify Playback Status")), "Duplicate status contexts retained");
+        Check(Context("Spotify Status").Contains("start playback manually"), "Manual playback prerequisite missing");
+        Check(Context("Spotify Status").Contains("all Spotify tools are temporarily unavailable")
+            && Context("Spotify Status").Contains("preferred device")
+            && Context("Spotify Status").Contains("continue their original request")
+            && Context("Spotify Status").Contains("automatically in the background"), "Context-only startup guidance missing");
+        Check(Context("Spotify Status").Contains("no active player"), "No player misreported as paused");
         Check(session.Contexts.All(c => c.Name != "Spotify Available Devices"), "Unrequested discovery context retained");
         Check(f.Backend.Calls.All(c => c.Name == "GetCurrentPlaybackState"), "Preflight discovered or controlled devices");
 
         var writes = session.ContextWrites;
         await monitor.RefreshAsync(default);
         Check(session.ContextWrites == writes, "Unchanged tick republished context");
-        var contextId = session.Contexts.Single(c => c.Name == "Spotify Playback Status").Id;
+        var contextId = session.Contexts.Single(c => c.Name == "Spotify Status").Id;
         f.Backend.State = new() { Device = new() { Name = "Computer", Id = "private-pc-id", Type = "Computer", IsActive = true, VolumePercent = 50 }, IsPlaying = false };
         await monitor.RefreshAsync(default);
         await CheckAvailability(true);
-        Check(Context("Spotify Active Device").Contains("Computer") && Context("Spotify Playback Status").Contains("paused"), "Paused active player not recognized");
+        Check(Context("Spotify Active Device").Contains("Computer") && Context("Spotify Status").Contains("paused"), "Paused active player not recognized");
         Check(session.Contexts.All(c => !c.Text.Contains("private-pc-id")), "Internal device ID exposed in context");
         f.Backend.State = new() { Device = new() { Name = "Other Computer", Id = "other", Type = "Computer", IsActive = true, VolumePercent = 50 }, IsPlaying = true };
         await monitor.RefreshAsync(default);
         await CheckAvailability(true);
-        Check(Context("Spotify Active Device").Contains("Other Computer") && Context("Spotify Playback Status").Contains("playing"), "Device switch with same volume not published");
-        Check(!Context("Spotify Connection Status").Contains("temporarily unavailable"), "Startup guidance retained with active player");
-        Check(session.Contexts.Single(c => c.Name == "Spotify Playback Status").Id == contextId, "Context identity changed");
+        Check(Context("Spotify Active Device").Contains("Other Computer") && Context("Spotify Status").Contains("playing"), "Device switch with same volume not published");
+        Check(!Context("Spotify Status").Contains("temporarily unavailable"), "Startup guidance retained with active player");
+        Check(session.Contexts.Single(c => c.Name == "Spotify Status").Id == contextId, "Context identity changed");
         f.Backend.State = null;
         await monitor.RefreshAsync(default);
         await CheckAvailability(false);
@@ -63,17 +65,17 @@ internal static class SpotifyContextChecks
         f.Backend.OnCall = name => { if (name == "GetCurrentPlaybackState") throw new Exception("secret-error"); };
         await monitor.RefreshAsync(default);
         await CheckAvailability(false);
-        Check(Context("Spotify Connection Status").Contains("unavailable") && !Context("Spotify Connection Status").Contains("secret-error"), "Playback failure leaked details");
+        Check(Context("Spotify Status").Contains("unavailable") && !Context("Spotify Status").Contains("secret-error"), "Playback failure leaked details");
         f.Backend.OnCall = null;
         f.Backend.AuthorizationRequired = true;
         f.Backend.Error = "Spotify authorization is required.";
         await monitor.RefreshAsync(default);
-        Check(Context("Spotify Connection Status").Contains("authorization") && Context("Spotify Playback Status").Contains("unknown"), "Authorization misreported as no active player");
+        Check(Context("Spotify Status").Contains("authorization"), "Authorization misreported as no active player");
         await CheckAvailability(false);
         f.Backend.AuthorizationRequired = false;
         f.Backend.Error = null;
         await monitor.RefreshAsync(default);
-        Check(Context("Spotify Connection Status").Contains("start playback manually"), "Player state did not recover after reauthorization");
+        Check(Context("Spotify Status").Contains("start playback manually"), "Player state did not recover after reauthorization");
         Check(f.Backend.Calls.All(c => c.Name == "GetCurrentPlaybackState"), "Monitoring performed device discovery");
 
         var disabledCatalog = SpotifyToolCatalog.Create(f.Handler,

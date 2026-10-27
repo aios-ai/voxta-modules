@@ -38,6 +38,8 @@ public class SpotifyManagerFactory(
     }
 }
 
+public enum SpotifyLibrarySaveResult { Failed, Saved, AlreadySaved }
+
 public sealed record SpotifyPlaybackResult(bool Accepted, bool Confirmed, CurrentlyPlayingContext? Playback, string? Error);
 
 public interface ISpotifyManager
@@ -58,7 +60,7 @@ public interface ISpotifyManager
     Task<bool> SetRepeatMode(string repeatMode, CancellationToken cancellationToken);
     Task<Dictionary<string, string>> ListAvailablePlaylists(CancellationToken cancellationToken);
     Task<bool> AddItems(string playlistId, PlaylistAddItemsRequest request, CancellationToken cancellationToken);
-    Task<bool> AddTrackToLibraryAsync(string trackUri, string trackFriendlyName, CancellationToken cancellationToken);
+    Task<SpotifyLibrarySaveResult> AddTrackToLibraryAsync(string trackUri, string trackFriendlyName, CancellationToken cancellationToken);
     Task<IReadOnlyList<Device>> GetAvailablePlaybackDevices(CancellationToken cancellationToken);
     Task<bool> TransferPlayback(string deviceId, CancellationToken cancellationToken);
 }
@@ -621,17 +623,29 @@ public class SpotifyManager(
         }
     }
 
-    public async Task<bool> AddTrackToLibraryAsync(string trackUri, string trackFriendlyName,
+    public async Task<SpotifyLibrarySaveResult> AddTrackToLibraryAsync(string trackUri, string trackFriendlyName,
         CancellationToken cancellationToken)
     {
         if (!await EnsureValidSpotifyClient(cancellationToken) || _spotifyClient == null)
         {
             logger.LogError("Spotify client not valid. Cannot save track to library.");
-            return false;
+            return SpotifyLibrarySaveResult.Failed;
         }
 
         try
         {
+            var saved = await _spotifyClient.Library.CheckItems(new LibraryCheckItemsRequest([trackUri]), cancellationToken);
+            if (saved.Count != 1)
+            {
+                LastUserVisibleError = "Spotify could not check whether the track is already in Liked Songs. Please try again.";
+                return SpotifyLibrarySaveResult.Failed;
+            }
+            if (saved[0])
+            {
+                ClearUserVisibleError();
+                return SpotifyLibrarySaveResult.AlreadySaved;
+            }
+
             // SDK 7.4.2 sends uris in the body; Spotify requires a query parameter.
             // Keep the SDK connector for authorization, cancellation and API error handling.
             await _apiConnector!.Put(new Uri("me/library", UriKind.Relative),
@@ -639,19 +653,19 @@ public class SpotifyManager(
 
             logger.LogInformation("Track {TrackFriendlyName} added to Liked Songs.", trackFriendlyName);
             ClearUserVisibleError();
-            return true;
+            return SpotifyLibrarySaveResult.Saved;
         }
         catch (APIException ex)
         {
             SetSpotifyApiError(ex, "save track to Liked Songs");
-            return false;
+            return SpotifyLibrarySaveResult.Failed;
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
             logger.LogError("Failed to save track to library: {ExMessage}", ex.Message);
             LastUserVisibleError = "Spotify could not save the track to Liked Songs. Please try again.";
-            return false;
+            return SpotifyLibrarySaveResult.Failed;
         }
     }
 

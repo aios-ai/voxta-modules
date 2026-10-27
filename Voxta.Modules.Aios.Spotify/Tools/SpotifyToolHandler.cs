@@ -133,7 +133,13 @@ internal sealed class SpotifyToolHandler(
                 var name = operation == "add_to_playlist" ? Text(args, "playlist") : null;
                 var state = await manager.GetCurrentPlaybackState(token);
                 if (state?.Item is not FullTrack track) return Failure("No Spotify track is currently available.");
-                if (name == null) return await Changed(await manager.AddTrackToLibraryAsync(track.Uri, TrackName(track), token), $"Saved {TrackName(track)} to Liked Songs.", token);
+                if (name == null)
+                {
+                    var saved = await manager.AddTrackToLibraryAsync(track.Uri, TrackName(track), token);
+                    if (saved == SpotifyLibrarySaveResult.AlreadySaved)
+                        return new($"{TrackName(track)} is already in Liked Songs. No change was needed.", false);
+                    return await Changed(saved == SpotifyLibrarySaveResult.Saved, $"Saved {TrackName(track)} to Liked Songs.", token);
+                }
                 var playlists = await manager.ListAvailablePlaylists(token);
                 if (manager.LastUserVisibleError != null) return Failure("Could not list playlists.");
                 var match = playlists.FirstOrDefault(p => p.Key.Equals(name, StringComparison.OrdinalIgnoreCase));

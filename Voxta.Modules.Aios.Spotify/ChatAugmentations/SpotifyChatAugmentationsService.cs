@@ -69,7 +69,11 @@ public class SpotifyChatAugmentationsService(
 
         var spotifyPlaybackMonitor = new SpotifyPlaybackMonitor(spotifyManager, session, loggerFactory.CreateLogger<SpotifyPlaybackMonitor>());
         
-        var ducking = new SpotifySpeechDucking(spotifyManager, () => spotifyPlaybackMonitor.PlaybackState, ModuleConfiguration.GetRequired(ModuleConfigurationProvider.SpeechDuckingVolumePercent));
+        var relativeDucking = ModuleConfiguration.GetRequired(ModuleConfigurationProvider.SpeechDuckingMode) == "relative";
+        var duckingAmount = ModuleConfiguration.GetRequired(relativeDucking
+            ? ModuleConfigurationProvider.SpeechDuckingReductionPercent : ModuleConfigurationProvider.SpeechDuckingVolumePercent);
+        var ducking = new SpotifySpeechDucking(spotifyManager, () => spotifyPlaybackMonitor.PlaybackState, duckingAmount,
+            relativeDucking ? SpotifyDuckingMode.Relative : SpotifyDuckingMode.Fixed);
         var playback = new SpotifyPlaybackSession(spotifyPlaybackMonitor, ducking);
         var handler = new SpotifyToolHandler(spotifyManager, playlistMap, ducking);
         var instance = new SpotifyToolsSession(SpotifyToolCatalog.Create(handler, SpotifyToolsSettings.From(ModuleConfiguration), playlistMap, logger), playback);

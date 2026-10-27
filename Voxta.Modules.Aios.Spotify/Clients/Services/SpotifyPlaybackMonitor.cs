@@ -79,14 +79,14 @@ public class SpotifyPlaybackMonitor(
 
         AddContext(
             contexts,
-            "connection",
-            "Spotify Connection Status",
+            "status",
+            "Spotify Status",
             _authorizationRequired
                 ? _playbackError ?? "Spotify authorization is required."
                 : _playbackError != null
                     ? "Spotify player status is unavailable. " + _playbackError
                 : isConnected
-                    ? "Spotify is connected and has an active player."
+                    ? playbackState?.IsPlaying == true ? "Spotify has an active player and is currently playing." : "Spotify has an active player and is currently paused."
                     : "Spotify has no active player, so all Spotify tools are temporarily unavailable. If the user requests Spotify playback or control, ask them to open Spotify on their preferred device, choose any track or playlist and start playback manually. Explain that you can continue their original request once Spotify becomes available. Do not try searching or transferring devices to establish a connection. Player availability is checked automatically in the background; no status or connect tool needs to be called.");
 
         if (isConnected && playbackState?.Device != null)
@@ -107,14 +107,6 @@ public class SpotifyPlaybackMonitor(
                     $"Spotify volume: {device.VolumePercent.Value}%.");
             }
         }
-
-        AddContext(
-                contexts,
-                "playback",
-                "Spotify Playback Status",
-                _playbackError != null || _authorizationRequired ? "Spotify playback status is unknown."
-                    : !isConnected ? "Spotify has no active player; playing or paused state is unavailable."
-                    : playbackState?.IsPlaying == true ? "Spotify playback is currently playing." : "Spotify playback is currently paused.");
 
         if (playbackState?.Item is FullTrack track)
         {

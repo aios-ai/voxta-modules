@@ -76,6 +76,15 @@ tool is needed: the background monitor restores availability automatically. Chan
 subsequent assistant generations, normally within the monitor's one-second polling interval. A tool you disabled
 in settings stays disabled. Playback context tells the assistant when manual startup or authorization is needed.
 
+**Spotify Status** combines player availability and playing/paused state in one context. Saving a track to
+Liked Songs reports when it is already saved, without adding it again.
+
+**Speech Ducking Mode** offers a fixed volume limit or a percentage reduction from the normal volume.
+Existing settings keep the fixed limit. For a normal volume of 60%, choose percentage reduction with 25% to
+duck to 45%, or about 17% to duck to 50%. Fixed mode never raises a quieter player. Both modes restore the
+normal volume after speech/transcription, including volume changes requested while ducked.
+Set the fixed limit to 100 or the relative reduction to 0 to disable ducking.
+
 Tokens are stored through Voxta's internal account store. The module creates no local token directory or files;
 old token files are ignored.
 

@@ -47,12 +47,20 @@ Other modules' behavior and versions are unchanged.
   Success requires an active device and the requested shuffle state. Accepted but unchanged or missing-player
   observations return explicit unconfirmed feedback. Tools must not claim success, retry automatically, or
   start different music to enable shuffle.
-  Liked Songs resolves the current track automatically. Its library save uses the authenticated SDK connector
+  Liked Songs resolves the current track automatically and checks `/me/library/contains` through the SDK first.
+  An already saved track returns `AlreadySaved` without a write; a failed or malformed membership check stops
+  before saving. The handler distinguishes already present, newly saved, and failed outcomes.
+  Its library save uses the authenticated SDK connector
   with `uris` in the query string and no body, matching Spotify's `/me/library` contract; SDK 7.4.2's
   `Library.SaveItems` incorrectly places `uris` in the body. Revisit this workaround when upgrading the SDK.
 - `SpotifyToolsSession` owns one `SpotifyPlaybackSession`, which starts/stops the playback monitor and
   forwards speech/transcription events to `SpotifySpeechDucking`. Ducking preserves desired volume across
-  overlapping events and tool volume changes. Session disposal stops monitoring before releasing its cancellation source.
+  overlapping events and tool volume changes. Fixed mode retains the saved `SpeechDuckingVolumePercent` ceiling
+  and remains the default. Relative mode uses `SpeechDuckingReductionPercent` (default 25): 60 becomes 45,
+  rounded to the nearest integer. Both modes only lower volume and restore the desired unducked volume once
+  overlapping events finish. A volume tool call during ducking updates that desired volume before applying
+  the selected reduction. Fixed 100 or relative 0 disables ducking. Session disposal stops monitoring before
+  releasing its cancellation source.
 - Voxta asks `IToolsChatAugmentation.GetToolsAsync` for definitions per generation and filters disabled tools.
   The session combines saved switches with the monitored active-player state: all 17 tools
   are offered only with an active device, including paused playback. Without a player, context asks the assistant
@@ -61,7 +69,8 @@ Other modules' behavior and versions are unchanged.
   state change never enables a saved disabled tool or changes permissions. There is no connect gate or flag.
   The one-second monitor makes changes visible on a subsequent generation; this does not replace a running
   generation's tool list. Calls already offered are validated against fresh provider state by their handlers.
-  Playback context continues to report authorization, errors, device, and playing/paused state.
+  One `Spotify Status` context reports authorization, errors, manual startup, or playing/paused state.
+  Device, volume, and current-track metadata remain separate contexts.
 - OAuth remains a setup/session concern. Search/profile requests receive both call and session cancellation.
   Fresh provider playback state is used for commands that depend on current playback; passive contexts update
   through the monitor. SDK pagination has no transport cancellation parameter; cancellation stops waiting for
@@ -248,7 +257,7 @@ serve explicit user requests to change destination; they are not missing-player 
 and transfer-name guidance is appended alongside saved description overrides. Explicit no-active-player errors
 produce manual-start guidance; generic 404 or device errors are not assumed to mean there is no active player.
 The tools session awaits a read-only player-state preflight before activation completes. The existing
-`SpotifyPlaybackMonitor` owns stable connection, active-device, playback and track contexts, refreshed every second.
+`SpotifyPlaybackMonitor` owns stable status, active-device, volume and track contexts, refreshed every second.
 It does not discover devices at startup or in the background. No active player is distinct from a provider failure,
 missing authorization, or an active paused player. Full context comparison detects device switches and track removal
 without republishing unchanged ticks. Context contains current state only; tool results report command outcomes
