@@ -45,6 +45,7 @@ internal static class SpotifyToolCatalog
         Definitions.Select((definition, index) => new ModuleTool(
             new ChatTool(Choices[index].Name,
                 (settings.Descriptions?.GetValueOrDefault(Choices[index].Name) ?? definition.Description)
+                + (definition.Operation == "shuffle_mode" ? " Success requires observing the requested shuffle state on an active player. If the result says the change could not be confirmed, tell the user; do not claim shuffle changed, retry automatically, or start different music to make it work." : "")
                 + (definition.Operation is "play_music" or "queue_track" ? " Arguments accept the exact readable Selection value from spotify_search, not a search query or an invented name. This text is shown for approval and resolved privately to one URI. Only use a raw Spotify URI when the user supplied it directly. An accepted_unconfirmed playback result acknowledges the command without confirming it started; do not report it as a failed command or retry it automatically." : "")
                 + (NeedsPlayer(definition.Operation) ? PlayerRecovery : "") + (definition.Operation is "list_devices" or "transfer_to_device" ? DeviceSetup : "") + (definition.Operation == "play_special_playlist"
                     ? " Configured playlists: " + (playlists.Count == 0 ? "none" : string.Join(", ", playlists.Keys)) + "." : ""),

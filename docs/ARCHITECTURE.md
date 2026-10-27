@@ -46,6 +46,13 @@ authorization. Other modules' behavior and versions are unchanged.
   choices, with module-local Assistant and Companion defaults; explicitly saved styles remain intact.
   These settings are independent of legacy `Actions`. `SpotifyChatAugmentationsService` implements the
   SDK tools-service marker and plans tools separately as opt-in, excluded from catch-all activation.
+- Shuffle commands are sent once, then confirmed by up to five playback-state reads at 400 ms intervals.
+  Success requires an active device and the requested shuffle state. Accepted but unchanged or missing-player
+  observations return explicit unconfirmed feedback. Tools must not claim success, retry automatically, or
+  start different music to enable shuffle. The shared manager applies this verification to legacy actions too.
+  Liked Songs resolves the current track automatically. Its library save uses the authenticated SDK connector
+  with `uris` in the query string and no body, matching Spotify's `/me/library` contract; SDK 7.4.2's
+  `Library.SaveItems` incorrectly places `uris` in the body. Revisit this workaround when upgrading the SDK.
 - `SpotifyToolsSession` owns one `SpotifyPlaybackSession`. The legacy instance uses the same neutral playback
   owner when selected alone. That owner starts/stops one monitor and forwards speech/transcription events to
   `SpotifySpeechDucking`, which preserves the desired volume across overlapping events and tool volume changes.
@@ -283,7 +290,8 @@ single-flow authentication settings. `SpotifyVoxtaOAuthChecks` covers automatic 
 exact consent/exchange URI matching across transient provider instances, request-origin/path validation,
 user/module isolation, expiry, changed credentials, overlapping-client guards, sign-out, cancellation, no retry,
 encrypted storage, missing tokens, serialized refresh, and invalid grants. `SpotifyPlaybackChecks` uses the real SDK
-with a fake HTTP transport to cover album-context requests, resolved track URIs, delayed confirmation, empty or
+with a fake HTTP transport to cover shuffle confirmation and ignored commands, library-save query serialization,
+album-context requests, resolved track URIs, delayed confirmation, empty or
 wrong playback, lookup failures, playlist contexts and cancellation without replaying commands. These checks make no Spotify network
 calls and do not replace live browser/desktop acceptance testing. The user verified native desktop sign-in before
 listener removal; automatic client switching still requires runtime acceptance after this change.

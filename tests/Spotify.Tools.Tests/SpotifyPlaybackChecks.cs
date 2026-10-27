@@ -1,5 +1,4 @@
 using System.Net;
-using System.Reflection;
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using SpotifyAPI.Web;
@@ -11,6 +10,7 @@ internal static class SpotifyPlaybackChecks
 {
     public static async Task RunAsync()
     {
+        await CheckShuffleAndFavorites();
         var http = new FakeHttp();
         var manager = await Create(http);
         Check(await manager.PlaySpecificUri("spotify:track:requested", default, "track"), "Confirmed track failed: " + manager.LastUserVisibleError + $" (lookups={http.TrackLookups}, plays={http.PlayBodies.Count}, polls={http.Polls})");
@@ -107,12 +107,57 @@ internal static class SpotifyPlaybackChecks
         var manager = new SpotifyManager(new() { ClientId = "test", ClientSecret = "test" }, new TokenStore(), null!, NullLogger<SpotifyManager>.Instance);
         await manager.InitializeSpotifyClient(default);
         // Keep the real SDK serialization and response handling, replacing only its network transport.
-        typeof(SpotifyManager).GetField("_spotifyClient", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .SetValue(manager, new SpotifyClient(SpotifyClientConfig.CreateDefault().WithToken("test").WithHTTPClient(http)));
+        manager.ConfigureClient(SpotifyClientConfig.CreateDefault().WithToken("test").WithHTTPClient(http));
         return manager;
     }
 
     private static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
+
+    private static async Task CheckShuffleAndFavorites()
+    {
+        foreach (var desired in new[] { true, false })
+        {
+            var http = new FakeHttp { State = "{\"device\":{\"id\":\"desktop\"},\"shuffle_state\":" + desired.ToString().ToLowerInvariant() + "}", EmptyPolls = 2 };
+            var manager = await Create(http);
+            Check(await manager.SetShuffle(desired, default), "Delayed shuffle was not confirmed");
+            Check(http.ShuffleRequests == 1 && http.Polls == 3, "Shuffle mutation retried or delayed observation ignored");
+            Check(http.ShuffleParameter == desired.ToString().ToLowerInvariant(), "Wrong shuffle mode sent");
+
+            http = new() { State = "{\"device\":{\"id\":\"desktop\"},\"shuffle_state\":" + (!desired).ToString().ToLowerInvariant() + "}" };
+            manager = await Create(http);
+            Check(!await manager.SetShuffle(desired, default) && manager.LastUserVisibleError?.Contains("could not be confirmed") == true, "Accepted but unchanged shuffle reported success");
+            Check(http.ShuffleRequests == 1 && http.Polls == 5, "Shuffle verification unbounded or command retried");
+        }
+        foreach (var state in new[] { "null", "{\"shuffle_state\":false}" })
+        {
+            var http = new FakeHttp { State = state };
+            var manager = await Create(http);
+            Check(!await manager.SetShuffle(false, default), "Missing player falsely confirmed shuffle off");
+        }
+        foreach (var failure in new[] { "write", "read", "cancel" })
+        {
+            using var canceled = new CancellationTokenSource();
+            var http = new FakeHttp { ShuffleStatus = failure == "write" ? HttpStatusCode.Forbidden : HttpStatusCode.NoContent,
+                PollStatus = failure == "read" ? HttpStatusCode.Forbidden : HttpStatusCode.OK,
+                AfterPoll = failure == "cancel" ? canceled.Cancel : null };
+            var manager = await Create(http);
+            try
+            {
+                Check(!await manager.SetShuffle(true, canceled.Token), "Shuffle error reported success");
+                Check(failure != "cancel", "Cancellation swallowed");
+            }
+            catch (OperationCanceledException) when (canceled.IsCancellationRequested) { }
+            Check(http.ShuffleRequests == 1, "Failed shuffle command retried");
+        }
+        foreach (var status in new[] { HttpStatusCode.OK, HttpStatusCode.BadRequest })
+        {
+            var http = new FakeHttp { LibraryStatus = status };
+            var manager = await Create(http);
+            Check(await manager.AddTrackToLibraryAsync("spotify:track:requested", "Track", default) == (status == HttpStatusCode.OK), "Favorites result incorrect");
+            Check(http.LibraryRequests == 1, "Favorites command retried");
+        }
+        Console.WriteLine("PASS shuffle observation, delayed/unchanged/missing player, errors/cancellation, and favorites query transport");
+    }
 
     private sealed class TokenStore : ISpotifyTokenStore
     {
@@ -125,6 +170,9 @@ internal static class SpotifyPlaybackChecks
     {
         public readonly List<string> PlayBodies = [];
         public int Polls, TrackLookups, EmptyPolls;
+        public int ShuffleRequests, LibraryRequests;
+        public string? ShuffleParameter;
+        public HttpStatusCode ShuffleStatus = HttpStatusCode.NoContent, LibraryStatus = HttpStatusCode.OK;
         public HttpStatusCode TrackStatus = HttpStatusCode.OK;
         public HttpStatusCode PlayStatus = HttpStatusCode.NoContent, PollStatus = HttpStatusCode.OK;
         public Action? AfterPoll;
@@ -136,7 +184,22 @@ internal static class SpotifyPlaybackChecks
             token.ThrowIfCancellationRequested();
             var status = HttpStatusCode.OK;
             string body;
-            if (request.Method == HttpMethod.Put)
+            if (request.Method == HttpMethod.Put && request.Endpoint.ToString().TrimStart('/') == "me/library")
+            {
+                LibraryRequests++;
+                Check(request.Parameters?["uris"] == "spotify:track:requested", "Favorites URI missing from query parameters");
+                Check(request.Body == null, "Favorites URI sent in body");
+                status = LibraryStatus;
+                body = status == HttpStatusCode.OK ? "" : "{\"error\":{\"status\":400,\"message\":\"Bad request\"}}";
+            }
+            else if (request.Method == HttpMethod.Put && request.Endpoint.ToString().TrimStart('/') == "me/player/shuffle")
+            {
+                ShuffleRequests++;
+                ShuffleParameter = request.Parameters?["state"];
+                status = ShuffleStatus;
+                body = status == HttpStatusCode.NoContent ? "" : "{\"error\":{\"status\":403,\"message\":\"Forbidden\"}}";
+            }
+            else if (request.Method == HttpMethod.Put)
             {
                 Check(request.Endpoint.ToString().TrimStart('/') == "me/player/play", "Unexpected mutation");
                 PlayBodies.Add((string)request.Body!);

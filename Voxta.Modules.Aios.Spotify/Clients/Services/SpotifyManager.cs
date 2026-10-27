@@ -77,6 +77,7 @@ public class SpotifyManager(
     internal const string NoActiveDeviceMessage = "Spotify has no active player. Please open Spotify on the intended device, select a track or playlist and start playback manually. Playback control can continue once music has started.";
     private readonly SemaphoreSlim _authorizationGate = new(1, 1);
     private SpotifyClient? _spotifyClient;
+    private SpotifyAPI.Web.Http.IAPIConnector? _apiConnector;
     private string? _clientAccessToken;
     private SpotifyAuthToken? _spotifyAuthToken;
     private bool _forceTokenRefresh;
@@ -92,7 +93,7 @@ public class SpotifyManager(
         var accessToken = await GetValidAccessTokenAsync(cancellationToken);
         if (accessToken != null)
         {
-            _spotifyClient = new SpotifyClient(accessToken);
+            ConfigureClient(SpotifyClientConfig.CreateDefault().WithToken(accessToken));
             _clientAccessToken = accessToken;
             logger.LogInformation("Spotify client initialized using the account stored by Voxta.");
         }
@@ -496,9 +497,19 @@ public class SpotifyManager(
         try
         {
             await _spotifyClient.Player.SetShuffle(new PlayerShuffleRequest(shuffleState), cancellationToken);
-            logger.LogInformation("Shuffle mode set to {Off}", shuffleState ? "on" : "off");
-            ClearUserVisibleError();
-            return true;
+            for (var attempt = 0; attempt < 5; attempt++)
+            {
+                if (attempt > 0) await Task.Delay(400, cancellationToken);
+                var state = await GetCurrentPlaybackState(cancellationToken);
+                if (LastUserVisibleError != null) return false;
+                if (state?.Device != null && state.ShuffleState == shuffleState)
+                {
+                    logger.LogInformation("Shuffle mode confirmed {Mode}", shuffleState ? "on" : "off");
+                    return true;
+                }
+            }
+            LastUserVisibleError = $"Spotify accepted the shuffle request, but shuffle {(shuffleState ? "on" : "off")} could not be confirmed on the active player. Do not report shuffle as changed or automatically retry. Check Spotify; the current playback context may not support shuffle.";
+            return false;
         }
         catch (APIException ex)
         {
@@ -634,8 +645,10 @@ public class SpotifyManager(
 
         try
         {
-            await _spotifyClient.Library.SaveItems(
-                new LibrarySaveItemsRequest([trackUri]), cancellationToken);
+            // SDK 7.4.2 sends uris in the body; Spotify requires a query parameter.
+            // Keep the SDK connector for authorization, cancellation and API error handling.
+            await _apiConnector!.Put(new Uri("me/library", UriKind.Relative),
+                new Dictionary<string, string> { ["uris"] = trackUri }, null, cancellationToken);
 
             logger.LogInformation("Track {TrackFriendlyName} added to Liked Songs.", trackFriendlyName);
             ClearUserVisibleError();
@@ -733,12 +746,18 @@ public class SpotifyManager(
 
         if (_spotifyClient == null || _clientAccessToken != newToken)
         {
-            _spotifyClient = new SpotifyClient(newToken);
+            ConfigureClient(SpotifyClientConfig.CreateDefault().WithToken(newToken));
             _clientAccessToken = newToken;
         }
 
         _authorizationUnavailableLogged = false;
         return true;
+    }
+
+    internal void ConfigureClient(SpotifyClientConfig clientConfig)
+    {
+        _apiConnector = clientConfig.BuildAPIConnector();
+        _spotifyClient = new SpotifyClient(clientConfig.WithAPIConnector(_apiConnector));
     }
 
     private void ClearUserVisibleError()
