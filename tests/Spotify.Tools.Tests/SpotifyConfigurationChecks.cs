@@ -42,7 +42,7 @@ internal static class SpotifyConfigurationChecks
         var description = catalog.GetTools().Single(t => t.Name == "spotify_skip_next").Description;
         Check(description != null && description.StartsWith("Custom explanation") && description.Contains("start playback manually") && description.Contains("Wait for the user to confirm playback has started"), "Custom description lost manual playback prerequisite");
         var transfer = catalog.GetTools().Single(t => t.Name == "spotify_transfer_to_device");
-        Check(catalog.GetTools().Single(t => t.Name == "spotify_play_music").Description!.Contains("name/type searches are performed with spotify_search"), "Saved description hid updated URI contract");
+        Check(catalog.GetTools().Single(t => t.Name == "spotify_play_music").Description!.Contains("exact readable Selection value from spotify_search"), "Saved description hid updated selection contract");
         Check(transfer.Description!.Contains("human-readable device name") && transfer.Description.Contains("user-requested destination changes"), "Name-only transfer guidance missing");
         var fields = await new ModuleConfigurationProvider().GetModuleConfigurationFieldsAsync(null!, empty, default);
         Check(fields.OfType<FormAuthorizeField>().Single().Name == "SpotifyAccount", "Missing account field");

@@ -19,8 +19,8 @@ var operations = new (string Operation, string Json, string? Mutation)[]
     ("search", "{\"query\":\"Track\",\"type\":\"track\"}", null),
     ("play_random_music", "{}", "PlayWithResult"),
     ("play_special_playlist", "{\"name\":\"Daily Mix 1\"}", "PlayWithResult"),
-    ("play_music", "{\"uri\":\"spotify:track:1234567890123456789012\"}", "PlayWithResult"),
-    ("queue_track", "{\"uri\":\"spotify:track:1234567890123456789012\"}", "QueueTrack"),
+    ("play_music", "{\"selection\":\"spotify:track:1234567890123456789012\"}", "PlayWithResult"),
+    ("queue_track", "{\"selection\":\"spotify:track:1234567890123456789012\"}", "QueueTrack"),
     ("volume", "{\"type\":\"set\",\"value\":30}", "ChangeVolume"),
     ("seek_playback", "{\"target\":\"forward\"}", "SeekPlayback"),
     ("skip_next", "{}", "SkipToPreviousOrNextTrack"),
@@ -57,9 +57,11 @@ var invalid = new (string, string)[]
     ("queue_track", "{\"name\":\" \"}"),
     ("search", "{\"query\":\"Track\",\"type\":\"genre\"}"),
     ("search", "{\"query\":\" \",\"type\":\"track\"}"),
-    ("play_music", "{\"uri\":\"https://example.com\"}"),
-    ("play_music", "{\"uri\":\"spotify:track:123456789012345678901!\"}"),
-    ("queue_track", "{\"uri\":\"spotify:artist:1234567890123456789012\"}"),
+    ("play_music", "{\"selection\":\"https://example.com\"}"),
+    ("play_music", "{\"selection\":\"spotify:track:123456789012345678901!\"}"),
+    ("queue_track", "{\"selection\":\"spotify:artist:1234567890123456789012\"}"),
+    ("play_music", "{\"selection\":\"Intro by Limp Bizkit\",\"uri\":\"spotify:track:1234567890123456789012\"}"),
+    ("play_music", "{\"uri\":\"spotify:track:1234567890123456789012\"}"),
     ("play_special_playlist", "{}"),
     ("volume", "{\"type\":\"set\"}"),
     ("volume", "{\"type\":\"set\",\"value\":101}"),
@@ -90,8 +92,8 @@ Console.WriteLine("PASS invalid arguments rejected before provider access");
     f.Backend.SearchResults = new()
     {
         Tracks = new() { Items = [
-            new() { Uri = "spotify:track:1111111111111111111111", Name = "First", Artists = [new() { Name = "Limp Bizkit" }], Album = new() { Name = "Album One" } },
-            new() { Uri = "spotify:track:2222222222222222222222", Name = "Second", Artists = [new() { Name = "Other artist" }], Album = new() { Name = "Album Two" } },
+            new() { Uri = "spotify:track:1111111111111111111111", Name = "First", Artists = [new() { Name = "Limp Bizkit" }], Album = new() { Name = "Album One", ReleaseDate = "2000-10-17", ReleaseDatePrecision = "day" } },
+            new() { Uri = "spotify:track:2222222222222222222222", Name = "Second", Artists = [new() { Name = "Other artist" }], Album = new() { Name = "Album Two", ReleaseDate = "1999", ReleaseDatePrecision = "year" } },
         ] },
     };
     var query = "artist:\"Limp Bizkit\"";
@@ -103,25 +105,37 @@ Console.WriteLine("PASS invalid arguments rejected before provider access");
     Check(candidates[0].GetProperty("Artists")[0].GetString() == "Limp Bizkit" && candidates[0].GetProperty("Album").GetString() == "Album One", "Disambiguating metadata missing");
     var call = f.Backend.Calls.Single();
     Check(call.Name == "SearchSpotify" && (string)call.Args[0]! == query && (SearchRequest.Types)call.Args[1]! == SearchRequest.Types.Track && call.Args[2] == null, "Search filters, type or user market changed");
-    await f.Call("play_music", "{\"uri\":\"spotify:track:2222222222222222222222\"}");
+    var chosen = candidates[1].GetProperty("Selection").GetString();
+    Check(chosen!.Contains("Second") && chosen.Contains("Other artist") && chosen.Contains("Album Two") && chosen.Contains("1999") && !chosen.Contains("spotify:"), "Approval selection is not human readable");
+    Check(!result.Text.Contains("spotify:") && !candidates[0].TryGetProperty("Uri", out _), "Internal URI leaked into search selection");
+    Check(candidates[0].GetProperty("ReleaseDate").GetString() == "2000-10-17" && candidates[0].GetProperty("ReleaseDatePrecision").GetString() == "day", "Track album release date/precision missing");
+    Check(candidates[1].GetProperty("ReleaseDate").GetString() == "1999" && candidates[1].GetProperty("ReleaseDatePrecision").GetString() == "year", "Year-only date expanded or lost");
+    await f.Call("play_music", JsonSerializer.Serialize(new { selection = chosen }));
     Check((string)f.Backend.Calls.Single(c => c.Name == "PlayWithResult").Args[0]! == "spotify:track:2222222222222222222222" && f.Backend.Calls.Count(c => c.Name == "SearchSpotify") == 1, "Agent selection ignored or playback searched again");
+    await f.Call("queue_track", JsonSerializer.Serialize(new { selection = chosen }));
+    Check((string)f.Backend.Calls.Single(c => c.Name == "QueueTrack").Args[0]! == "spotify:track:2222222222222222222222", "Queue did not privately resolve approved track");
+    var otherChat = new Fixture();
+    Check((await otherChat.Call("play_music", JsonSerializer.Serialize(new { selection = chosen }))).IsError && otherChat.Backend.Calls.Count == 0, "Selection leaked between chat sessions");
     f.Backend.SearchResults = new()
     {
-        Albums = new() { Items = [new() { Uri = "spotify:album:album", Name = "Album", Artists = [new() { Name = "Artist" }] }] },
+        Albums = new() { Items = [new() { Uri = "spotify:album:album", Name = "Album", Artists = [new() { Name = "Artist" }], ReleaseDate = "2024-08", ReleaseDatePrecision = "month" }] },
         Artists = new() { Items = [new() { Uri = "spotify:artist:artist", Name = "Artist" }] },
         Playlists = new() { Items = [null!, new() { Uri = "spotify:playlist:playlist", Name = "Playlist", Owner = new() { DisplayName = "Owner" } }] },
         Shows = new() { Items = [new() { Uri = "spotify:show:show", Name = "Show", Description = "Show description" }] },
-        Episodes = new() { Items = [new() { Uri = "spotify:episode:episode", Name = "Episode", ReleaseDate = "2026-10-26" }] },
+        Episodes = new() { Items = [new() { Uri = "spotify:episode:episode", Name = "Episode", ReleaseDate = "2026-10-26", ReleaseDatePrecision = "day" }] },
     };
     foreach (var type in new[] { "album", "artist", "playlist", "show", "episode" })
     {
         var response = await f.Call("search", JsonSerializer.Serialize(new { query = "example", type }));
         using var media = JsonDocument.Parse(response.Text);
         var items = media.RootElement.GetProperty("results");
-        Check(!response.IsError && items.GetArrayLength() == 1 && items[0].GetProperty("Uri").GetString() == $"spotify:{type}:{type}", "Wrong media type or null candidate handling: " + type);
+        Check(!response.IsError && items.GetArrayLength() == 1 && items[0].GetProperty("Selection").GetString()!.StartsWith(type + ": "), "Wrong media type or null candidate handling: " + type);
+        if (type == "album") Check(items[0].GetProperty("ReleaseDate").GetString() == "2024-08" && items[0].GetProperty("ReleaseDatePrecision").GetString() == "month", "Album month precision lost");
+        if (type == "episode") Check(items[0].GetProperty("ReleaseDate").GetString() == "2026-10-26" && items[0].GetProperty("ReleaseDatePrecision").GetString() == "day", "Episode date/precision lost");
+        if (type == "artist") Check(!items[0].TryGetProperty("ReleaseDate", out _), "Artist release date fabricated");
     }
     f.Backend.PlaybackResult = new(true, false, f.Backend.State, "Playback state is delayed.");
-    var unconfirmed = await f.Call("play_music", "{\"uri\":\"spotify:artist:1234567890123456789012\"}");
+    var unconfirmed = await f.Call("play_music", "{\"selection\":\"spotify:artist:1234567890123456789012\"}");
     Check(!unconfirmed.IsError && unconfirmed.Text.Contains("accepted_unconfirmed") && unconfirmed.Text.Contains("Track by Artist"), "Acknowledged command reported as failed or observed item missing");
     f.Backend.SearchResults = new();
     using var empty = JsonDocument.Parse((await f.Call("search", "{\"query\":\"missing\",\"type\":\"artist\"}")).Text);
@@ -134,11 +148,29 @@ Console.WriteLine("PASS invalid arguments rejected before provider access");
 }
 
 {
+    var selections = new SpotifyToolSelections();
+    var first = selections.Remember(new("spotify:track:1111111111111111111111", "track", "Intro", ["Limp Bizkit"], "Album", "2000", "year"));
+    var duplicate = selections.Remember(first with { Uri = "spotify:track:2222222222222222222222" });
+    Check(first.Selection != duplicate.Selection && selections.Resolve(first.Selection)?.Uri == first.Uri && selections.Resolve(duplicate.Selection)?.Uri == duplicate.Uri, "Identical titles rebound to another URI");
+    Check(selections.Remember(first).Selection == first.Selection, "Repeated search changed a retained selection");
+    for (var i = 0; i < 200; i++) selections.Remember(new($"spotify:track:{i:D22}", "track", "Intro"));
+    Check(selections.Resolve(first.Selection) == null, "Old selection cache was not bounded");
+    var refreshed = selections.Remember(first);
+    Check(refreshed.Selection != first.Selection && selections.Resolve(first.Selection) == null, "Expired approval label was reused");
+    Console.WriteLine("PASS readable selections bind exact URIs, distinguish duplicate titles and never rebind expired labels");
+}
+
+{
     var f = new Fixture();
     var definitions = f.Catalog.GetTools();
     Check(definitions.Count == 18 && definitions.Select(d => d.Name).Distinct().Count() == 18, "Catalog coverage");
     Check(definitions.All(d => d.Source == VoxtaModule.ServiceName && d.AugmentationKey == VoxtaModule.ToolsAugmentationKey && !d.AlwaysAllowed && d.ExternalContent), "Tool ownership/permissions");
     Check(definitions.Count(d => d.Permission == ToolPermissionClass.Read) == 4, "Read/Act classification");
+    foreach (var name in new[] { "spotify_play_music", "spotify_queue_track" })
+    {
+        var properties = definitions.Single(d => d.Name == name).InputSchema.GetProperty("properties");
+        Check(properties.TryGetProperty("selection", out _) && !properties.TryGetProperty("uri", out _), "Approval schema exposes URI instead of readable selection");
+    }
     Check(SpotifyToolCatalog.Choices.All(c => c.EnabledByDefault), "Tools should default to enabled");
     var settings = new SpotifyToolsSettings(new HashSet<string>(), [ChatStyles.Assistant]);
     var disabled = SpotifyToolCatalog.Create(f.Handler, settings, f.Playlists, NullLogger.Instance);

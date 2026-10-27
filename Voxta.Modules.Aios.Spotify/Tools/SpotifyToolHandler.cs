@@ -14,6 +14,8 @@ internal sealed class SpotifyToolHandler(
 {
     // Serialize commands; never retry a side effect.
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly SpotifyToolSelections _selections = new();
+    private static readonly JsonSerializerOptions SearchJson = new() { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull };
 
     public async ValueTask<ChatToolCallResult> ExecuteAsync(string operation, JsonElement? args, CancellationToken token)
     {
@@ -53,15 +55,17 @@ internal sealed class SpotifyToolHandler(
             case "play_music":
             case "queue_track":
             {
-                var uri = Text(args, "uri");
+                var selection = Text(args, "selection");
+                var selected = _selections.Resolve(selection);
+                var uri = selected?.Uri ?? selection;
                 var parts = uri.Split(':');
                 if (parts.Length != 3 || parts[0] != "spotify" || !new[] { "track", "album", "artist", "playlist", "show", "episode" }.Contains(parts[1])
                     || parts[2].Length != 22 || !parts[2].All(char.IsAsciiLetterOrDigit))
-                    throw new ModuleToolInputException("'uri' must be an exact Spotify item URI from spotify_search or the user, such as spotify:track:<22-character ID>. Search by name with spotify_search first.");
+                    throw new ModuleToolInputException("That selection is unknown or expired. Run spotify_search and copy the exact readable Selection value. A Spotify URI is accepted only when supplied directly by the user.");
                 if (operation == "queue_track" && parts[1] != "track")
                     throw new ModuleToolInputException("Only spotify:track: URIs can be queued with this tool.");
                 return operation == "queue_track"
-                    ? await Changed(await manager.QueueTrack(uri, token), $"Spotify accepted the queue request for {uri}.", token)
+                    ? await Changed(await manager.QueueTrack(uri, token), $"Spotify accepted the queue request for {selected?.Selection ?? uri}.", token)
                     : await Play(uri, parts[1], token);
             }
             case "volume":
@@ -156,16 +160,16 @@ internal sealed class SpotifyToolHandler(
         token.ThrowIfCancellationRequested();
         if (response == null) return Failure("Spotify search could not be completed.");
         // Keep Spotify's ordering and metadata; no scoring, history suppression or automatic selection.
-        IEnumerable<object> results = type switch
+        IEnumerable<SpotifySearchItem> results = type switch
         {
-            "track" => (response.Tracks?.Items ?? []).Where(t => t != null).Select(t => (object)new { t.Uri, t.Name, Artists = t.Artists?.Select(a => a.Name), Album = t.Album?.Name }),
-            "album" => (response.Albums?.Items ?? []).Where(a => a != null).Select(a => (object)new { a.Uri, a.Name, Artists = a.Artists?.Select(x => x.Name), a.ReleaseDate }),
-            "artist" => (response.Artists?.Items ?? []).Where(a => a != null).Select(a => (object)new { a.Uri, a.Name }),
-            "playlist" => (response.Playlists?.Items ?? []).Where(p => p != null).Select(p => (object)new { p.Uri, p.Name, Owner = p.Owner?.DisplayName, p.Description }),
-            "show" => (response.Shows?.Items ?? []).Where(s => s != null).Select(s => (object)new { s.Uri, s.Name, s.Description }),
-            _ => (response.Episodes?.Items ?? []).Where(e => e != null).Select(e => (object)new { e.Uri, e.Name, e.ReleaseDate, e.Description }),
+            "track" => (response.Tracks?.Items ?? []).Where(t => t != null).Select(t => new SpotifySearchItem(t.Uri, type, t.Name, t.Artists?.Select(a => a.Name).ToArray(), t.Album?.Name, t.Album?.ReleaseDate, t.Album?.ReleaseDatePrecision)),
+            "album" => (response.Albums?.Items ?? []).Where(a => a != null).Select(a => new SpotifySearchItem(a.Uri, type, a.Name, a.Artists?.Select(x => x.Name).ToArray(), ReleaseDate: a.ReleaseDate, ReleaseDatePrecision: a.ReleaseDatePrecision)),
+            "artist" => (response.Artists?.Items ?? []).Where(a => a != null).Select(a => new SpotifySearchItem(a.Uri, type, a.Name)),
+            "playlist" => (response.Playlists?.Items ?? []).Where(p => p != null).Select(p => new SpotifySearchItem(p.Uri ?? "", type, p.Name ?? "", Owner: p.Owner?.DisplayName, Description: p.Description)),
+            "show" => (response.Shows?.Items ?? []).Where(s => s != null).Select(s => new SpotifySearchItem(s.Uri, type, s.Name, Description: s.Description)),
+            _ => (response.Episodes?.Items ?? []).Where(e => e != null).Select(e => new SpotifySearchItem(e.Uri, type, e.Name, ReleaseDate: e.ReleaseDate, ReleaseDatePrecision: e.ReleaseDatePrecision, Description: e.Description)),
         };
-        return new(JsonSerializer.Serialize(new { query, type, results = results.Take(10).ToArray() }), false);
+        return new(JsonSerializer.Serialize(new { query, type, results = results.Where(item => !string.IsNullOrWhiteSpace(item.Uri) && !string.IsNullOrWhiteSpace(item.Name)).Take(10).Select(_selections.Remember).ToArray() }, SearchJson), false);
     }
 
     private async Task<ChatToolCallResult> Play(string uri, string type, CancellationToken token)

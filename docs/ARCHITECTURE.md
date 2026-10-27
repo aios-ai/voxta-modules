@@ -19,9 +19,17 @@ authorization. Other modules' behavior and versions are unchanged.
   references the action handler or sends notes, cancels replies, or triggers generation. Mutating calls are
   serialized within the session and return immediate tool results; command summaries are not persisted in context.
 - `spotify_search` is a read-only catalog query. It returns up to ten candidates of one requested type in
-  Spotify order with their URIs and identifying metadata; it never selects or starts music. The agent chooses
-  a candidate and passes its exact URI to `spotify_play_music` or, for a track, `spotify_queue_track`.
-  Name/type arguments on those two mutation tools are no longer supported. Artist URIs ask Spotify to select
+  Spotify order with identifying metadata and a human-readable `Selection`; it never selects or starts music.
+  Track results include their album edition's release date; album and episode results also carry their dates.
+  `ReleaseDatePrecision` preserves Spotify's year/month/day precision without inventing missing components.
+  A track's album date is not necessarily the song's original release date. Artists, playlists and shows have
+  no fabricated release dates. The agent passes the exact `Selection` to `spotify_play_music` or, for a track,
+  `spotify_queue_track`. The host's approval displays this argument, including title, artist, album and date
+  where available. `SpotifyToolSelections` privately binds each selection to one URI within the chat, retaining
+  up to 200 items. Duplicate titles receive distinct numbers; retained results reuse their selection and
+  expired labels are never rebound. Unknown/expired selections fail before any playback command and require
+  another search. Search results omit internal URIs. A raw URI remains accepted in `selection` when supplied
+  directly by the user. Separate `uri` and name/type arguments are no longer supported. Artist selections ask Spotify to select
   music in that artist's context; a specific song requires selecting a track result. Genre requests use
   playlist searches or Spotify's genre filter for tracks. Tools never initialize or call the legacy search
   service; legacy actions retain their existing ranking and playback behavior.
@@ -146,8 +154,8 @@ which is already the manifest compatibility floor. The foundation compiles again
 
 The SDK and host own tool permissions, grants, model visibility, and the agent loop. The catalog does not
 provide permission authorization. In particular, `Enabled` checks are an availability guard, not a substitute
-for the host permission gate. Persistent permission grants are not implemented in step one; the adapter uses
-the SDK's default `GrantWriter` behavior.
+for the host permission gate. Persistent permission grants are not implemented by the module. The module does not customize the host's
+approval rendering; play/queue expose readable selection arguments and leave permission decisions to the host.
 
 Voxta's [Assistant Tools documentation](https://doc.voxta.ai/docs/server/services/chat-augmentations/basic-tools)
 also describes tools running during a reply and requiring a model that supports tool calling.
