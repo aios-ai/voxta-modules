@@ -23,8 +23,9 @@ public class HueCommandService : IHueCommandService
         _logger = logger;
     }
 
-    public async Task<bool> SendHueCommandAsync(Guid targetId, string type, bool? state = null, string? color = null, double? brightness = null, string? scene = null)
+    public async Task<bool> SendHueCommandAsync(Guid targetId, string type, bool? state = null, string? color = null, double? brightness = null, string? scene = null, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (_connectionService.HueClient == null)
         {
             _logger.LogWarning("Hue client not initialized. Cannot send command.");
@@ -162,8 +163,9 @@ public class HueCommandService : IHueCommandService
         }
     }
 
-    public async Task<bool> ControlAllLightsAsync(bool turnOn)
+    public async Task<bool> ControlAllLightsAsync(bool turnOn, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (_connectionService.HueClient == null)
         {
             _logger.LogWarning("Hue client not initialized. Cannot control all lights.");
@@ -185,6 +187,7 @@ public class HueCommandService : IHueCommandService
         var anyFailed = false;
         foreach (var light in controllableLights)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             try
             {
                 var lightCommand = turnOn ? new UpdateLight().TurnOn() : new UpdateLight().TurnOff();

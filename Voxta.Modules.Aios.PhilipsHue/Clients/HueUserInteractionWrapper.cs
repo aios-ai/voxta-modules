@@ -4,7 +4,7 @@ using Voxta.Abstractions.Utils;
 
 namespace Voxta.Modules.Aios.PhilipsHue.Clients;
 
-public class HueUserInteractionWrapper(IChatSessionChatAugmentationApi session) : IHueUserInteractionWrapper
+public class HueUserInteractionWrapper(IChatSessionChatAugmentationApi session, bool updateLegacyFlags = true) : IHueUserInteractionWrapper
 {
     public Task<IUserInteractionRequestToken> RequestUserInteraction(CancellationToken cancellationToken)
     {
@@ -16,6 +16,7 @@ public class HueUserInteractionWrapper(IChatSessionChatAugmentationApi session) 
 
     public Task SetBridgeConnectionStateAsync(bool connected, CancellationToken cancellationToken)
     {
+        if (!updateLegacyFlags) return Task.CompletedTask;
         var flags = connected
             ? new[] { "hueBridge_connected", "!hueBridge_disconnected" }
             : ["hueBridge_disconnected", "!hueBridge_connected"];

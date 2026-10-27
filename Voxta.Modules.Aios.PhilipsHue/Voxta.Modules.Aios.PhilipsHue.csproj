@@ -9,6 +9,7 @@
     </PropertyGroup>
     
     <ItemGroup>
+        <InternalsVisibleTo Include="Hue.Tools.Tests" />
         <PackageReference Include="HueApi" Version="3.2.0" />
         <PackageReference Include="HueApi.ColorConverters" Version="3.1.0" />
         <!-- The oldest Voxta version supported by module.json. Voxta provides these assemblies at runtime. -->

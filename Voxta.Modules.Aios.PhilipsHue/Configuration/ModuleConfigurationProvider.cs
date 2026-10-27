@@ -3,12 +3,13 @@ using Voxta.Abstractions.Security;
 using Voxta.Model.Shared.Forms;
 using Voxta.Modules.Aios.PhilipsHue.ChatAugmentations;
 using System.Text.Json;
+using Voxta.Modules.Aios.PhilipsHue.Tools;
 
 namespace Voxta.Modules.Aios.PhilipsHue.Configuration;
 
 public class ModuleConfigurationProvider : ModuleConfigurationProviderBase, IModuleConfigurationProvider
 {
-    public static string[] FieldsRequiringReload => [BridgeIp.Name, BridgeUsername.Name, Actions.Name];
+    public static string[] FieldsRequiringReload => [BridgeIp.Name, BridgeUsername.Name, Actions.Name, "HueTools", "ToolChatStyles", CharacterControlledLight.Name, AuthPath.Name];
     private static readonly string DefaultAuthPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "Voxta",
@@ -197,6 +198,8 @@ public class ModuleConfigurationProvider : ModuleConfigurationProviderBase, IMod
        var fields = FormBuilder.Build(
            CharacterControlledLight,
            SendInventoryAtSessionStart,
+           HueToolsSettings.ConfigurationField(settings),
+           HueToolsSettings.Styles.AsField(),
            Actions,
            AuthPath
        );

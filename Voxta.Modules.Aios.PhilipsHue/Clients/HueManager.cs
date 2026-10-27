@@ -46,6 +46,7 @@ public class HueManager
                 return false;
 
             var dataLoaded = await _dataService.RetrieveBridgeDataAsync();
+            cancellationToken.ThrowIfCancellationRequested();
             LastUserVisibleError = _dataService.LastUserVisibleError;
             if (!dataLoaded)
             {
@@ -80,17 +81,17 @@ public class HueManager
         return _colorConverterService.TranslateColorNameToHex(colorName);
     }
 
-    public async Task<bool> SendHueCommandAsync(Guid targetId, string type, bool? state = null, string? color = null, double? brightness = null, string? scene = null)
+    public async Task<bool> SendHueCommandAsync(Guid targetId, string type, bool? state = null, string? color = null, double? brightness = null, string? scene = null, CancellationToken cancellationToken = default)
     {
-        var succeeded = await _commandService.SendHueCommandAsync(targetId, type, state, color, brightness, scene);
+        var succeeded = await _commandService.SendHueCommandAsync(targetId, type, state, color, brightness, scene, cancellationToken);
         LastUserVisibleError = _commandService.LastUserVisibleError ?? _bridgeConnectionService.LastUserVisibleError;
         State = succeeded ? HueBridgeState.Connected : _bridgeConnectionService.State;
         return succeeded;
     }
 
-    public async Task<bool> ControlAllLightsAsync(bool turnOn)
+    public async Task<bool> ControlAllLightsAsync(bool turnOn, CancellationToken cancellationToken = default)
     {
-        var succeeded = await _commandService.ControlAllLightsAsync(turnOn);
+        var succeeded = await _commandService.ControlAllLightsAsync(turnOn, cancellationToken);
         LastUserVisibleError = _commandService.LastUserVisibleError ?? _bridgeConnectionService.LastUserVisibleError;
         State = succeeded ? HueBridgeState.Connected : _bridgeConnectionService.State;
         return succeeded;
