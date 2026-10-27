@@ -42,21 +42,17 @@ internal sealed class HueToolsSession(ModuleToolCatalog catalog, HueManager hue,
         await _statusGate.WaitAsync(cancellationToken);
         try
         {
-            var status = hue.IsConnected
-                ? "Philips Hue is connected and its inventory is loaded. Only tools enabled in the module options are offered."
-                : "Philips Hue is not connected or initialization failed; all Hue tools are unavailable. "
+            var connected = hue.IsConnected;
+            var status = connected ? "" : "Philips Hue is not connected or initialization failed; all Hue tools are unavailable. "
                   + (hue.LastUserVisibleError is { } error ? error + " " : "")
                   + "If Hue control is requested, ask the user to check the bridge is powered on and reachable, then restart the chat. "
                   + "Connection and link-button pairing run at chat startup. No connect tool is available; do not claim lights were changed.";
-            var signature = status + (hue.IsConnected ? _basicInventory : "");
+            var signature = status + (connected ? _basicInventory : "");
             if (signature == _lastStatus) return;
-            var contexts = new List<ContextDefinition>
-            {
-                new() { Id = StatusId, Name = "Philips Hue Status", Text = status },
-            };
-            if (hue.IsConnected)
-                contexts.Add(new() { Id = InventoryId, Name = "Philips Hue Basic Inventory", Text = _basicInventory });
-            await session.SetContexts(VoxtaModule.ServiceName, contexts.ToArray(), cancellationToken);
+            ContextDefinition[] contexts = connected
+                ? [new() { Id = InventoryId, Name = "Philips Hue Basic Inventory", Text = _basicInventory }]
+                : [new() { Id = StatusId, Name = "Philips Hue Status", Text = status }];
+            await session.SetContexts(VoxtaModule.ServiceName, contexts, cancellationToken);
             _lastStatus = signature;
         }
         finally { _statusGate.Release(); }

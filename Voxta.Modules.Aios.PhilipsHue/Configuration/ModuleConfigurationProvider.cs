@@ -7,13 +7,7 @@ namespace Voxta.Modules.Aios.PhilipsHue.Configuration;
 
 public class ModuleConfigurationProvider : ModuleConfigurationProviderBase, IModuleConfigurationProvider
 {
-    public static string[] FieldsRequiringReload => ["HueToolCards", "HueTools", "ToolChatStyles", CharacterControlledLight.Name, AuthPath.Name];
-    private static readonly string DefaultAuthPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "Voxta",
-        "Aios.PhilipsHue",
-        "Voxta.Modules.Aios.PhilipsHue.Auth.json");
-    
+    public static string[] FieldsRequiringReload => ["HueToolCards", "ToolChatStyles", CharacterControlledLight.Name];
     public static readonly FormTextField CharacterControlledLight = new()
     {
         Name = "CharacterControlledLight",
@@ -22,17 +16,6 @@ public class ModuleConfigurationProvider : ModuleConfigurationProviderBase, IMod
         Text = "Target light, zone or room name the character can control on it's own (optional)",
     };
 
-    public static readonly FormTextField AuthPath = new()
-    {
-        Name = "AuthPath",
-        Label = "Authentication Path",
-        Required = true,
-        Text = "The path to store the PhilipsHue authentication token.",
-        DefaultValue = DefaultAuthPath,
-        Advanced = true,
-    };
-
-    
    public Task<FormField[]> GetModuleConfigurationFieldsAsync(
         IAuthenticationContext auth,
         ISettingsSource settings,
@@ -42,8 +25,7 @@ public class ModuleConfigurationProvider : ModuleConfigurationProviderBase, IMod
        var fields = FormBuilder.Build(
            CharacterControlledLight,
            HueToolsSettings.ConfigurationField(settings),
-           HueToolsSettings.Styles.AsField(),
-           new FormHiddenField { Name = AuthPath.Name }
+           HueToolsSettings.Styles.AsField()
        );
         return Task.FromResult(fields);
     }

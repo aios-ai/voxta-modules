@@ -31,14 +31,13 @@ public class ModuleTestingProvider(
     {
         try
         {
-            var authPath = settings.GetRequired(ModuleConfigurationProvider.AuthPath);
 
             var ws = broadcastFactory.Create(auth.UserId);
             var interaction = new TestHueUserInteractionWrapper(userInteractionRequestsManager, ws, moduleId);
             var bridgeConnectionService = new HueBridgeConnectionService(
                 loggerFactory.CreateLogger<HueBridgeConnectionService>(),
                 interaction,
-                new HueVoxtaCredentialStore(tokenStore, encryption, auth.UserId, moduleId, () => PhilipsHueAuthPath.GetUserAuthPath(authPath, auth.UserId)));
+                new HueVoxtaCredentialStore(tokenStore, encryption, auth.UserId, moduleId));
             var dataService = new HueDataService(bridgeConnectionService, loggerFactory.CreateLogger<HueDataService>());
             var commandService = new HueCommandService(bridgeConnectionService, dataService, loggerFactory.CreateLogger<HueCommandService>());
             var colorConverterService = new ColorConverterService(loggerFactory.CreateLogger<ColorConverterService>());

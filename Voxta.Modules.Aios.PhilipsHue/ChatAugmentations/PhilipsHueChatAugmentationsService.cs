@@ -38,13 +38,12 @@ public class PhilipsHueChatAugmentationsService(
         var logger = loggerFactory.CreateLogger<HueToolsSession>();
         logger.LogInformation("Chat session {SessionId} has been augmented with {Augmentation}", session.SessionId, VoxtaModule.ToolsAugmentationKey);
         
-        var authPath = ModuleConfiguration.GetRequired(ModuleConfigurationProvider.AuthPath);
 
         var characterTarget = ModuleConfiguration.GetOptional(ModuleConfigurationProvider.CharacterControlledLight);
         var hueUserInteractionWrapper = new HueUserInteractionWrapper(session);
 
         var colorConverterService = new ColorConverterService(loggerFactory.CreateLogger<ColorConverterService>());
-        var bridgeConnectionService = new HueBridgeConnectionService(loggerFactory.CreateLogger<HueBridgeConnectionService>(), hueUserInteractionWrapper, new HueVoxtaCredentialStore(tokenStore, encryption, Auth.UserId, InstanceSettings.ModuleId, () => PhilipsHueAuthPath.GetUserAuthPath(authPath, Auth.UserId)));
+        var bridgeConnectionService = new HueBridgeConnectionService(loggerFactory.CreateLogger<HueBridgeConnectionService>(), hueUserInteractionWrapper, new HueVoxtaCredentialStore(tokenStore, encryption, Auth.UserId, InstanceSettings.ModuleId));
         var dataService = new HueDataService(bridgeConnectionService, loggerFactory.CreateLogger<HueDataService>());
         var commandService = new HueCommandService(bridgeConnectionService, dataService, loggerFactory.CreateLogger<HueCommandService>());
 

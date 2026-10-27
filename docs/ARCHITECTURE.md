@@ -24,18 +24,14 @@ The shared foundation is compiled privately into all three modules. Spotify and 
   send the scene resource ID. Inventory is Read; mutations are Act; bridge names are external content.
 - `HueToolsSettings` owns editable description cards and switches, with Assistant/Companion defaults.
   All tools except emotion default enabled; emotion also requires `CharacterControlledLight`.
-  Current cards use the `HueToolCards` key; old `HueTools` cards are read only as a fallback. This lets the
-  form display the current six definitions instead of Voxta reusing an older saved card array. Existing
-  switches and retained descriptions seed the new cards; saving them supersedes old cards.
-  Merging on/off cards preserves opt-outs: disabling either old tool disables the combined tool, unless an
-  explicit combined card exists. Old explicit SDK Tools selections enable toggle only when both directions
-  were selected. Old directional descriptions are not copied. Saved descriptions/styles for retained tools remain.
-- `HueToolsSession` publishes one stable **Philips Hue Status** context and masks all definitions while
+  Cards use only the current `HueToolCards` setting, with current tool names and built-in defaults.
+- `HueToolsSession` publishes **Philips Hue Status** only while disconnected and masks all definitions while
   startup connection/inventory initialization is incomplete or unsuccessful, or a command reports transport loss. It preserves saved disable switches
   and checks connection again before dispatch. Context asks the user to check the bridge and restart the chat
   to retry startup pairing; there is no connect tool or background reconnect loop. Context is refreshed during
   discovery and after tool calls, without duplicate unchanged writes. A stable **Philips Hue Basic Inventory**
   context adds exact light, smart-plug, room, zone and group names from the existing startup inventory.
+  Connected sessions publish only this inventory context; available tools indicate successful connection.
   Grouped-light aliases already represented by a room/zone are omitted. Scenes remain in the inventory tool.
   Basic context needs no extra bridge request, is present even with the inventory tool disabled, and is removed
   while disconnected. It is a startup snapshot, refreshed by restarting the chat. Results return to the agent loop.
@@ -49,17 +45,14 @@ The shared foundation is compiled privately into all three modules. Spotify and 
   with a `HueBridge` entry scoped to user and module. It encrypts the bridge address and complete local pairing
   result, loads by module/field and verifies a newly saved record by its host-issued token ID. Local keys do
   not expire or refresh, so storage uses a nonexpiring token representation without an OAuth provider.
-  On first use, an existing per-user AuthPath file is imported; it is deleted only after encrypted save and
-  successful readback. Native storage takes precedence thereafter; no new token file is written. Save/readback
-  failures retain the old file and stop initialization. A per-user/module gate serializes concurrent imports.
-  AuthPath remains a hidden legacy import setting, rather than a visible credential storage option. Inventory initialization accepts valid empty collections, including
+  Credentials are read and written only through Voxta. Hue supports fresh installations with current settings;
+  there is no credential file path or old-setting import. Inventory initialization accepts valid empty collections, including
   bridges without zones or scenes, but keeps provider failures distinct and preserves their error.
 
 Run `dotnet run --project tests/Hue.Tools.Tests -c Release -p:RestoreLockedMode=true` for operation, input,
-scene, settings/card migration, basic context, cancellation, permissions, availability, failed startup, pairing image,
-encrypted credential storage, migration/readback failures, isolation and concurrent import checks.
-The user verified the original Hue tools against real hardware before action removal. The combined toggle,
-failed startup/restart guidance, logo rendering, startup inventory and real credential import still need live Voxta acceptance for this version.
+scene, current settings, basic context, cancellation, permissions, availability, failed startup, pairing image,
+encrypted credential storage, readback failures and isolation checks. The user verified the Hue tools, startup
+inventory and native storage in Voxta. Disconnected-only status behavior still needs live acceptance for this version.
 
 ## Spotify integration
 

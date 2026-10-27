@@ -56,34 +56,14 @@ internal sealed record HueToolsSettings(IReadOnlySet<string> Selected, ChatStyle
     {
         // Read the saved cards without dropping switches or depending on JSON property casing.
         var raw = settings.GetRawValue(Field.Name);
-        if (string.IsNullOrWhiteSpace(raw)) raw = settings.GetRawValue("HueTools");
         var entries = string.IsNullOrWhiteSpace(raw) ? null : JsonSerializer.Deserialize<HueToolSettings[]>(raw,
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
         var configured = (entries ?? []).Where(e => !string.IsNullOrEmpty(e.Name))
             .GroupBy(e => e.Name, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Last(), StringComparer.Ordinal);
-        var oldNames = new[] { "hue_turn_lights_on", "hue_turn_lights_off" };
-        if (!configured.ContainsKey("hue_toggle_lights") && oldNames.Any(configured.ContainsKey))
-            configured["hue_toggle_lights"] = new HueToolSettings
-            {
-                Name = "hue_toggle_lights",
-                Disabled = oldNames.Any(name => configured.TryGetValue(name, out var old)
-                    && bool.TryParse(old.Disabled, out var disabled) && disabled) ? "true" : "false",
-            };
-        var selected = HueToolCatalog.Choices.Where(choice => entries != null
-                ? configured.TryGetValue(choice.Name, out var entry)
-                    ? !bool.TryParse(entry.Disabled, out var disabled) || !disabled
-                    : choice.EnabledByDefault
-                : ChatToolSettingsContributions.IsToolSelected(settings, HueToolCatalog.Choices, choice.Name))
+        var selected = HueToolCatalog.Choices.Where(choice => configured.TryGetValue(choice.Name, out var entry)
+                ? !bool.TryParse(entry.Disabled, out var disabled) || !disabled
+                : choice.EnabledByDefault)
             .Select(choice => choice.Name).ToHashSet(StringComparer.Ordinal);
-        var oldSelection = settings.GetRawValue("Tools");
-        if (entries == null && !string.IsNullOrWhiteSpace(oldSelection)
-            && oldNames.Any(name => oldSelection.Contains(name, StringComparison.Ordinal)))
-        {
-            var oldChoices = oldNames.Select(name => new ChatToolChoice(name, name, true)).ToArray();
-            if (oldNames.All(name => ChatToolSettingsContributions.IsToolSelected(settings, oldChoices, name)))
-                selected.Add("hue_toggle_lights");
-            else selected.Remove("hue_toggle_lights");
-        }
         return new(selected, settings.GetRequired(Styles), configured
             .Where(e => !string.IsNullOrWhiteSpace(e.Value.Description))
             .ToDictionary(e => e.Key, e => e.Value.Description!.Trim(), StringComparer.Ordinal));
