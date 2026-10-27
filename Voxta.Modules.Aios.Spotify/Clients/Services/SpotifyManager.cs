@@ -47,7 +47,6 @@ public interface ISpotifyManager
     Task<CurrentlyPlayingContext?> GetCurrentPlaybackState(CancellationToken cancellationToken);
     Task<Paging<FullTrack>?> GetUsersTopTracks(CancellationToken cancellationToken);
     Task<bool> ControlSpotifyPlayback(bool playback, CancellationToken cancellationToken);
-    Task<bool> PlaySpecificUri(string uri, CancellationToken cancellationToken, string? type = null);
     Task<SpotifyPlaybackResult> PlayWithResult(string uri, CancellationToken cancellationToken, string? type = null);
     Task<bool> QueueTrack(string uri, CancellationToken cancellationToken);
     Task<SearchResponse?> SearchSpotify(string query, SearchRequest.Types type, string? market = null, CancellationToken cancellationToken = default);
@@ -60,7 +59,6 @@ public interface ISpotifyManager
     Task<Dictionary<string, string>> ListAvailablePlaylists(CancellationToken cancellationToken);
     Task<bool> AddItems(string playlistId, PlaylistAddItemsRequest request, CancellationToken cancellationToken);
     Task<bool> AddTrackToLibraryAsync(string trackUri, string trackFriendlyName, CancellationToken cancellationToken);
-    Task<Dictionary<string, string>> ListAvailableDevices(CancellationToken cancellationToken);
     Task<IReadOnlyList<Device>> GetAvailablePlaybackDevices(CancellationToken cancellationToken);
     Task<bool> TransferPlayback(string deviceId, CancellationToken cancellationToken);
 }
@@ -242,16 +240,7 @@ public class SpotifyManager(
         }
     }
 
-    public async Task<bool> PlaySpecificUri(string uri, CancellationToken cancellationToken, string? type = null)
-    {
-        var result = await StartPlayback(uri, cancellationToken, type, false);
-        return result.Confirmed;
-    }
-
-    public Task<SpotifyPlaybackResult> PlayWithResult(string uri, CancellationToken cancellationToken, string? type = null) =>
-        StartPlayback(uri, cancellationToken, type, true);
-
-    private async Task<SpotifyPlaybackResult> StartPlayback(string uri, CancellationToken cancellationToken, string? type, bool forTool)
+    public async Task<SpotifyPlaybackResult> PlayWithResult(string uri, CancellationToken cancellationToken, string? type = null)
     {
         var accepted = false;
         CurrentlyPlayingContext? observed = null;
@@ -307,10 +296,10 @@ public class SpotifyManager(
                     FullEpisode current => current.Uri == expectedUri,
                     _ => false,
                 };
-                var artistMatches = forTool && uri.StartsWith("spotify:artist:", StringComparison.Ordinal)
+                var artistMatches = uri.StartsWith("spotify:artist:", StringComparison.Ordinal)
                     && state?.Item is FullTrack artistTrack && artistTrack.Artists?.Any(a => a.Uri == uri) == true;
                 // For exact tracks/episodes a matching context alone does not prove the item started.
-                var contextMatches = state?.Context?.Uri == uri && (!forTool || type is not ("track" or "episode"));
+                var contextMatches = state?.Context?.Uri == uri && type is not ("track" or "episode");
                 if (state?.IsPlaying == true && (matches || contextMatches || artistMatches))
                 {
                     ClearUserVisibleError();
@@ -318,8 +307,6 @@ public class SpotifyManager(
                 }
             }
             logger.LogWarning("Spotify accepted playback for {Uri}, but the requested item was not observed playing.", uri);
-            if (!forTool)
-                LastUserVisibleError = "Spotify accepted the play request, but playback of the requested item could not be confirmed. Check Spotify on the active device and start a track manually if the player is empty.";
             return new(true, false, observed, null);
         }
         catch (APIException ex)
@@ -331,7 +318,7 @@ public class SpotifyManager(
         catch (Exception ex)
         {
             logger.LogError("Error starting playback: {ExMessage}", ex.Message);
-            LastUserVisibleError = forTool && accepted
+            LastUserVisibleError = accepted
                 ? "Spotify accepted the play request, but playback state could not be read."
                 : "Spotify could not start playback. Please check the selected item and active device, then try again.";
             return new(accepted, false, observed, LastUserVisibleError);
@@ -666,17 +653,6 @@ public class SpotifyManager(
             LastUserVisibleError = "Spotify could not save the track to Liked Songs. Please try again.";
             return false;
         }
-    }
-
-    public async Task<Dictionary<string, string>> ListAvailableDevices(CancellationToken cancellationToken)
-    {
-        var deviceMap = new Dictionary<string, string>();
-        foreach (var device in await GetAvailablePlaybackDevices(cancellationToken))
-        {
-            if (!string.IsNullOrEmpty(device.Name) && !string.IsNullOrEmpty(device.Id))
-                deviceMap[device.Name] = device.Id;
-        }
-        return deviceMap;
     }
 
     public async Task<IReadOnlyList<Device>> GetAvailablePlaybackDevices(CancellationToken cancellationToken)

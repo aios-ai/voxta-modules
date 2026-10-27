@@ -12,17 +12,17 @@ internal static class SpotifyConfigurationChecks
     {
         var empty = new StaticSettingsSource(new());
         var defaults = SpotifyToolsSettings.From(empty);
-        Check(defaults.Selected.Count == 18, "New configurations must enable all tools");
+        Check(defaults.Selected.Count == 17, "New configurations must enable all tools");
         Check(defaults.ChatStyles.ToHashSet().SetEquals([ChatStyles.Assistant, ChatStyles.Companion]), "Default styles");
         var cards = (FormArrayOfObjectsField)SpotifyToolsSettings.ConfigurationField(empty);
         Check(cards.AllowDisable && !cards.AllowRename && !cards.AllowAddRemove, "Fixed tool card UI");
-        Check(JsonSerializer.Deserialize<SpotifyToolSettings[]>(cards.DefaultValue!)!.Length == 18, "Missing cards");
+        Check(JsonSerializer.Deserialize<SpotifyToolSettings[]>(cards.DefaultValue!)!.Length == 17, "Missing cards");
         var old = new StaticSettingsSource(new() { ["Tools"] = "spotify_skip_next", ["ToolChatStyles"] = "Assistant" });
         var migrated = SpotifyToolsSettings.From(old);
         Check(migrated.Selected.SetEquals(["spotify_skip_next"]), "Legacy selection changed");
         Check(migrated.ChatStyles.SequenceEqual([ChatStyles.Assistant]), "Saved styles changed");
         var none = SpotifyToolsSettings.From(new StaticSettingsSource(new() { ["Tools"] = "" }));
-        Check(none.Selected.Count == 18, "Empty beta.1 defaults should adopt enabled defaults");
+        Check(none.Selected.Count == 17, "Empty beta.1 defaults should adopt enabled defaults");
         var disabledCards = JsonSerializer.Serialize(SpotifyToolCatalog.Choices.Select(c => new SpotifyToolSettings { Name = c.Name, Disabled = "true" }));
         Check(SpotifyToolsSettings.From(new StaticSettingsSource(new() { ["SpotifyTools"] = disabledCards })).Selected.Count == 0, "Explicit card disabling was not preserved");
         var settings = SpotifyToolsSettings.From(new StaticSettingsSource(new()
@@ -47,8 +47,23 @@ internal static class SpotifyConfigurationChecks
         var fields = await new ModuleConfigurationProvider().GetModuleConfigurationFieldsAsync(null!, empty, default);
         Check(fields.OfType<FormAuthorizeField>().Single().Name == "SpotifyAccount", "Missing account field");
         Check(fields.OfType<FormDocumentationField>().Any(f => f.Value.Contains(SpotifyRedirectUri.DesktopDefault) && f.Value.Contains(SpotifyRedirectUri.VoxtaDefault)), "Both callbacks must be explained");
-        foreach (var name in new[] { "AuthorizationMode", "VoxtaRedirectUri", "RedirectUri", "TokenPath" })
+        foreach (var name in new[] { "AuthorizationMode", "VoxtaRedirectUri", "RedirectUri", "TokenPath", "MatchFilterWakeWord", "Actions" })
             Check(fields.All(f => f.Name != name), "Obsolete authentication setting still displayed: " + name);
+        var obsolete = new StaticSettingsSource(new()
+        {
+            ["SpotifyTools"] = JsonSerializer.Serialize(new[]
+            {
+                new SpotifyToolSettings { Name = "spotify_connect", Disabled = "false" },
+                new SpotifyToolSettings { Name = "spotify_skip_next", Disabled = "true" },
+            }),
+            ["Actions"] = "old-unused-actions",
+            ["MatchFilterWakeWord"] = "Spotify",
+            ["TokenPath"] = "invalid-old-path",
+        });
+        var migratedCards = (FormArrayOfObjectsField)SpotifyToolsSettings.ConfigurationField(obsolete);
+        var saved = JsonSerializer.Deserialize<SpotifyToolSettings[]>(migratedCards.DefaultValue!)!;
+        Check(saved.Length == 17 && saved.All(t => t.Name != "spotify_connect"), "Removed connect card retained");
+        Check(saved.Single(t => t.Name == "spotify_skip_next").Disabled == "true", "Existing tool preference lost");
         Console.WriteLine("PASS tool cards, editable descriptions, defaults, saved settings, and single-flow authentication configuration");
     }
     private static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }

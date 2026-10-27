@@ -18,7 +18,6 @@ internal static class SpotifyToolCatalog
     private static readonly Definition[] Definitions =
     [
         new("toggle_playback", "Toggle Spotify playback between playing and paused.", []),
-        new("spotify_connect", "Legacy diagnostic query equivalent to spotify_list_devices. Lists available devices and their active/control status; it does not establish playback readiness.", [], true),
         new("play_random_music", "Play a random track from the user's top Spotify tracks.", []),
         new("play_special_playlist", "Play a configured personal Spotify playlist by its configured name.", [Text("name", "Configured special playlist name.")]),
         new("search", "Search Spotify without changing playback. Returns up to ten candidates in Spotify order with readable Selection values and identifying metadata, including release dates and their precision where available. Track dates describe the returned album edition, not necessarily the original song release. Choose the best match for the user's request, then copy its exact Selection value to spotify_play_music or spotify_queue_track; Spotify URIs are resolved privately. For a specific song by an artist, search type track with a query such as track:Song artist:Artist. For any music by an artist, search type artist. For a genre, search playlists by genre name or tracks using genre:Name. Ask the user when the results are ambiguous.", [Text("query", "Spotify search query, including artist/track/album/genre filters when useful."), Text("type", "One of: track, album, artist, playlist, show, episode.")], true),
@@ -38,7 +37,7 @@ internal static class SpotifyToolCatalog
     ];
 
     public static readonly ChatToolChoice[] Choices = Definitions.Select(d =>
-        new ChatToolChoice("spotify_" + d.Operation.Replace("spotify_", ""), d.Description, true)).ToArray();
+        new ChatToolChoice("spotify_" + d.Operation, d.Description, true)).ToArray();
 
     public static ModuleToolCatalog Create(SpotifyToolHandler handler, SpotifyToolsSettings settings,
         IReadOnlyDictionary<string, string> playlists, ILogger logger) => new(

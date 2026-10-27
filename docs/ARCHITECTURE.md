@@ -2,19 +2,18 @@
 
 ## Current boundary
 
-OpenWeather and Hue continue to use `IActionInferenceAugmentation`. Spotify now offers independent
-`spotify_tools` and legacy `spotify` augmentations. Its tools use the shared catalog and native agent loop;
-legacy actions retain their own configuration, argument builders, handler, and feedback. Selecting Spotify
-Tools suppresses legacy instance creation even if both keys are selected, preventing duplicate commands,
-monitoring, and speech event handlers. With tools deselected, legacy actions remain available for comparison.
+OpenWeather and Hue continue to use `IActionInferenceAugmentation`. Spotify exposes only the opt-in
+`spotify_tools` augmentation and uses the shared catalog and native agent loop. Its legacy actions, wake word,
+connection/playing flags, connect alias, automatic search ranking, and action feedback have been removed after
+user verification of tools. Existing chats configured only for the removed `spotify` augmentation must select
+**Spotify Tools**. Obsolete action settings are ignored; saved tool choices and styles remain compatible.
 
 The shared foundation is compiled privately into all three modules. Only Spotify currently registers tools.
-Its migration is a beta for runtime testing; remove action inference code only after user verification and
-authorization. Other modules' behavior and versions are unchanged.
+Other modules' behavior and versions are unchanged.
 
 ## Spotify integration
 
-- `Tools/SpotifyToolCatalog.cs` owns 18 native definitions and SDK schemas, permissions, choices, and bindings.
+- `Tools/SpotifyToolCatalog.cs` owns 17 native definitions and SDK schemas, permissions, choices, and bindings.
   `SpotifyToolHandler` validates and executes through `ISpotifyManager`; it never
   references the action handler or sends notes, cancels replies, or triggers generation. Mutating calls are
   serialized within the session and return immediate tool results; command summaries are not persisted in context.
@@ -31,44 +30,48 @@ authorization. Other modules' behavior and versions are unchanged.
   another search. Search results omit internal URIs. A raw URI remains accepted in `selection` when supplied
   directly by the user. Separate `uri` and name/type arguments are no longer supported. Artist selections ask Spotify to select
   music in that artist's context; a specific song requires selecting a track result. Genre requests use
-  playlist searches or Spotify's genre filter for tracks. Tools never initialize or call the legacy search
-  service; legacy actions retain their existing ranking and playback behavior.
+  playlist searches or Spotify's genre filter for tracks. There is no background candidate ranking or automatic selection.
 - `ISpotifyManager.PlayWithResult` distinguishes command rejection, accepted-but-unconfirmed playback, and
   observed playback. Tools return these states plus the observed item/device rather than marking an
   acknowledged command as failed. Polling is bounded and never repeats the play mutation. Artist playback
   can be confirmed by the playing track's artist URI when context is missing or different. Exact track/episode
-  requests still require the requested item; paused or unrelated playback is not confirmation. The legacy
-  `PlaySpecificUri` adapter retains its previous boolean/context-confirmation semantics and feedback.
+  requests still require the requested item; paused or unrelated playback is not confirmation.
 - `SpotifyToolsSettings` exposes `SpotifyTools` through the same `FormArrayOfObjectsField` card editor used
   by actions, with fixed names, per-tool disable switches, and editable descriptions. It reads existing nonempty
   SDK `Tools` selections as a migration fallback until cards are saved; an empty beta.1 selection adopts the new
   all-enabled defaults. Saved card switches take precedence. `ToolChatStyles` retains the SDK setting key and
   choices, with module-local Assistant and Companion defaults; explicitly saved styles remain intact.
-  These settings are independent of legacy `Actions`. `SpotifyChatAugmentationsService` implements the
+  Obsolete `Actions` settings are ignored. `SpotifyChatAugmentationsService` implements the
   SDK tools-service marker and plans tools separately as opt-in, excluded from catch-all activation.
 - Shuffle commands are sent once, then confirmed by up to five playback-state reads at 400 ms intervals.
   Success requires an active device and the requested shuffle state. Accepted but unchanged or missing-player
   observations return explicit unconfirmed feedback. Tools must not claim success, retry automatically, or
-  start different music to enable shuffle. The shared manager applies this verification to legacy actions too.
+  start different music to enable shuffle.
   Liked Songs resolves the current track automatically. Its library save uses the authenticated SDK connector
   with `uris` in the query string and no body, matching Spotify's `/me/library` contract; SDK 7.4.2's
   `Library.SaveItems` incorrectly places `uris` in the body. Revisit this workaround when upgrading the SDK.
-- `SpotifyToolsSession` owns one `SpotifyPlaybackSession`. The legacy instance uses the same neutral playback
-  owner when selected alone. That owner starts/stops one monitor and forwards speech/transcription events to
-  `SpotifySpeechDucking`, which preserves the desired volume across overlapping events and tool volume changes.
-  The action handler's volume-ducking methods remain compatibility wrappers; tools and script events do not
-  call them. The manager is not disposable; the session stops monitoring before releasing its cancellation source.
-- OAuth remains a setup/session concern. `spotify_connect` returns the existing no-active-client guidance;
-  it does not invent a connection API. Search/profile requests receive both call and session cancellation.
-  Fresh provider playback state is used for tool commands that depend on current playback; passive contexts
-  continue to update through the monitor. The SDK's pagination helper has no transport cancellation parameter;
-  cancellation stops waiting for subsequent read-only playlist pages.
+- `SpotifyToolsSession` owns one `SpotifyPlaybackSession`, which starts/stops the playback monitor and
+  forwards speech/transcription events to `SpotifySpeechDucking`. Ducking preserves desired volume across
+  overlapping events and tool volume changes. Session disposal stops monitoring before releasing its cancellation source.
+- Voxta asks `IToolsChatAugmentation.GetToolsAsync` for definitions per generation and filters disabled tools.
+  The session combines saved switches with the monitored active-player state: the 13 playback/current-item tools
+  are offered only with an active device, including paused playback. Search, playlist listing, device listing,
+  and explicit device transfer remain available without a player. All 17 definitions remain discoverable; a
+  state change never enables a saved disabled tool or changes permissions. There is no connect gate or flag.
+  The one-second monitor makes changes visible on a subsequent generation; this does not replace a running
+  generation's tool list. Calls already offered are validated against fresh provider state by their handlers.
+  Playback context continues to report authorization, errors, device, and playing/paused state.
+- OAuth remains a setup/session concern. Search/profile requests receive both call and session cancellation.
+  Fresh provider playback state is used for commands that depend on current playback; passive contexts update
+  through the monitor. SDK pagination has no transport cancellation parameter; cancellation stops waiting for
+  subsequent read-only playlist pages.
 
-To test the beta in Voxta, review the **Spotify Tools** cards and **Offer Tools In** settings, then select **Spotify Tools** for a new chat with a tool-capable model. Legacy Spotify Actions can be
-deselected; selecting both still creates only the tools session. Check permissions, playback/search, playlists,
-queue, seek/volume, library changes, device transfer, multiple calls in one reply, cancellation, and speech ducking.
-Results should appear in the current reply without extra notes or another generation. For legacy comparison,
-deselect Spotify Tools and select Spotify Actions (Legacy). Runtime/provider parity remains a manual acceptance step.
+In Voxta, review **Spotify Tools** cards and **Offer Tools In**, then select **Spotify Tools** for a new chat
+with a tool-capable model. Check playback/search, playlists, queue, seek/volume, library changes, transfer,
+multiple calls, cancellation, and speech ducking. Without an active player, verify the four independent tools;
+start playback manually and verify playback tools appear on the next generation, including after pausing.
+Saved disabled tools must stay disabled. Results should appear in the current reply without extra notes or
+another generation. Runtime/provider behavior and automatic visibility remain manual acceptance steps.
 
 ## Spotify authorization boundary
 
@@ -139,8 +142,7 @@ also cancels pending consent and logs a diagnostic. The manager drops its cached
 The listener, callback manager, manual redirect/mode fields, token-file helpers, and interaction-request wrappers
 have been removed following user acceptance of native authorization. Existing `SpotifyAccount` references remain
 compatible. Obsolete persisted settings are ignored. Old local token files are neither read nor deleted; they
-are no longer part of the module's authorization pipeline. Legacy action inference remains until tools receive
-separate user acceptance.
+are no longer part of the module's authorization pipeline.
 
 ## SDK contract
 
@@ -206,8 +208,8 @@ Tools/<Module>ToolHandler.cs       validation and execution, returning ChatToolC
 Tools/<Module>ToolsSettings.cs     tool-specific settings, independent of legacy action configuration
 ```
 
-Keep the current action files and legacy augmentation registrations intact; suppress activation when tools take precedence. Tools must never call `TryHandleActionInference`,
-`SpotifyActionHandler`, or construct synthetic `ServerActionMessage` objects. Actions must never dispatch through
+For future OpenWeather/Hue migrations, keep action files and legacy registrations until user acceptance; suppress activation when tools take precedence. Tools must never call `TryHandleActionInference`,
+an action handler, or construct synthetic `ServerActionMessage` objects. Actions must never dispatch through
 the tool catalog. Both may call transport-neutral domain clients/services. If a useful operation currently lives
 inside an action handler, extract a domain operation returning data/results, then give actions and tools their own
 presentation adapters. Do not share action-specific note/reply plumbing with tools.
@@ -215,7 +217,7 @@ presentation adapters. Do not share action-specific note/reply plumbing with too
 During integration, expose a separate opt-in tools augmentation (`<existing augmentation key>_tools`) and keep the
 existing action augmentation key for compatibility. Implement the SDK tools-service marker on the service and plan
 the tool instance independently. Selecting tools alone must not create an action instance or require ActionInference.
-Users can select tools alone or legacy actions alone for comparison. Do not automatically select both, which
+During future migrations, users can select tools alone or legacy actions alone for comparison. Do not automatically select both, which
 could cause duplicate device commands. Spotify tools default enabled following user runtime feedback; the
 augmentation itself remains opt-in. Other migrations should choose defaults explicitly and version the change.
 
@@ -227,16 +229,16 @@ its result. Return map images through `ChatToolCallResult.Images` instead.
 
 ## Migration coverage
 
-Recommended order: OpenWeather, Hue, Spotify. Prefix the names below as described above; retain every legacy action.
+Spotify migration is complete. For OpenWeather and Hue, preserve legacy actions until each tools migration is accepted.
+Prefix tool names as described above.
 
-| Module | Existing actions to cover | Migration-specific behavior |
+| Module | Operations to cover | Migration-specific behavior |
 | --- | --- | --- |
 | OpenWeather (5) | `get_weather`, `get_weather_forecast`, `get_air_pollution`, `get_air_pollution_forecast`, `get_weather_map` | Reuse `IOpenWeatherClient` and summarizers. Preserve configured location fallback, units, selected details, and cache path. Separate data/formatting from note feedback. Return maps as images plus descriptive text. All five are queries. |
 | Hue (8) | `turn_lights_on`, `turn_lights_off`, `hueBridge_connect`, `change_color`, `show_emotion`, `change_brightness`, `activate_scene`, `show_hue_inventory` | Reuse Hue manager/services. Validate brightness and target selection; expose useful disconnected/not-found errors. Inventory is Read; device/connection changes are Act. Keep emotion control gated by the configured character light and opt-in tool selection; agent-loop timing is distinct from the old after-assistant action timing. Preserve setup/link-button interaction separately from tool-result feedback. |
-| Spotify (17) | `toggle_playback`, `spotify_connect`, `play_random_music`, `play_special_playlist`, `play_music`, `queue_track`, `volume`, `seek_playback`, `skip_next`, `skip_previous`, `repeat_mode`, `shuffle_mode`, `add_to_favorites`, `get_playlists`, `add_to_playlist`, `list_devices`, `transfer_to_device` | Reuse neutral manager operations; tools search returns candidates as described above. The connect tool diagnoses available players without activating one. Search, connect and playlist/device listing are Read; mutations are Act. Preserve configured playlists, playback state and speech ducking independently of the action handler. Keep OAuth setup and passive playback monitoring separate from tool execution. |
+| Spotify (17, completed) | `toggle_playback`, `search`, `play_random_music`, `play_special_playlist`, `play_music`, `queue_track`, `volume`, `seek_playback`, `skip_next`, `skip_previous`, `repeat_mode`, `shuffle_mode`, `add_to_favorites`, `get_playlists`, `add_to_playlist`, `list_devices`, `transfer_to_device` | Native tools use neutral manager operations. Search and playlist/device listing are Read; mutations are Act. Configured playlists, playback context, and speech ducking remain independent of tool dispatch. OAuth and passive monitoring remain session/setup concerns. |
 
-Spotify speech events use the neutral `SpotifyPlaybackSession` and `SpotifySpeechDucking`, independently of
-`SpotifyActionHandler`. Preserve this boundary when extending the tools path.
+Spotify speech events use `SpotifyPlaybackSession` and `SpotifySpeechDucking`, independently of tool dispatch.
 Spotify playback tools use the active player shown in context, including an active paused player. When Spotify
 reports no active player, the assistant asks the user to open Spotify on the intended device, select a track or
 playlist and start playback manually, then waits for confirmation that playback has started. Discovery and transfer
@@ -247,24 +249,24 @@ The tools session awaits a read-only player-state preflight before activation co
 `SpotifyPlaybackMonitor` owns stable connection, active-device, playback and track contexts, refreshed every second.
 It does not discover devices at startup or in the background. No active player is distinct from a provider failure,
 missing authorization, or an active paused player. Full context comparison detects device switches and track removal
-without republishing unchanged ticks. Context contains current state only; tool results and legacy action feedback
-confirm commands without a persistent last-command context.
+without republishing unchanged ticks. Context contains current state only; tool results report command outcomes
+without a persistent last-command context.
 Seeking distinguishes relative seconds (`forward`/`backward`), relative percentages of the total duration
 (`forward_percent`/`backward_percent`, measured from the current position), and absolute positions from the
 beginning (`to_time`/`to_percent`). Percentage values are integers from 0 to 100; targets are clamped to the
-track or episode boundaries in tools (legacy seeks support tracks). For example, at 3:00 in a ten-minute track,
+track or episode boundaries. For example, at 3:00 in a ten-minute track,
 forward by 10% reaches 4:00, whereas go to 10% reaches 1:00.
 On a requested destination change, `spotify_list_devices` reports names, types, active status and control availability.
 Transfer accepts device names and resolves current internal IDs privately. Neither discovery output nor playback
 context exposes IDs, so approval arguments use names. Duplicate or ambiguous names require clarification or renaming
 in Spotify. Restricted devices and devices without IDs are rejected. Transfer success means Spotify accepted the
 transfer, not that playback is ready; it preserves the playing/paused state. No tool silently transfers or retries a
-mutation. The legacy name-to-ID adapter remains separate, and the legacy connect tool remains available to disable.
-`SpotifyManager.PlaySpecificUri` starts individual tracks through their album context with a track offset,
+mutation.
+`SpotifyManager.PlayWithResult` starts individual tracks through their album context with a track offset,
 avoiding desktop clients that accept a bare `uris` request but clear the player. Album lookup must succeed
 before changing playback; Spotify may continue with later album tracks after the selected song. After one
 play command, up to five playback-state reads at 400 ms intervals confirm the requested track/episode or
-context is playing. Acceptance without confirmation is a tool error, not success; no play command is retried.
+context is playing. Acceptance without confirmation is reported explicitly as unconfirmed; no play command is retried.
 Playback monitors and initial Hue inventory notes are session features; choose their owner explicitly when both
 augmentations are selected to avoid duplicate polling/notes and double disposal.
 
@@ -285,7 +287,7 @@ catalog/handler against a fake manager: all 17 operations, mutation failures, in
 ambiguous devices, cancellation, metadata/settings defaults, ducking overlap and volume changes, session dispatch,
 playback-only preflight, manual-start recovery guidance, paused/playing states, private name-to-ID resolution,
 stable context identities, device switches, provider failures and recovery,
-legacy suppression, disposal, tool-card settings, description overrides, defaults/migration, redirect validation, and
+tools-only registration, dynamic availability, saved disable switches, no flag writes, disposal, tool-card settings, description overrides, defaults/migration, redirect validation, and
 single-flow authentication settings. `SpotifyVoxtaOAuthChecks` covers automatic browser/desktop callbacks,
 exact consent/exchange URI matching across transient provider instances, request-origin/path validation,
 user/module isolation, expiry, changed credentials, overlapping-client guards, sign-out, cancellation, no retry,
@@ -300,7 +302,7 @@ For each migration, add handler checks with fake domain clients for all operatio
 and cancellation. Then test in Voxta with tools selected and legacy actions deselected: discovery/settings, host
 permissions, successful and failed calls, multiple calls in one reply, cancellation, and results in the same agent
 response. Verify no ActionInference requirement, duplicate notes, follow-up generation, or repeated side effects.
-Repeat representative requests with only legacy actions selected. Test real maps, Hue devices and emotion control,
+For future OpenWeather/Hue migrations, repeat representative requests with only legacy actions selected. Test real maps, Hue devices and emotion control,
 Spotify playback and ducking against their providers before declaring behavioral parity.
 
 Each externally visible migration increments the affected module's manifest version (use a prerelease while testing),

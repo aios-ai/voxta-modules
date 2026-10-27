@@ -28,8 +28,6 @@ internal sealed class SpotifyToolHandler(
     {
         switch (operation)
         {
-            case "spotify_connect":
-                return await DescribeDevices(token);
             case "toggle_playback":
             {
                 var state = await manager.GetCurrentPlaybackState(token);

@@ -13,8 +13,8 @@ internal sealed class SpotifyPlaybackSession(SpotifyPlaybackMonitor monitor, Spo
     private readonly CancellationTokenSource _cts = new();
     private Task? _monitorTask;
     private bool _disposed;
+    public bool HasActivePlayer => monitor.PlaybackState?.Device?.IsActive == true;
     public ServiceTypes[] GetRequiredServiceTypes() => [];
-    public void Initialize() => _monitorTask = monitor.MonitorSpotifyPlayback(_cts.Token);
     public async Task InitializeAsync(CancellationToken cancellationToken)
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _cts.Token);

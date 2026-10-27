@@ -2,7 +2,6 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using SpotifyAPI.Web;
-using Voxta.Abstractions.Chats.Objects.Chats;
 using Voxta.Abstractions.Chats.Sessions;
 using Voxta.Model.Shared;
 
@@ -16,7 +15,6 @@ public class SpotifyPlaybackMonitor(
     private readonly SemaphoreSlim _gate = new(1, 1);
     private string? _playbackError;
     private bool _authorizationRequired;
-    private string? _lastFlags;
     private string? _lastPublished;
     public CurrentlyPlayingContext? PlaybackState { get; private set; }
 
@@ -60,14 +58,6 @@ public class SpotifyPlaybackMonitor(
             if (_playbackError != null) PlaybackState = null;
             if (_authorizationRequired) PlaybackState = null;
 
-            var connected = PlaybackState?.Device?.IsActive == true && !_authorizationRequired;
-            var playing = connected && PlaybackState?.IsPlaying == true;
-            var flags = $"{(connected ? "spotify_connected,!spotify_disconnected" : "!spotify_connected,spotify_disconnected")},{(playing ? "playing" : "!playing")}";
-            if (_lastFlags != flags)
-            {
-                await session.SetFlags(SetFlagRequest.ParseFlags(flags.Split(',')), cancellationToken);
-                _lastFlags = flags;
-            }
             await PublishContextsAsync(cancellationToken);
         }
         finally { _gate.Release(); }

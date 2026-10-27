@@ -13,7 +13,7 @@ internal static class SpotifyPlaybackChecks
         await CheckShuffleAndFavorites();
         var http = new FakeHttp();
         var manager = await Create(http);
-        Check(await manager.PlaySpecificUri("spotify:track:requested", default, "track"), "Confirmed track failed: " + manager.LastUserVisibleError + $" (lookups={http.TrackLookups}, plays={http.PlayBodies.Count}, polls={http.Polls})");
+        Check((await manager.PlayWithResult("spotify:track:requested", default, "track")).Confirmed, "Confirmed track failed: " + manager.LastUserVisibleError + $" (lookups={http.TrackLookups}, plays={http.PlayBodies.Count}, polls={http.Polls})");
         using (var body = JsonDocument.Parse(http.PlayBodies.Single()))
         {
             var root = body.RootElement;
@@ -30,23 +30,23 @@ internal static class SpotifyPlaybackChecks
         {
             http = new() { State = state };
             manager = await Create(http);
-            Check(!await manager.PlaySpecificUri("spotify:track:requested", default, "track"), "Accepted request falsely reported playing");
-            Check(manager.LastUserVisibleError?.Contains("could not be confirmed") == true, "Unconfirmed playback error missing");
+            Check(!(await manager.PlayWithResult("spotify:track:requested", default, "track")).Confirmed, "Accepted request falsely reported playing");
+            Check(manager.LastUserVisibleError == null, "Accepted unconfirmed playback reported as failed");
             Check(http.PlayBodies.Count == 1 && http.Polls == 5, "Mutation retried or verification not bounded");
         }
 
         http = new() { EmptyPolls = 2 };
         manager = await Create(http);
-        Check(await manager.PlaySpecificUri("spotify:track:requested", default), "Delayed playback or inferred track type failed");
+        Check((await manager.PlayWithResult("spotify:track:requested", default)).Confirmed, "Delayed playback or inferred track type failed");
         Check(http.Polls == 3 && http.PlayBodies.Count == 1, "Delayed playback retried mutation");
 
         http = new() { TrackStatus = HttpStatusCode.NotFound };
         manager = await Create(http);
-        Check(!await manager.PlaySpecificUri("spotify:track:requested", default, "track") && http.PlayBodies.Count == 0, "Failed lookup changed playback");
+        Check(!(await manager.PlayWithResult("spotify:track:requested", default, "track")).Confirmed && http.PlayBodies.Count == 0, "Failed lookup changed playback");
 
         http = new() { State = "{\"is_playing\":true,\"context\":{\"uri\":\"spotify:playlist:list\"},\"item\":{\"type\":\"track\",\"uri\":\"spotify:track:other\"}}" };
         manager = await Create(http);
-        Check(await manager.PlaySpecificUri("spotify:playlist:list", default, "playlist"), "Playlist confirmation failed");
+        Check((await manager.PlayWithResult("spotify:playlist:list", default, "playlist")).Confirmed, "Playlist confirmation failed");
         Check(http.TrackLookups == 0, "Playlist caused a track lookup");
 
         foreach (var context in new[] { "null", "{\"uri\":\"spotify:album:album\"}" })
@@ -74,10 +74,6 @@ internal static class SpotifyPlaybackChecks
             Check(http.PlayBodies.Count == 1 && http.Polls == 5, "Artist mutation retried or polling not bounded");
         }
 
-        http = new() { State = "{\"is_playing\":true,\"item\":{\"type\":\"track\",\"artists\":[{\"uri\":\"spotify:artist:limpbizkit\"}]}}" };
-        manager = await Create(http);
-        Check(!await manager.PlaySpecificUri("spotify:artist:limpbizkit", default, "artist") && manager.LastUserVisibleError?.Contains("could not be confirmed") == true, "Legacy action confirmation behavior changed");
-
         http = new() { PlayStatus = HttpStatusCode.NotFound };
         manager = await Create(http);
         var rejected = await manager.PlayWithResult("spotify:artist:limpbizkit", default, "artist");
@@ -93,12 +89,12 @@ internal static class SpotifyPlaybackChecks
         manager = await Create(http);
         try
         {
-            await manager.PlaySpecificUri("spotify:track:requested", canceled.Token, "track");
+            await manager.PlayWithResult("spotify:track:requested", canceled.Token, "track");
             throw new Exception("Canceled verification returned normally");
         }
         catch (OperationCanceledException) when (canceled.IsCancellationRequested) { }
         Check(http.PlayBodies.Count == 1, "Cancellation retried playback");
-        Console.WriteLine("PASS tool artist confirmation without context, observations, paused/wrong items, accepted vs rejected/read errors, and unchanged legacy confirmation");
+        Console.WriteLine("PASS tool artist confirmation without context, observations, paused/wrong items, accepted vs rejected/read errors");
         Console.WriteLine("PASS album-context playback, relinked track, delayed confirmation, empty/wrong playback, lookup errors, playlists and cancellation");
     }
 

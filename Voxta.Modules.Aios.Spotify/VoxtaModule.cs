@@ -11,17 +11,11 @@ namespace Voxta.Modules.Aios.Spotify;
 public class VoxtaModule : IVoxtaModule
 {
     public const string ServiceName = "Aios.Spotify";
-    public const string AugmentationKey = "spotify";
     public const string ToolsAugmentationKey = "spotify_tools";
 
     public static readonly AugmentationKeyDescriptor[] Augmentations =
     [
-        new(
-            AugmentationKey,
-            "Spotify Actions (Legacy)",
-            "Legacy action inference. Inactive when Spotify Tools is selected."
-        ),
-        new(ToolsAugmentationKey, "Spotify Tools", "Control Spotify through native chat tools. Enable the desired tools in module settings; legacy actions are suppressed while selected."),
+        new(ToolsAugmentationKey, "Spotify Tools", "Control Spotify through native chat tools. Enable the desired tools in module settings."),
     ];
 
     public void Configure(IVoxtaModuleBuilder builder)

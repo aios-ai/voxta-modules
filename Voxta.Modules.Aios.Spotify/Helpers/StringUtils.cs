@@ -20,15 +20,6 @@ public static class StringUtils
         return CleanString(input).ToLowerInvariant();
     }
 
-    public static string CleanFriendlyNameRegex(string friendlyName)
-    {
-        if (string.IsNullOrWhiteSpace(friendlyName)) return string.Empty;
-        var trimmed = Regex.Replace(friendlyName, @"\s+(by|from)\s+.*$", "", RegexOptions.IgnoreCase).Trim();
-        trimmed = Regex.Replace(trimmed, @"^(Playlist|Album|Artist|Track|Song|Episode|Show|Audiobook):\s*", "", RegexOptions.IgnoreCase).Trim();
-
-        return trimmed;
-    }
-
     public static string FormatMillisecondsToMinutesSeconds(int milliseconds)
     {
         var t = TimeSpan.FromMilliseconds(milliseconds);

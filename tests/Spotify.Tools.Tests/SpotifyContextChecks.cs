@@ -4,6 +4,8 @@ using SpotifyAPI.Web;
 using Voxta.Abstractions.Chats.Sessions;
 using Voxta.Modules.Aios.Spotify.ChatAugmentations;
 using Voxta.Modules.Aios.Spotify.Clients.Services;
+using Voxta.Modules.Aios.Spotify.Tools;
+using Voxta.Model.Shared;
 
 internal static class SpotifyContextChecks
 {
@@ -19,6 +21,16 @@ internal static class SpotifyContextChecks
         var playback = new SpotifyPlaybackSession(monitor, f.Ducking);
         await playback.InitializeAsync(default);
         await playback.DisposeAsync();
+        var tools = new SpotifyToolsSession(f.Catalog, playback);
+        var independent = new[] { "spotify_search", "spotify_get_playlists", "spotify_list_devices", "spotify_transfer_to_device" };
+        async Task CheckAvailability(bool active)
+        {
+            var offered = await tools.GetToolsAsync(default);
+            Check(offered.Count == 17, "Dynamic availability removed discovery metadata");
+            Check(offered.Where(t => t.Enabled).Select(t => t.Name).ToHashSet().SetEquals(
+                active ? SpotifyToolCatalog.Choices.Select(c => c.Name) : independent), "Incorrect live tool availability");
+        }
+        await CheckAvailability(false);
         Check(Context("Spotify Connection Status").Contains("start playback manually"), "Manual playback prerequisite missing");
         Check(Context("Spotify Playback Status").Contains("no active player"), "No player misreported as paused");
         Check(session.Contexts.All(c => c.Name != "Spotify Available Devices"), "Unrequested discovery context retained");
@@ -30,6 +42,7 @@ internal static class SpotifyContextChecks
         var contextId = session.Contexts.Single(c => c.Name == "Spotify Playback Status").Id;
         f.Backend.State = new() { Device = new() { Name = "Computer", Id = "private-pc-id", Type = "Computer", IsActive = true, VolumePercent = 50 }, IsPlaying = false };
         await monitor.RefreshAsync(default);
+        await CheckAvailability(true);
         Check(Context("Spotify Active Device").Contains("Computer") && Context("Spotify Playback Status").Contains("paused"), "Paused active player not recognized");
         Check(session.Contexts.All(c => !c.Text.Contains("private-pc-id")), "Internal device ID exposed in context");
         f.Backend.State = new() { Device = new() { Name = "Other Computer", Id = "other", Type = "Computer", IsActive = true, VolumePercent = 50 }, IsPlaying = true };
@@ -38,6 +51,7 @@ internal static class SpotifyContextChecks
         Check(session.Contexts.Single(c => c.Name == "Spotify Playback Status").Id == contextId, "Context identity changed");
         f.Backend.State = null;
         await monitor.RefreshAsync(default);
+        await CheckAvailability(false);
         Check(session.Contexts.All(c => c.Name != "Spotify Active Device"), "Stale active device retained");
         Check(session.Contexts.All(c => c.Name != "Spotify Last Command"), "Last command context retained");
 
@@ -49,11 +63,22 @@ internal static class SpotifyContextChecks
         f.Backend.Error = "Spotify authorization is required.";
         await monitor.RefreshAsync(default);
         Check(Context("Spotify Connection Status").Contains("authorization") && Context("Spotify Playback Status").Contains("unknown"), "Authorization misreported as no active player");
+        await CheckAvailability(false);
         f.Backend.AuthorizationRequired = false;
         f.Backend.Error = null;
         await monitor.RefreshAsync(default);
         Check(Context("Spotify Connection Status").Contains("start playback manually"), "Player state did not recover after reauthorization");
         Check(f.Backend.Calls.All(c => c.Name == "GetCurrentPlaybackState"), "Monitoring performed device discovery");
+
+        var disabledCatalog = SpotifyToolCatalog.Create(f.Handler,
+            new(SpotifyToolCatalog.Choices.Where(c => c.Name != "spotify_skip_next" && c.Name != "spotify_search").Select(c => c.Name).ToHashSet(), [ChatStyles.Assistant]),
+            f.Playlists, NullLogger.Instance);
+        var disabledSession = new SpotifyToolsSession(disabledCatalog, playback);
+        f.Backend.State = new() { Device = new() { IsActive = true }, IsPlaying = false };
+        await monitor.RefreshAsync(default);
+        Check((await disabledSession.GetToolsAsync(default)).Where(t => t.Name is "spotify_skip_next" or "spotify_search").All(t => !t.Enabled), "Active player overrode saved switches");
+        Check((await disabledSession.CallToolAsync("spotify_skip_next", null, default)).IsError, "Saved disabled tool executed");
+        Check(session.FlagWrites == 0, "Playback monitoring still writes legacy flags");
 
         using var canceled = new CancellationTokenSource();
         canceled.Cancel();

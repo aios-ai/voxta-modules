@@ -27,7 +27,7 @@ rate-limited free plan.
 ### Spotify Control
 
 `Voxta.Modules.Aios.Spotify` adds Spotify playback control to Voxta chats. It connects through Spotify OAuth and
-exposes actions for playback, search, queueing, volume, seeking, shuffle, repeat, favorites, playlists, and devices.
+exposes 17 native tools for playback, search, queueing, volume, seeking, shuffle, repeat, favorites, playlists, and devices.
 
 The module itself is free. It requires Voxta `1.13.0` or newer, a Spotify Premium account, and a Spotify Developer
 application that provides a Client ID and Client Secret.
@@ -66,16 +66,25 @@ logs `Spotify OAuth sign-out requested` when the request reaches it.
 
 Select **Spotify Tools** for native tool calling. All tools default on and **Offer Tools In** defaults to
 Assistant and Companion. The **Spotify Tools** cards provide individual switches and editable descriptions.
-Saved selections/styles are retained; legacy action inference stays inactive while Spotify Tools is selected.
+Saved selections/styles are retained. Spotify's legacy actions, wake word, connect gate, and connection flags
+have been removed. Chats that used only **Spotify Actions (Legacy)** must select **Spotify Tools**.
+
+Playback tools appear automatically when an active Spotify player is detected, including a paused player.
+Without one, search, playlist listing, device listing, and device transfer remain available. Changes apply to
+subsequent assistant generations, normally within the monitor's one-second polling interval. A tool you disabled
+in settings stays disabled. Playback context tells the assistant when manual startup or authorization is needed.
+
+Tokens are stored through Voxta's internal account store. The module creates no local token directory or files;
+old token files are ignored.
 
 Voxta displays module load errors on the Custom Modules page. The project uses the `1.13.0-alpha.10` Modules SDK and
 keeps its package lock file in source control so local and release builds resolve the same dependencies.
 
-## Supported actions
+## Spotify tools
 
 - Pause, resume, and toggle playback.
 - Play requested or random music and configured special playlists.
-- Queue tracks and other Spotify content.
+- Search Spotify and queue selected tracks.
 - Change volume and seek within the current track.
 - Skip tracks and change shuffle or repeat mode.
 - Save the current track, list or update playlists, list devices, and transfer playback.
@@ -85,15 +94,14 @@ keeps its package lock file in source control so local and release builds resolv
 Releases are module-specific. The tag must be `<module id>/v<version>`, and the version must exactly match that
 module's `module.json`.
 
-For example, to release Spotify `0.1.1`:
+After updating module versions, run the locked Release build, commit, push `main`, then publish with:
 
 ```powershell
-# First set "version": "0.1.1" in Voxta.Modules.Aios.Spotify/module.json, then commit and push it.
-git tag Voxta.Modules.Aios.Spotify/v0.1.1
-git push origin Voxta.Modules.Aios.Spotify/v0.1.1
+./scripts/publish-module-releases.ps1 -Publish
 ```
 
-A version suffix makes a prerelease, for example `Voxta.Modules.Aios.Spotify/v0.2.0-beta.1`; use qualified tags for all new releases.
+The script creates qualified tags for untagged module versions and pushes them atomically. A version suffix
+makes a prerelease. Monitor the release workflow and verify both install assets before reporting completion.
 
 The workflows here call Voxta's reusable ones ([voxta-module-actions](https://github.com/voxta-ai/voxta-module-actions)).
 `release.yml` builds the module, attests it, and creates the GitHub release with two assets:

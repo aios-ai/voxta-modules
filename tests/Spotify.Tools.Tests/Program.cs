@@ -15,7 +15,6 @@ using Voxta.Modules.Aios.Tools;
 var operations = new (string Operation, string Json, string? Mutation)[]
 {
     ("toggle_playback", "{}", "ControlSpotifyPlayback"),
-    ("connect", "{}", null),
     ("search", "{\"query\":\"Track\",\"type\":\"track\"}", null),
     ("play_random_music", "{}", "PlayWithResult"),
     ("play_special_playlist", "{\"name\":\"Daily Mix 1\"}", "PlayWithResult"),
@@ -163,9 +162,9 @@ Console.WriteLine("PASS invalid arguments rejected before provider access");
 {
     var f = new Fixture();
     var definitions = f.Catalog.GetTools();
-    Check(definitions.Count == 18 && definitions.Select(d => d.Name).Distinct().Count() == 18, "Catalog coverage");
+    Check(definitions.Count == 17 && definitions.Select(d => d.Name).Distinct().Count() == 17, "Catalog coverage");
     Check(definitions.All(d => d.Source == VoxtaModule.ServiceName && d.AugmentationKey == VoxtaModule.ToolsAugmentationKey && !d.AlwaysAllowed && d.ExternalContent), "Tool ownership/permissions");
-    Check(definitions.Count(d => d.Permission == ToolPermissionClass.Read) == 4, "Read/Act classification");
+    Check(definitions.Count(d => d.Permission == ToolPermissionClass.Read) == 3, "Read/Act classification");
     foreach (var name in new[] { "spotify_play_music", "spotify_queue_track" })
     {
         var properties = definitions.Single(d => d.Name == name).InputSchema.GetProperty("properties");
@@ -232,7 +231,7 @@ Console.WriteLine("PASS invalid arguments rejected before provider access");
         new() { Name = "Restricted", Id = "restricted-id", Type = "Speaker", IsRestricted = true },
         new() { Name = "Unavailable", Type = "Speaker" },
     ];
-    foreach (var operation in new[] { "list_devices", "connect" })
+    foreach (var operation in new[] { "list_devices" })
     {
         var devices = await f.Call(operation, "{}");
         Check(!devices.IsError && devices.Text.Contains("XENTOWER [type: Computer, active: false, controllable: true"), "Inactive desktop metadata missing");
@@ -305,8 +304,9 @@ Console.WriteLine("PASS invalid arguments rejected before provider access");
     Check(service is IToolsChatAugmentationsService, "Missing tools marker");
     var plan = await service.PlanAsync(null!, default);
     var tools = plan.Single(p => p.Key == VoxtaModule.ToolsAugmentationKey);
-    Check(tools.Activation == AugmentationActivation.OptIn && !tools.IncludeInCatchAll && tools.Tools!.Count == 18, "Tools plan not independent/opt-in");
-    Check(await plan.Single(p => p.Key == VoxtaModule.AugmentationKey).ActivateAsync(session, default) == null, "Legacy session activated alongside tools");
+    Check(tools.Activation == AugmentationActivation.OptIn && !tools.IncludeInCatchAll && tools.Tools!.Count == 17, "Tools plan not independent/opt-in");
+    Check(plan.Length == 1 && VoxtaModule.Augmentations.Length == 1, "Legacy augmentation still registered");
+    Check((await f.Catalog.CallToolAsync("spotify_connect", null, default)).IsError, "Removed connect tool executed");
     var monitor = new SpotifyPlaybackMonitor(f.Manager, session, NullLogger<SpotifyPlaybackMonitor>.Instance);
     var playback = new SpotifyPlaybackSession(monitor, f.Ducking);
     IToolsChatAugmentation instance = new SpotifyToolsSession(f.Catalog, playback);
@@ -317,7 +317,7 @@ Console.WriteLine("PASS invalid arguments rejected before provider access");
     Check(((SessionProxy)session).Contexts.All(c => c.Name != "Spotify Last Command"), "Last command context retained");
     await instance.DisposeAsync();
     await instance.DisposeAsync();
-    Console.WriteLine("PASS tools session, no ActionInference, legacy suppression, multiple calls and disposal");
+    Console.WriteLine("PASS tools session, no ActionInference, tools-only registration, multiple calls and disposal");
 }
 await SpotifyConfigurationChecks.RunAsync();
 await SpotifyContextChecks.RunAsync();

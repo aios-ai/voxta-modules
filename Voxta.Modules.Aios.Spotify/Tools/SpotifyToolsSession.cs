@@ -17,7 +17,15 @@ internal sealed class SpotifyToolsSession(ModuleToolCatalog catalog, SpotifyPlay
     public ValueTask<IReadOnlyList<ChatTool>> GetToolsAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult(catalog.GetTools());
+        // Voxta asks for definitions on each generation. Keep saved switches authoritative;
+        // player-independent queries and explicit transfers remain useful without active playback.
+        var hasPlayer = playback.HasActivePlayer;
+        IReadOnlyList<ChatTool> tools = catalog.GetTools().Select(tool => tool with
+        {
+            Enabled = tool.Enabled && (hasPlayer || tool.Name is
+                "spotify_search" or "spotify_get_playlists" or "spotify_list_devices" or "spotify_transfer_to_device"),
+        }).ToArray();
+        return ValueTask.FromResult(tools);
     }
     public ValueTask<ChatToolCallResult> CallToolAsync(string name, JsonElement? arguments, CancellationToken cancellationToken) =>
         catalog.CallToolAsync(name, arguments, cancellationToken);
