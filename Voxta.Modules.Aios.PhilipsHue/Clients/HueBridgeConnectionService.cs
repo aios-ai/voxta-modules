@@ -1,4 +1,3 @@
-using System.Text.Json;
 using HueApi;
 using HueApi.BridgeLocator;
 using HueApi.Models.Clip;
@@ -14,7 +13,7 @@ public class HueBridgeConnectionService : IHueBridgeConnectionService
 
     private readonly ILogger<HueBridgeConnectionService> _logger;
     private readonly IHueUserInteractionWrapper _userInteractionWrapper;
-    private readonly string _authPath;
+    private readonly IHueCredentialStore _credentials;
 
     private LocalHueApi? _hueClient;
     private string? _bridgeIp;
@@ -28,23 +27,23 @@ public class HueBridgeConnectionService : IHueBridgeConnectionService
     public HueBridgeConnectionService(
         ILogger<HueBridgeConnectionService> logger,
         IHueUserInteractionWrapper userInteractionWrapper,
-        string authPath)
+        IHueCredentialStore credentials)
     {
         _logger = logger;
         _userInteractionWrapper = userInteractionWrapper;
-        _authPath = authPath;
+        _credentials = credentials;
     }
 
     public async Task<bool> InitializeBridgeAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("Initializing Hue Bridge...");
 
-        if (File.Exists(_authPath))
+        var appKey = await _credentials.LoadAsync(cancellationToken);
+        if (appKey != null)
         {
-            _logger.LogInformation("Authentication file found. Attempting to connect using saved configuration...");
-            var appKey = LoadAppKey();
+            _logger.LogInformation("Stored Hue credentials found. Attempting to connect...");
 
-            if (appKey != null && !string.IsNullOrEmpty(appKey.Ip) && !string.IsNullOrEmpty(appKey.Username))
+            if (!string.IsNullOrEmpty(appKey.Ip) && !string.IsNullOrEmpty(appKey.Username))
             {
                 _bridgeIp = appKey.Ip;
                 try
@@ -67,7 +66,7 @@ public class HueBridgeConnectionService : IHueBridgeConnectionService
         }
         else
         {
-            _logger.LogInformation("No Authentication file found. Starting bridge discovery...");
+            _logger.LogInformation("No stored Hue credentials found. Starting bridge discovery...");
             await SetStateAsync(HueBridgeState.AuthRequired, "Hue authorization is required. Please press the Hue bridge link button when Voxta asks for authorization.", cancellationToken);
         }
 
@@ -125,7 +124,7 @@ public class HueBridgeConnectionService : IHueBridgeConnectionService
             return false;
         }
 
-        var savedAppKey = LoadAppKey();
+        var savedAppKey = await _credentials.LoadAsync(cancellationToken);
         if (savedAppKey != null)
         {
             try
@@ -159,10 +158,10 @@ public class HueBridgeConnectionService : IHueBridgeConnectionService
             try
             {
                 var appKey = await LocalHueApi.RegisterAsync(_bridgeIp!, "Voxta", Environment.MachineName, false);
-                if (!await SaveAppKey(appKey))
+                if (!await SaveAppKey(appKey, cancellationToken))
                     return false;
 
-                _logger.LogInformation("Bridge connected and app key saved.");
+                _logger.LogInformation("Bridge connected and credentials stored in Voxta.");
                 _hueClient = new LocalHueApi(_bridgeIp!, appKey!.Username);
                 await SetStateAsync(HueBridgeState.Connected, null, cancellationToken);
                 registrationSuccessful = true;
@@ -193,29 +192,11 @@ public class HueBridgeConnectionService : IHueBridgeConnectionService
         return registrationSuccessful;
     }
 
-    private RegisterEntertainmentResult? LoadAppKey()
-    {
-        if (!File.Exists(_authPath))
-            return null;
-
-        try
-        {
-            return JsonSerializer.Deserialize<RegisterEntertainmentResult>(File.ReadAllText(_authPath));
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to load Hue authentication file.");
-            LastUserVisibleError = "The Hue authorization file could not be read. Please authorize Hue again.";
-            State = HueBridgeState.AuthRequired;
-            return null;
-        }
-    }
-
-    private async Task<bool> SaveAppKey(RegisterEntertainmentResult? appKey)
+    private async Task<bool> SaveAppKey(RegisterEntertainmentResult? appKey, CancellationToken cancellationToken)
     {
         if (appKey == null)
         {
-            _logger.LogError("AppKey is null. Cannot save to file.");
+            _logger.LogError("AppKey is null. Cannot save credentials.");
             LastUserVisibleError = "Hue authorization returned no app key. Please try authorizing again.";
             State = HueBridgeState.AuthRequired;
             return false;
@@ -223,19 +204,15 @@ public class HueBridgeConnectionService : IHueBridgeConnectionService
 
         try
         {
-            var directory = Path.GetDirectoryName(_authPath);
-            if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
-                Directory.CreateDirectory(directory);
-
-            var json = JsonSerializer.Serialize(appKey);
-            await File.WriteAllTextAsync(_authPath, json);
-            _logger.LogInformation("App key saved to file.");
+            await _credentials.SaveAsync(appKey, cancellationToken);
+            _logger.LogInformation("Hue credentials saved in Voxta's encrypted store.");
             return true;
         }
-        catch (Exception ex)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception)
         {
-            _logger.LogError(ex, "Failed to save app key to file: {Message}", ex.Message);
-            LastUserVisibleError = "Hue was authorized, but Voxta could not save the authorization file. Please check the configured auth path.";
+            _logger.LogError("Failed to save Hue credentials in Voxta.");
+            LastUserVisibleError = "Hue was authorized, but Voxta could not save the bridge credentials. Check Voxta storage and restart the chat.";
             State = HueBridgeState.MissingConfiguration;
             return false;
         }

@@ -7,7 +7,7 @@ namespace Voxta.Modules.Aios.PhilipsHue.Configuration;
 
 public class ModuleConfigurationProvider : ModuleConfigurationProviderBase, IModuleConfigurationProvider
 {
-    public static string[] FieldsRequiringReload => ["HueTools", "ToolChatStyles", CharacterControlledLight.Name, AuthPath.Name];
+    public static string[] FieldsRequiringReload => ["HueToolCards", "HueTools", "ToolChatStyles", CharacterControlledLight.Name, AuthPath.Name];
     private static readonly string DefaultAuthPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "Voxta",
@@ -43,7 +43,7 @@ public class ModuleConfigurationProvider : ModuleConfigurationProviderBase, IMod
            CharacterControlledLight,
            HueToolsSettings.ConfigurationField(settings),
            HueToolsSettings.Styles.AsField(),
-           AuthPath
+           new FormHiddenField { Name = AuthPath.Name }
        );
         return Task.FromResult(fields);
     }

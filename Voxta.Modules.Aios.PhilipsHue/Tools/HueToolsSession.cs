@@ -12,6 +12,8 @@ internal sealed class HueToolsSession(ModuleToolCatalog catalog, HueManager hue,
     : IToolsChatAugmentation
 {
     private static readonly Guid StatusId = new("686fa260-80be-4f64-8581-d54812321bcd");
+    private static readonly Guid InventoryId = new("d3c1b11d-e6b1-461a-8e28-51cffda7c2ec");
+    private readonly string _basicInventory = HueBasicInventory.Build(hue);
     private readonly SemaphoreSlim _statusGate = new(1, 1);
     private string? _lastStatus;
     public ServiceTypes[] GetRequiredServiceTypes() => [];
@@ -46,10 +48,16 @@ internal sealed class HueToolsSession(ModuleToolCatalog catalog, HueManager hue,
                   + (hue.LastUserVisibleError is { } error ? error + " " : "")
                   + "If Hue control is requested, ask the user to check the bridge is powered on and reachable, then restart the chat. "
                   + "Connection and link-button pairing run at chat startup. No connect tool is available; do not claim lights were changed.";
-            if (status == _lastStatus) return;
-            await session.SetContexts(VoxtaModule.ServiceName,
-                [new ContextDefinition { Id = StatusId, Name = "Philips Hue Status", Text = status }], cancellationToken);
-            _lastStatus = status;
+            var signature = status + (hue.IsConnected ? _basicInventory : "");
+            if (signature == _lastStatus) return;
+            var contexts = new List<ContextDefinition>
+            {
+                new() { Id = StatusId, Name = "Philips Hue Status", Text = status },
+            };
+            if (hue.IsConnected)
+                contexts.Add(new() { Id = InventoryId, Name = "Philips Hue Basic Inventory", Text = _basicInventory });
+            await session.SetContexts(VoxtaModule.ServiceName, contexts.ToArray(), cancellationToken);
+            _lastStatus = signature;
         }
         finally { _statusGate.Release(); }
     }

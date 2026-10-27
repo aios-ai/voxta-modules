@@ -1,4 +1,6 @@
 using Microsoft.Extensions.Logging;
+using Voxta.Abstractions.Authorization;
+using Voxta.Abstractions.Encryption;
 using Voxta.Abstractions.Chats.Sessions;
 using Voxta.Abstractions.Registration;
 using Voxta.Abstractions.Services;
@@ -10,7 +12,9 @@ using Voxta.Modules.Aios.PhilipsHue.Tools;
 namespace Voxta.Modules.Aios.PhilipsHue.ChatAugmentations;
 
 public class PhilipsHueChatAugmentationsService(
-    ILoggerFactory loggerFactory
+    ILoggerFactory loggerFactory,
+    IModuleOAuthTokenStore tokenStore,
+    ILocalEncryptionProvider encryption
 ) : ServiceBase(loggerFactory.CreateLogger<PhilipsHueChatAugmentationsService>()), IToolsChatAugmentationsService
 {
     public Task<AugmentationPlanItem[]> PlanAsync(IChatAugmentationPlanContext context, CancellationToken cancellationToken) =>
@@ -34,13 +38,13 @@ public class PhilipsHueChatAugmentationsService(
         var logger = loggerFactory.CreateLogger<HueToolsSession>();
         logger.LogInformation("Chat session {SessionId} has been augmented with {Augmentation}", session.SessionId, VoxtaModule.ToolsAugmentationKey);
         
-        var authPath = PhilipsHueAuthPath.GetUserAuthPath(ModuleConfiguration.GetRequired(ModuleConfigurationProvider.AuthPath), Auth.UserId);
+        var authPath = ModuleConfiguration.GetRequired(ModuleConfigurationProvider.AuthPath);
 
         var characterTarget = ModuleConfiguration.GetOptional(ModuleConfigurationProvider.CharacterControlledLight);
         var hueUserInteractionWrapper = new HueUserInteractionWrapper(session);
 
         var colorConverterService = new ColorConverterService(loggerFactory.CreateLogger<ColorConverterService>());
-        var bridgeConnectionService = new HueBridgeConnectionService(loggerFactory.CreateLogger<HueBridgeConnectionService>(), hueUserInteractionWrapper, authPath);
+        var bridgeConnectionService = new HueBridgeConnectionService(loggerFactory.CreateLogger<HueBridgeConnectionService>(), hueUserInteractionWrapper, new HueVoxtaCredentialStore(tokenStore, encryption, Auth.UserId, InstanceSettings.ModuleId, () => PhilipsHueAuthPath.GetUserAuthPath(authPath, Auth.UserId)));
         var dataService = new HueDataService(bridgeConnectionService, loggerFactory.CreateLogger<HueDataService>());
         var commandService = new HueCommandService(bridgeConnectionService, dataService, loggerFactory.CreateLogger<HueCommandService>());
 

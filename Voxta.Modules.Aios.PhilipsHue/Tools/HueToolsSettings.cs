@@ -21,7 +21,7 @@ internal sealed record HueToolsSettings(IReadOnlySet<string> Selected, ChatStyle
 
     private static FormArrayOfObjectsField Field => new()
     {
-        Name = "HueTools",
+        Name = "HueToolCards",
         Label = "Hue Tools",
         Text = "Select a tool to edit the description offered to the model. Disable individual tools using their switches.",
         AllowAddRemove = false,
@@ -56,6 +56,7 @@ internal sealed record HueToolsSettings(IReadOnlySet<string> Selected, ChatStyle
     {
         // Read the saved cards without dropping switches or depending on JSON property casing.
         var raw = settings.GetRawValue(Field.Name);
+        if (string.IsNullOrWhiteSpace(raw)) raw = settings.GetRawValue("HueTools");
         var entries = string.IsNullOrWhiteSpace(raw) ? null : JsonSerializer.Deserialize<HueToolSettings[]>(raw,
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
         var configured = (entries ?? []).Where(e => !string.IsNullOrEmpty(e.Name))

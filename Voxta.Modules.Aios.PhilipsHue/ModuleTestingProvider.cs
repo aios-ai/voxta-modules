@@ -1,4 +1,6 @@
 using Microsoft.Extensions.Logging;
+using Voxta.Abstractions.Authorization;
+using Voxta.Abstractions.Encryption;
 using Voxta.Abstractions.Connections;
 using Voxta.Abstractions.Modules;
 using Voxta.Abstractions.Registration;
@@ -15,7 +17,9 @@ public class ModuleTestingProvider(
     IUserInteractionRequestsManager userInteractionRequestsManager,
     IIVoxtaWebsocketBroadcasterFactory broadcastFactory,
     ILoggerFactory loggerFactory,
-    ILogger<ModuleTestingProvider> logger
+    ILogger<ModuleTestingProvider> logger,
+    IModuleOAuthTokenStore tokenStore,
+    ILocalEncryptionProvider encryption
 ) : IVoxtaModuleTestingProvider
 {
     public async Task<ModuleTestResultItem[]> TestModuleAsync(
@@ -27,16 +31,14 @@ public class ModuleTestingProvider(
     {
         try
         {
-            var authPath = PhilipsHueAuthPath.GetUserAuthPath(
-                settings.GetRequired(ModuleConfigurationProvider.AuthPath),
-                auth.UserId);
+            var authPath = settings.GetRequired(ModuleConfigurationProvider.AuthPath);
 
             var ws = broadcastFactory.Create(auth.UserId);
             var interaction = new TestHueUserInteractionWrapper(userInteractionRequestsManager, ws, moduleId);
             var bridgeConnectionService = new HueBridgeConnectionService(
                 loggerFactory.CreateLogger<HueBridgeConnectionService>(),
                 interaction,
-                authPath);
+                new HueVoxtaCredentialStore(tokenStore, encryption, auth.UserId, moduleId, () => PhilipsHueAuthPath.GetUserAuthPath(authPath, auth.UserId)));
             var dataService = new HueDataService(bridgeConnectionService, loggerFactory.CreateLogger<HueDataService>());
             var commandService = new HueCommandService(bridgeConnectionService, dataService, loggerFactory.CreateLogger<HueCommandService>());
             var colorConverterService = new ColorConverterService(loggerFactory.CreateLogger<ColorConverterService>());

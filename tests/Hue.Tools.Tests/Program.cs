@@ -18,6 +18,8 @@ using Voxta.Abstractions.Utils;
 
 static void Check(bool ok, string message) { if (!ok) throw new Exception(message); }
 var data = new Data();
+data.Groups.Add(JsonSerializer.Deserialize<GroupedLight>("""{"id":"33333333-3333-3333-3333-333333333333","metadata":{"name":"Office lights"}}""")!);
+data.Groups.Add(JsonSerializer.Deserialize<GroupedLight>("""{"id":"55555555-5555-5555-5555-555555555555","metadata":{"name":"Accent"}}""")!);
 var connection = new Connection();
 var commands = new Commands();
 var manager = new HueManager(connection, data, commands, new ColorConverterService(NullLogger<ColorConverterService>.Instance), NullLogger<HueManager>.Instance);
@@ -93,24 +95,41 @@ var explicitMerged = HueToolsSettings.From(new StaticSettingsSource(new() { ["Hu
 Check(explicitMerged.Selected.Contains("hue_toggle_lights"), "Explicit merged choice lost");
 var oldSelection = HueToolsSettings.From(new StaticSettingsSource(new() { ["Tools"] = "hue_turn_lights_on" }));
 Check(!oldSelection.Selected.Contains("hue_toggle_lights"), "Incomplete legacy Tools selection enabled merged tool");
+var oldCards = new StaticSettingsSource(new() { ["HueTools"] = """[{"Name":"hue_turn_lights_on","Disabled":true},{"Name":"hue_change_color","Description":"Custom color"}]""" });
+var migratedCards = (FormArrayOfObjectsField)HueToolsSettings.ConfigurationField(oldCards);
+var currentCards = JsonSerializer.Deserialize<HueToolSettings[]>(migratedCards.DefaultValue!)!;
+Check(migratedCards.Name == "HueToolCards" && currentCards.Length == 6 && currentCards.All(c => c.Name is not ("hue_turn_lights_on" or "hue_turn_lights_off" or "hue_bridge_connect")), "Old cards still exposed by editor");
+Check(currentCards.Single(c => c.Name == "hue_toggle_lights").Disabled == "true" && currentCards.Single(c => c.Name == "hue_change_color").Description == "Custom color", "Card migration lost saved choices");
+var savedNew = HueToolsSettings.From(new StaticSettingsSource(new() { ["HueToolCards"] = """[{"Name":"hue_toggle_lights","Disabled":false}]""", ["HueTools"] = oldCards.GetRawValue("HueTools")! }));
+Check(savedNew.Selected.Contains("hue_toggle_lights"), "New cards did not supersede legacy values");
 var session = DispatchProxy.Create<IChatSessionChatAugmentationApi, SessionProxy>();
 var proxy = (SessionProxy)(object)session;
 var defaultCatalog = HueToolCatalog.Create(new HueToolHandler(manager, "Desk"), defaults, "Desk", NullLogger.Instance);
 IToolsChatAugmentation adapter = new HueToolsSession(defaultCatalog, manager, session);
 Check(adapter.GetRequiredServiceTypes().Length == 0 && adapter is not IActionInferenceAugmentation, "Action inference dependency");
 Check((await adapter.GetToolsAsync(default)).Count(t => t.Enabled) == 5, "Connected saved selection");
-var statusId = proxy.Contexts.Single().Id;
-Check(proxy.Contexts.Single().Text.Contains("connected"), "Connected context missing");
+var basic = proxy.Contexts.Single(c => c.Name == "Philips Hue Basic Inventory");
+Check(basic.Text.Contains("Desk") && basic.Text.Contains("Office") && !basic.Text.Contains("Relax") && basic.Text.Contains("Accent") && !basic.Text.Contains("Office lights"), "Basic names missing or scenes leaked into basic inventory");
+var inventoryId = basic.Id;
+var statusId = proxy.Contexts.Single(c => c.Name == "Philips Hue Status").Id;
+Check(proxy.Contexts.Single(c => c.Name == "Philips Hue Status").Text.Contains("connected"), "Connected context missing");
 await adapter.GetToolsAsync(default);
 Check(proxy.ContextWrites == 1, "Unchanged context republished");
 connection.Connected = false;
 Check((await adapter.GetToolsAsync(default)).All(t => !t.Enabled), "Disconnected tools offered");
-Check(proxy.Contexts.Single().Text.Contains("restart the chat") && proxy.Contexts.Single().Id == statusId, "Restart context/stable identity");
+Check(proxy.Contexts.Single(c => c.Name == "Philips Hue Status").Text.Contains("restart the chat") && proxy.Contexts.Single(c => c.Name == "Philips Hue Status").Id == statusId, "Restart context/stable identity");
+Check(proxy.Contexts.Length == 1, "Disconnected context retained stale inventory");
 before = commands.Count;
 Check((await adapter.CallToolAsync("hue_toggle_lights", JsonSerializer.Deserialize<JsonElement>("""{"state":"on"}"""), default)).IsError && commands.Count == before, "Stale offered tool mutated");
 connection.Connected = true;
 await manager.InitializeAsync(default);
 Check((await adapter.GetToolsAsync(default)).Count(t => t.Enabled) == 5, "Recovery enabled disabled tool");
+Check(proxy.Contexts.Single(c => c.Name == "Philips Hue Basic Inventory").Id == inventoryId, "Inventory context identity changed");
+var inventoryOff = new HueToolsSettings(defaults.Selected.Where(n => n != "hue_show_hue_inventory").ToHashSet(), defaults.ChatStyles);
+var otherSession = DispatchProxy.Create<IChatSessionChatAugmentationApi, SessionProxy>();
+var otherAdapter = new HueToolsSession(HueToolCatalog.Create(new HueToolHandler(manager, null), inventoryOff, null, NullLogger.Instance), manager, otherSession);
+Check(!(await otherAdapter.GetToolsAsync(default)).Single(t => t.Name == "hue_show_hue_inventory").Enabled
+    && ((SessionProxy)(object)otherSession).Contexts.Any(c => c.Name == "Philips Hue Basic Inventory"), "Basic names depended on enabling inventory tool");
 commands.IsConnectionUnavailable = true;
 Check((await adapter.GetToolsAsync(default)).All(t => !t.Enabled), "Known transport loss left tools available");
 commands.IsConnectionUnavailable = false;
@@ -119,7 +138,7 @@ Check(!await manager.InitializeAsync(default) && !manager.IsConnected, "Partial 
 Check((await adapter.GetToolsAsync(default)).All(t => !t.Enabled), "Failed initialization offered tools");
 using var cts = new CancellationTokenSource(); cts.Cancel();
 try { await adapter.GetToolsAsync(cts.Token); throw new Exception("Cancellation swallowed"); } catch (OperationCanceledException) { }
-var service = new PhilipsHueChatAugmentationsService(NullLoggerFactory.Instance);
+var service = new PhilipsHueChatAugmentationsService(NullLoggerFactory.Instance, null!, null!);
 Check(service is IToolsChatAugmentationsService, "Tools marker");
 var plans = await service.PlanAsync(null!, default);
 Check(plans.Length == 1 && VoxtaModule.Augmentations.Length == 1 && plans.Single() is { Key: "hue_tools", IncludeInCatchAll: false, Activation: AugmentationActivation.OptIn }, "Legacy plan remains");
@@ -129,6 +148,7 @@ await new HueUserInteractionWrapper(session).RequestUserInteraction(default);
 Check(proxy.PairingImage == HuePairingRequest.ImageUrl && proxy.PairingImage.StartsWith("data:image/png;base64,"), "Pairing logo missing");
 Check(Convert.FromBase64String(proxy.PairingImage.Split(',')[1]).Take(8).SequenceEqual(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }), "Pairing image not PNG");
 await adapter.DisposeAsync();
+await HueCredentialChecks.RunAsync();
 Console.WriteLine("PASS validation, serialization/cancellation, settings migration, permissions, availability/status, startup failure, action removal and pairing logo");
 
 sealed class Connection : IHueBridgeConnectionService
