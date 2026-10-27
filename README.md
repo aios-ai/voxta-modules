@@ -69,8 +69,10 @@ Assistant and Companion. The **Spotify Tools** cards provide individual switches
 Saved selections/styles are retained. Spotify's legacy actions, wake word, connect gate, and connection flags
 have been removed. Chats that used only **Spotify Actions (Legacy)** must select **Spotify Tools**.
 
-Playback tools appear automatically when an active Spotify player is detected, including a paused player.
-Without one, search, playlist listing, device listing, and device transfer remain available. Changes apply to
+All Spotify tools appear automatically when an active player is detected, including a paused player.
+Without one, all Spotify tools are hidden. Context guides the assistant to ask the user to open Spotify on
+their preferred device and start playback manually, then continue their original request. No status or connect
+tool is needed: the background monitor restores availability automatically. Changes apply to
 subsequent assistant generations, normally within the monitor's one-second polling interval. A tool you disabled
 in settings stays disabled. Playback context tells the assistant when manual startup or authorization is needed.
 

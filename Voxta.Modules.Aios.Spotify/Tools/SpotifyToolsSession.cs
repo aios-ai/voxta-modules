@@ -17,13 +17,12 @@ internal sealed class SpotifyToolsSession(ModuleToolCatalog catalog, SpotifyPlay
     public ValueTask<IReadOnlyList<ChatTool>> GetToolsAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        // Voxta asks for definitions on each generation. Keep saved switches authoritative;
-        // player-independent queries and explicit transfers remain useful without active playback.
+        // Voxta asks for definitions on each generation. The monitor restores tools when a
+        // player appears; context explains manual startup while all Spotify tools are hidden.
         var hasPlayer = playback.HasActivePlayer;
         IReadOnlyList<ChatTool> tools = catalog.GetTools().Select(tool => tool with
         {
-            Enabled = tool.Enabled && (hasPlayer || tool.Name is
-                "spotify_search" or "spotify_get_playlists" or "spotify_list_devices" or "spotify_transfer_to_device"),
+            Enabled = tool.Enabled && hasPlayer,
         }).ToArray();
         return ValueTask.FromResult(tools);
     }

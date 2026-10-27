@@ -54,9 +54,10 @@ Other modules' behavior and versions are unchanged.
   forwards speech/transcription events to `SpotifySpeechDucking`. Ducking preserves desired volume across
   overlapping events and tool volume changes. Session disposal stops monitoring before releasing its cancellation source.
 - Voxta asks `IToolsChatAugmentation.GetToolsAsync` for definitions per generation and filters disabled tools.
-  The session combines saved switches with the monitored active-player state: the 13 playback/current-item tools
-  are offered only with an active device, including paused playback. Search, playlist listing, device listing,
-  and explicit device transfer remain available without a player. All 17 definitions remain discoverable; a
+  The session combines saved switches with the monitored active-player state: all 17 tools
+  are offered only with an active device, including paused playback. Without a player, context asks the assistant
+  to guide manual startup on the user's preferred device and continue the original request once available.
+  No status/connect tool is registered; the background monitor restores availability. All definitions remain discoverable; a
   state change never enables a saved disabled tool or changes permissions. There is no connect gate or flag.
   The one-second monitor makes changes visible on a subsequent generation; this does not replace a running
   generation's tool list. Calls already offered are validated against fresh provider state by their handlers.
@@ -68,7 +69,8 @@ Other modules' behavior and versions are unchanged.
 
 In Voxta, review **Spotify Tools** cards and **Offer Tools In**, then select **Spotify Tools** for a new chat
 with a tool-capable model. Check playback/search, playlists, queue, seek/volume, library changes, transfer,
-multiple calls, cancellation, and speech ducking. Without an active player, verify the four independent tools;
+multiple calls, cancellation, and speech ducking. Without an active player, verify no Spotify tools are offered
+and context provides manual-start guidance without requiring a tool call;
 start playback manually and verify playback tools appear on the next generation, including after pausing.
 Saved disabled tools must stay disabled. Results should appear in the current reply without extra notes or
 another generation. Runtime/provider behavior and automatic visibility remain manual acceptance steps.

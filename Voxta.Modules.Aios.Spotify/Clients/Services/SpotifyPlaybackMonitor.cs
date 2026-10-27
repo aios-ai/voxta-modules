@@ -87,7 +87,7 @@ public class SpotifyPlaybackMonitor(
                     ? "Spotify player status is unavailable. " + _playbackError
                 : isConnected
                     ? "Spotify is connected and has an active player."
-                    : "No active Spotify player was found. The user needs to open Spotify, select a track or playlist and start playback manually before playback control can continue.");
+                    : "Spotify has no active player, so all Spotify tools are temporarily unavailable. If the user requests Spotify playback or control, ask them to open Spotify on their preferred device, choose any track or playlist and start playback manually. Explain that you can continue their original request once Spotify becomes available. Do not try searching or transferring devices to establish a connection. Player availability is checked automatically in the background; no status or connect tool needs to be called.");
 
         if (isConnected && playbackState?.Device != null)
         {
