@@ -39,14 +39,12 @@ public class ModuleTestingProvider(
                 authPath);
             var dataService = new HueDataService(bridgeConnectionService, loggerFactory.CreateLogger<HueDataService>());
             var commandService = new HueCommandService(bridgeConnectionService, dataService, loggerFactory.CreateLogger<HueCommandService>());
-            var entityMatchingService = new HueEntityMatchingService(dataService, loggerFactory.CreateLogger<HueEntityMatchingService>());
             var colorConverterService = new ColorConverterService(loggerFactory.CreateLogger<ColorConverterService>());
 
             var manager = new HueManager(
                 bridgeConnectionService,
                 dataService,
                 commandService,
-                entityMatchingService,
                 colorConverterService,
                 loggerFactory.CreateLogger<HueManager>());
 
@@ -99,13 +97,10 @@ public class TestHueUserInteractionWrapper(
         {
             RequestId = request.RequestId,
             ModuleId = moduleId,
-            Message = "Please press the link button on your Hue bridge to authorize the connection.",
+            Message = HuePairingRequest.Message,
+            ImageUrl = HuePairingRequest.ImageUrl,
         });
         return request;
     }
 
-    public Task SetBridgeConnectionStateAsync(bool connected, CancellationToken cancellationToken)
-    {
-        return Task.CompletedTask;
-    }
 }

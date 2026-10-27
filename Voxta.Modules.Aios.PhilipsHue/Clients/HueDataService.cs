@@ -41,16 +41,15 @@ public class HueDataService : IHueDataService
 
     public async Task<bool> RetrieveBridgeDataAsync()
     {
-        var results = new[]
+        string? error = null;
+        var success = true;
+        foreach (var load in new Func<Task<bool>>[] { GetLightsAsync, GetGroupsAsync, GetRoomsAsync, GetZonesAsync, GetScenesAsync })
         {
-            await GetLightsAsync(),
-            await GetGroupsAsync(),
-            await GetRoomsAsync(),
-            await GetZonesAsync(),
-            await GetScenesAsync()
-        };
-
-        var success = results.All(x => x);
+            if (await load()) continue;
+            success = false;
+            error ??= LastUserVisibleError;
+        }
+        LastUserVisibleError = error;
         if (success && DumpBridgeDataForDebuggingEnabled)
             DumpBridgeDataForDebugging();
 
@@ -92,15 +91,14 @@ public class HueDataService : IHueDataService
         try
         {
             var response = await apiCall();
-            var data = response.Data;
-
-            if (data.Count == 0)
+            if (response.HasErrors)
             {
-                _logger.LogWarning("No {DataType} retrieved.", dataType);
-                LastUserVisibleError = $"No Hue {dataType} were found on the bridge.";
+                LastUserVisibleError = $"The Hue bridge rejected the request for {dataType}. Check bridge authorization and restart the chat.";
                 return false;
             }
+            var data = response.Data;
 
+            // Empty collections are valid: a bridge need not have zones, scenes or lights.
             setData(data);
             LastUserVisibleError = null;
 

@@ -36,8 +36,6 @@ internal sealed class HueToolHandler(HueManager hue, string? characterTarget)
         try
         {
             token.ThrowIfCancellationRequested();
-            if (operation == "bridge_connect")
-                return await hue.InitializeAsync(token) ? new("Hue bridge connected; inventory refreshed.") : Failure();
             if (!hue.IsConnected) return Failure();
             if (operation == "show_hue_inventory")
             {
@@ -49,12 +47,19 @@ internal sealed class HueToolHandler(HueManager hue, string? characterTarget)
                         Targets = targets.Where(t => t.OwnerId == s.Group?.Rid || t.Id == s.Group?.Rid).Select(t => t.Name) }),
                 }));
             }
-            var name = operation == "show_emotion" ? characterTarget : Text(args, "target", operation is not ("turn_lights_on" or "turn_lights_off"));
+            var turnOn = true;
+            if (operation == "toggle_lights")
+            {
+                var state = Text(args, "state");
+                if (state is not ("on" or "off")) throw new ModuleToolInputException("state must be on or off.");
+                turnOn = state == "on";
+            }
+            var name = operation == "show_emotion" ? characterTarget : Text(args, "target", operation != "toggle_lights");
             if (operation == "show_emotion" && string.IsNullOrWhiteSpace(name))
                 throw new ModuleToolInputException("Configure a character-controlled Hue target before using emotion control.");
             if (string.IsNullOrWhiteSpace(name))
             {
-                var all = await hue.ControlAllLightsAsync(operation == "turn_lights_on", token);
+                var all = await hue.ControlAllLightsAsync(turnOn, token);
                 return all ? Accepted() : Failure();
             }
             var target = Resolve(name);
@@ -86,7 +91,7 @@ internal sealed class HueToolHandler(HueManager hue, string? characterTarget)
                 if (matches.Length != 1) throw new ModuleToolInputException("Scene is missing or ambiguous for that target. List inventory and select a scene for this room or zone.");
                 id = matches[0].Id;
             }
-            var success = await hue.SendHueCommandAsync(id, type, state: operation != "turn_lights_off", color: color, brightness: brightness, scene: scene, cancellationToken: token);
+            var success = await hue.SendHueCommandAsync(id, type, state: turnOn, color: color, brightness: brightness, scene: scene, cancellationToken: token);
             return success ? Accepted() : Failure();
         }
         finally { _gate.Release(); }
@@ -95,7 +100,7 @@ internal sealed class HueToolHandler(HueManager hue, string? characterTarget)
     private ChatToolCallResult Accepted() => new(hue.LastUserVisibleError is { } warning
         ? "Hue accepted part of the request: " + warning + " Do not automatically retry device commands."
         : "Hue bridge accepted the requested command. Physical light state has not been independently verified.");
-    private ChatToolCallResult Failure() => new(hue.LastUserVisibleError ?? "Hue is disconnected or the bridge rejected the request. Check bridge setup or use hue_bridge_connect.", IsError: true);
+    private ChatToolCallResult Failure() => new(hue.LastUserVisibleError ?? "Hue is disconnected or the bridge rejected the request. Check the bridge and restart the chat to run startup connection and pairing again.", IsError: true);
     private static string? Text(JsonElement? args, string key, bool required = true)
     {
         if (args is { } obj && obj.TryGetProperty(key, out var value))

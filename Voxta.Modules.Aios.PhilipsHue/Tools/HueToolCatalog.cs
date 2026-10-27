@@ -12,9 +12,7 @@ internal static class HueToolCatalog
         { Name = name, Description = description, Type = FunctionArgumentType.String, Required = required };
     private static readonly Definition[] Definitions =
     [
-        new("turn_lights_on", "Turn on a Hue target. Omit target only when all lights are intended; all lights excludes smart plugs.", [Text("target", "Exact inventory name of a light, smart plug, room, zone or group.", false)]),
-        new("turn_lights_off", "Turn off a Hue target. Omit target only when all lights are intended; all lights excludes smart plugs.", [Text("target", "Exact inventory name of a light, smart plug, room, zone or group.", false)]),
-        new("bridge_connect", "Connect or reconnect the local Hue bridge and refresh inventory. Pairing may ask the user to press its link button.", []),
+        new("toggle_lights", "Set a Hue target on or off. Omit target only when all lights are intended; all lights excludes smart plugs.", [Text("state", "on or off."), Text("target", "Exact inventory name of a light, smart plug, room, zone or group.", false)]),
         new("change_color", "Change a Hue target's color and turn it on.", [Text("target", "Exact inventory target name."), Text("color", "Named color, such as LightYellow or Red.")]),
         new("show_emotion", "Express a character emotion through the configured character-controlled target. Runs during the tool loop.", [Text("color", "Named color appropriate for the emotion.")]),
         new("change_brightness", "Set Hue brightness and turn the target on.", [Text("target", "Exact inventory target name."), new() { Name = "brightness", Description = "Brightness from 1 to 100 percent.", Type = FunctionArgumentType.Integer, Required = true }]),

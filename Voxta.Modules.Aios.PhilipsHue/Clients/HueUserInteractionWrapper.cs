@@ -1,26 +1,17 @@
 using Voxta.Abstractions.Chats.Sessions;
-using Voxta.Abstractions.Chats.Objects.Chats;
 using Voxta.Abstractions.Utils;
 
 namespace Voxta.Modules.Aios.PhilipsHue.Clients;
 
-public class HueUserInteractionWrapper(IChatSessionChatAugmentationApi session, bool updateLegacyFlags = true) : IHueUserInteractionWrapper
+public class HueUserInteractionWrapper(IChatSessionChatAugmentationApi session) : IHueUserInteractionWrapper
 {
     public Task<IUserInteractionRequestToken> RequestUserInteraction(CancellationToken cancellationToken)
     {
         return session.RequestUserAction(new UserInteractionRequestInput
         {
-            Message = "Please press the link button on your Hue bridge to authorize the connection.",
+            Message = HuePairingRequest.Message,
+            ImageUrl = HuePairingRequest.ImageUrl,
         }, cancellationToken);
     }
 
-    public Task SetBridgeConnectionStateAsync(bool connected, CancellationToken cancellationToken)
-    {
-        if (!updateLegacyFlags) return Task.CompletedTask;
-        var flags = connected
-            ? new[] { "hueBridge_connected", "!hueBridge_disconnected" }
-            : ["hueBridge_disconnected", "!hueBridge_connected"];
-
-        return session.SetFlags(SetFlagRequest.ParseFlags(flags), cancellationToken);
-    }
 }

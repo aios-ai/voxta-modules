@@ -6,6 +6,5 @@ public enum HueBridgeState
     Connected,
     AuthRequired,
     Unavailable,
-    MissingConfiguration,
-    NoActiveTarget
+    MissingConfiguration
 }

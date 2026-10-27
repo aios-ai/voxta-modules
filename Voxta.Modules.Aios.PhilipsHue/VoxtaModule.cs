@@ -9,17 +9,11 @@ namespace Voxta.Modules.Aios.PhilipsHue;
 public class VoxtaModule : IVoxtaModule
 {
     public const string ServiceName = "Aios.PhilipsHue";
-    public const string AugmentationKey = "hue";
     public const string ToolsAugmentationKey = "hue_tools";
 
     public static readonly AugmentationKeyDescriptor[] Augmentations =
     [
-        new(ToolsAugmentationKey, "Philips Hue Tools", "Control Hue through the agent tool loop. Select this or legacy Philips Hue for comparison."),
-        new(
-            AugmentationKey,
-            "Philips Hue",
-            "Control Philips Hue lights, rooms, zones, scenes, color, and brightness from a chat."
-        ),
+        new(ToolsAugmentationKey, "Philips Hue Tools", "Control Philips Hue lights, rooms, zones, scenes, color and brightness through tools."),
     ];
 
     public void Configure(IVoxtaModuleBuilder builder)

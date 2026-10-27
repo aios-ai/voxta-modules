@@ -241,24 +241,14 @@ public class HueBridgeConnectionService : IHueBridgeConnectionService
         }
     }
 
-    private async Task SetStateAsync(HueBridgeState state, string? userVisibleError, CancellationToken cancellationToken)
+    private Task SetStateAsync(HueBridgeState state, string? userVisibleError, CancellationToken cancellationToken)
     {
         State = state;
         LastUserVisibleError = userVisibleError;
         if (state != HueBridgeState.Connected)
             _hueClient = null;
 
-        try
-        {
-            await _userInteractionWrapper.SetBridgeConnectionStateAsync(state == HueBridgeState.Connected, cancellationToken);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to update Hue bridge state flags.");
-        }
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.CompletedTask;
     }
 }

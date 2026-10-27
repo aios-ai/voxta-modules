@@ -12,6 +12,7 @@ public class HueCommandService : IHueCommandService
     private readonly ILogger<HueCommandService> _logger;
 
     public string? LastUserVisibleError { get; private set; }
+    public bool IsConnectionUnavailable { get; private set; }
 
     public HueCommandService(
         IHueBridgeConnectionService connectionService,
@@ -157,6 +158,7 @@ public class HueCommandService : IHueCommandService
         }
         catch (Exception ex)
         {
+            if (ex is HttpRequestException or TaskCanceledException) IsConnectionUnavailable = true;
             _logger.LogError(ex, "Hue command failed for target '{TargetId}' of type '{Type}'.", targetId, type);
             LastUserVisibleError = "Hue could not complete that command. Please check the bridge and target light, then try again.";
             return false;
@@ -204,6 +206,7 @@ public class HueCommandService : IHueCommandService
             }
             catch (Exception ex)
             {
+                if (ex is HttpRequestException or TaskCanceledException) IsConnectionUnavailable = true;
                 anyFailed = true;
                 _logger.LogWarning(ex, "Failed to turn light {State}: {MetadataName}", turnOn ? "on" : "off", light.Metadata?.Name);
             }

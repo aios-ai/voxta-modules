@@ -2,8 +2,8 @@
 
 ## Current boundary
 
-OpenWeather continues to use `IActionInferenceAugmentation`. Hue retains its legacy actions and adds the opt-in
-`hue_tools` augmentation for comparison. Spotify exposes only the opt-in
+OpenWeather continues to use `IActionInferenceAugmentation`. Hue exposes only the opt-in
+`hue_tools` augmentation after user acceptance of its tools. Spotify exposes only the opt-in
 `spotify_tools` augmentation and uses the shared catalog and native agent loop. Its legacy actions, wake word,
 connection/playing flags, connect alias, automatic search ranking, and action feedback have been removed after
 user verification of tools. Existing chats configured only for the removed `spotify` augmentation must select
@@ -13,34 +13,38 @@ The shared foundation is compiled privately into all three modules. Spotify and 
 
 ## Philips Hue integration
 
-- `hue` retains the existing action inference integration. `hue_tools` is a separate opt-in plan,
-  excluded from catch-all activation, using the SDK tools-service marker and shared catalog/adapter.
-  When both are selected, legacy activation returns no instance so pairing, notes and commands cannot duplicate.
-- `Tools/HueToolCatalog.cs` defines eight native tools: on/off, bridge connection, color, brightness,
-  scene activation, inventory and emotion. Definitions and handlers are independent of action schemas,
-  match rules, flags and feedback. Tool results return directly into the agent loop. Tools-only sessions
-  send no inventory notes or legacy flags; inventory is available through `hue_show_hue_inventory`.
-- `HueToolsSettings` owns separate editable description cards and disable switches, with Assistant/Companion
-  defaults. All tools except emotion default enabled. Emotion additionally requires `CharacterControlledLight`;
-  it executes during the agent loop rather than after the assistant message. Action settings are not consulted.
-- `HueToolHandler` serializes calls per session and uses the existing neutral `HueManager`/services.
-  Exact unique names resolve against inventory; missing or ambiguous targets return an error without a command.
-  Only omitted on/off targets mean all lights (excluding smart plugs). Brightness is an integer from 1 to 100.
-  Scene resolution accepts native room/zone ownership or grouped-light ownership and sends the scene resource ID.
-  Mutations use Act permission, inventory uses Read, and bridge-supplied names are external content.
-  Results distinguish bridge acceptance from physical verification and retain partial all-light failure warnings.
-- Local Hue bridge link-button pairing and per-user app-key storage remain setup concerns; no OAuth provider,
-  callback route or cloud account is needed. Tools use the existing SDK user-interaction request for pairing.
-  Connection and commands use the saved local bridge configuration. No command is automatically retried.
-  HueApi command methods expose no transport cancellation parameter: cancellation is checked before dispatch,
-  between all-light commands and after inventory initialization; in-flight commands are awaited under the session gate.
+- `hue_tools` is the only Hue plan: opt-in, excluded from catch-all activation, using the SDK tools-service
+  marker and shared catalog. Legacy `hue`, action definitions, filters, flags, note feedback and action-only
+  matching have been removed after user verification. Existing chats selecting only `hue` must choose
+  **Philips Hue Tools**. Obsolete action and inventory-note settings are ignored.
+- `Tools/HueToolCatalog.cs` defines six tools: `hue_toggle_lights`, color, brightness, scenes, inventory and
+  emotion. Toggle requires `state` (`on` or `off`); it never guesses the desired state. A missing target means
+  all lights, excluding smart plugs. Exact unique inventory names are required for explicit targets.
+  Brightness is an integer from 1 to 100. Scenes resolve native room/zone or grouped-light ownership and
+  send the scene resource ID. Inventory is Read; mutations are Act; bridge names are external content.
+- `HueToolsSettings` owns editable description cards and switches, with Assistant/Companion defaults.
+  All tools except emotion default enabled; emotion also requires `CharacterControlledLight`.
+  Merging on/off cards preserves opt-outs: disabling either old tool disables the combined tool, unless an
+  explicit combined card exists. Old explicit SDK Tools selections enable toggle only when both directions
+  were selected. Old directional descriptions are not copied. Saved descriptions/styles for retained tools remain.
+- `HueToolsSession` publishes one stable **Philips Hue Status** context and masks all definitions while
+  startup connection/inventory initialization is incomplete or unsuccessful, or a command reports transport loss. It preserves saved disable switches
+  and checks connection again before dispatch. Context asks the user to check the bridge and restart the chat
+  to retry startup pairing; there is no connect tool or background reconnect loop. Context is refreshed during
+  discovery and after tool calls, without duplicate unchanged writes. Results return directly to the agent loop.
+- `HueToolHandler` serializes session calls. Commands are sent once, and results distinguish bridge acceptance
+  from physical verification, retaining partial all-light failure warnings. HueApi command methods expose no
+  transport cancellation parameter: cancellation is checked before dispatch, between all-light commands and
+  after inventory initialization; in-flight mutations are awaited under the session gate.
+- Local link-button pairing and per-user app-key storage remain startup/setup concerns. Both chat pairing and
+  module-test requests use the SDK ImageUrl field with the bundled Hue PNG as a data URL. No OAuth provider,
+  callback or cloud account is needed. Inventory initialization accepts valid empty collections, including
+  bridges without zones or scenes, but keeps provider failures distinct and preserves their error.
 
-Run `dotnet run --project tests/Hue.Tools.Tests -c Release -p:RestoreLockedMode=true` for fake-service
-coverage of all operations, validation, ambiguous targets, scene ownership, failure/no retry, cancellation,
-permissions, disabled tools, emotion gating and independent SDK plans. Live Voxta testing must compare
-**Philips Hue Tools** alone against **Philips Hue** alone, including link-button setup, real lights and plugs,
-scene selection, multiple calls, permission prompts and emotion behavior. Automated checks do not establish
-live hardware parity.
+Run `dotnet run --project tests/Hue.Tools.Tests -c Release -p:RestoreLockedMode=true` for operation, input,
+scene, settings/migration, cancellation, permission, status/availability, failed-startup and pairing-image checks.
+The user verified the original Hue tools against real hardware before action removal. The combined toggle,
+failed startup/restart guidance and logo rendering still need live Voxta acceptance for this version.
 
 ## Spotify integration
 
@@ -255,7 +259,7 @@ Tools/<Module>ToolHandler.cs       validation and execution, returning ChatToolC
 Tools/<Module>ToolsSettings.cs     tool-specific settings, independent of legacy action configuration
 ```
 
-For future OpenWeather migrations and the Hue comparison period, keep action files and legacy registrations until user acceptance; suppress activation when tools take precedence. Tools must never call `TryHandleActionInference`,
+For the future OpenWeather migration, keep action files and legacy registrations until user acceptance; suppress activation when tools take precedence. Tools must never call `TryHandleActionInference`,
 an action handler, or construct synthetic `ServerActionMessage` objects. Actions must never dispatch through
 the tool catalog. Both may call transport-neutral domain clients/services. If a useful operation currently lives
 inside an action handler, extract a domain operation returning data/results, then give actions and tools their own
@@ -276,13 +280,13 @@ its result. Return map images through `ChatToolCallResult.Images` instead.
 
 ## Migration coverage
 
-Spotify migration is complete. For OpenWeather and Hue, preserve legacy actions until each tools migration is accepted.
+Spotify and Hue migrations are complete. Preserve OpenWeather legacy actions until its tools migration is accepted.
 Prefix tool names as described above.
 
 | Module | Operations to cover | Migration-specific behavior |
 | --- | --- | --- |
 | OpenWeather (5) | `get_weather`, `get_weather_forecast`, `get_air_pollution`, `get_air_pollution_forecast`, `get_weather_map` | Reuse `IOpenWeatherClient` and summarizers. Preserve configured location fallback, units, selected details, and cache path. Separate data/formatting from note feedback. Return maps as images plus descriptive text. All five are queries. |
-| Hue (8) | `turn_lights_on`, `turn_lights_off`, `hueBridge_connect`, `change_color`, `show_emotion`, `change_brightness`, `activate_scene`, `show_hue_inventory` | Reuse Hue manager/services. Validate brightness and target selection; expose useful disconnected/not-found errors. Inventory is Read; device/connection changes are Act. Keep emotion control gated by the configured character light and opt-in tool selection; agent-loop timing is distinct from the old after-assistant action timing. Preserve setup/link-button interaction separately from tool-result feedback. |
+| Hue (6, completed) | `toggle_lights`, `change_color`, `show_emotion`, `change_brightness`, `activate_scene`, `show_hue_inventory` | Tools only; startup pairing, disconnected availability/status and conservative toggle-setting migration are described above. |
 | Spotify (16, completed) | `toggle_playback`, `search`, `play_random_music`, `play_special_playlist`, `play_music`, `queue_track`, `volume`, `seek_playback`, `skip`, `repeat_mode`, `shuffle_mode`, `add_to_favorites`, `get_playlists`, `add_to_playlist`, `list_devices`, `transfer_to_device` | Native tools use neutral manager operations. Search and playlist/device listing are Read; mutations are Act. Configured playlists, playback context, and speech ducking remain independent of tool dispatch. OAuth and passive monitoring remain session/setup concerns. |
 
 Spotify speech events use `SpotifyPlaybackSession` and `SpotifySpeechDucking`, independently of tool dispatch.
@@ -319,8 +323,7 @@ avoiding desktop clients that accept a bare `uris` request but clear the player.
 before changing playback; Spotify may continue with later album tracks after the selected song. After one
 play command, up to five playback-state reads at 400 ms intervals confirm the requested track/episode or
 context is playing. Acceptance without confirmation is reported explicitly as unconfirmed; no play command is retried.
-Playback monitors and initial Hue inventory notes are session features; choose their owner explicitly when both
-augmentations are selected to avoid duplicate polling/notes and double disposal.
+Spotify playback monitoring and Hue startup connection/status belong to their tool sessions, independently of dispatch.
 
 ## Validation and completion
 
@@ -354,7 +357,7 @@ For each migration, add handler checks with fake domain clients for all operatio
 and cancellation. Then test in Voxta with tools selected and legacy actions deselected: discovery/settings, host
 permissions, successful and failed calls, multiple calls in one reply, cancellation, and results in the same agent
 response. Verify no ActionInference requirement, duplicate notes, follow-up generation, or repeated side effects.
-For OpenWeather migration and Hue comparison, repeat representative requests with only legacy actions selected. Test real maps, Hue devices and emotion control,
+For OpenWeather migration, repeat representative requests with only legacy actions selected. Test real maps, Hue devices and emotion control,
 Spotify playback and ducking against their providers before declaring behavioral parity.
 
 Each externally visible migration increments the affected module's manifest version (use a prerelease while testing),
