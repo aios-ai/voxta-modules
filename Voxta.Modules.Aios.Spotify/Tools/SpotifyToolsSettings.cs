@@ -60,12 +60,29 @@ internal sealed record SpotifyToolsSettings(IReadOnlySet<string> Selected, ChatS
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
         var configured = (entries ?? []).Where(e => !string.IsNullOrEmpty(e.Name))
             .GroupBy(e => e.Name, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Last(), StringComparer.Ordinal);
+        // A merged switch must never undo an explicit opt-out of either old direction.
+        var legacySkipNames = new[] { "spotify_skip_next", "spotify_skip_previous" };
+        if (!configured.ContainsKey("spotify_skip") && legacySkipNames.Any(configured.ContainsKey))
+            configured["spotify_skip"] = new SpotifyToolSettings
+            {
+                Name = "spotify_skip",
+                Disabled = legacySkipNames.Any(name => configured.TryGetValue(name, out var old)
+                    && bool.TryParse(old.Disabled, out var disabled) && disabled) ? "true" : "false",
+            };
         var selected = SpotifyToolCatalog.Choices.Where(choice => entries != null
                 ? configured.TryGetValue(choice.Name, out var entry)
                     ? !bool.TryParse(entry.Disabled, out var disabled) || !disabled
                     : choice.EnabledByDefault
                 : ChatToolSettingsContributions.IsToolSelected(settings, SpotifyToolCatalog.Choices, choice.Name))
             .Select(choice => choice.Name).ToHashSet(StringComparer.Ordinal);
+        var legacySelection = settings.GetRawValue("Tools");
+        if (entries == null && !string.IsNullOrWhiteSpace(legacySelection)
+            && legacySkipNames.Any(name => legacySelection.Contains(name, StringComparison.Ordinal)))
+        {
+            var legacyChoices = legacySkipNames.Select(name => new ChatToolChoice(name, name, true)).ToArray();
+            if (legacySkipNames.All(name => ChatToolSettingsContributions.IsToolSelected(settings, legacyChoices, name)))
+                selected.Add("spotify_skip");
+        }
         return new(selected, settings.GetRequired(Styles), configured
             .Where(e => !string.IsNullOrWhiteSpace(e.Value.Description))
             .ToDictionary(e => e.Key, e => e.Value.Description!.Trim(), StringComparer.Ordinal));

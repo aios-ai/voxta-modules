@@ -22,8 +22,8 @@ var operations = new (string Operation, string Json, string? Mutation)[]
     ("queue_track", "{\"selection\":\"spotify:track:1234567890123456789012\"}", "QueueTrack"),
     ("volume", "{\"type\":\"set\",\"value\":30}", "ChangeVolume"),
     ("seek_playback", "{\"target\":\"forward\"}", "SeekPlayback"),
-    ("skip_next", "{}", "SkipToPreviousOrNextTrack"),
-    ("skip_previous", "{}", "SkipToPreviousOrNextTrack"),
+    ("skip", "{\"direction\":\"next\"}", "SkipToPreviousOrNextTrack"),
+    ("skip", "{\"direction\":\"previous\"}", "SkipToPreviousOrNextTrack"),
     ("repeat_mode", "{\"mode\":\"context\"}", "SetRepeatMode"),
     ("shuffle_mode", "{\"mode\":\"on\"}", "SetShuffle"),
     ("add_to_favorites", "{}", "AddTrackToLibraryAsync"),
@@ -41,6 +41,8 @@ foreach (var (operation, json, mutation) in operations)
     if (mutation != null)
     {
         Check(fixture.Backend.Calls.Count(c => c.Name == mutation) == 1, $"Duplicate or missing mutation: {operation}");
+        if (operation == "skip")
+            Check((string)fixture.Backend.Calls.Single(c => c.Name == mutation).Args[0]! == JsonDocument.Parse(json).RootElement.GetProperty("direction").GetString(), "Wrong skip direction sent");
         var failed = new Fixture();
         failed.Backend.Succeed = false;
         Check((await failed.Call(operation, json)).IsError, $"Provider failure hidden: {operation}");
@@ -73,6 +75,9 @@ var invalid = new (string, string)[]
     ("seek_playback", "{\"target\":\"forward_percent\",\"value\":101}"),
     ("seek_playback", "{\"target\":\"backward_percent\",\"value\":-1}"),
     ("seek_playback", "{\"target\":\"invalid\"}"),
+    ("skip", "{}"),
+    ("skip", "{\"direction\":\"forward\"}"),
+    ("skip", "{\"direction\":2}"),
     ("repeat_mode", "{\"mode\":\"invalid\"}"),
     ("shuffle_mode", "{\"mode\":true}"),
     ("add_to_playlist", "{}"),
@@ -162,7 +167,12 @@ Console.WriteLine("PASS invalid arguments rejected before provider access");
 {
     var f = new Fixture();
     var definitions = f.Catalog.GetTools();
-    Check(definitions.Count == 17 && definitions.Select(d => d.Name).Distinct().Count() == 17, "Catalog coverage");
+    Check(definitions.Count == 16 && definitions.Select(d => d.Name).Distinct().Count() == 16, "Catalog coverage");
+    Check(definitions.All(d => d.Name is not ("spotify_skip_next" or "spotify_skip_previous")), "Old skip tools retained");
+    var skipSchema = definitions.Single(d => d.Name == "spotify_skip").InputSchema;
+    Check(skipSchema.GetProperty("required").EnumerateArray().Any(p => p.GetString() == "direction"), "Skip direction is not required");
+    Check((await f.Catalog.CallToolAsync("spotify_skip_next", null, default)).IsError
+        && (await f.Catalog.CallToolAsync("spotify_skip_previous", null, default)).IsError, "Removed skip tools executed");
     Check(definitions.All(d => d.Source == VoxtaModule.ServiceName && d.AugmentationKey == VoxtaModule.ToolsAugmentationKey && !d.AlwaysAllowed && d.ExternalContent), "Tool ownership/permissions");
     Check(definitions.Count(d => d.Permission == ToolPermissionClass.Read) == 3, "Read/Act classification");
     foreach (var name in new[] { "spotify_play_music", "spotify_queue_track" })
@@ -170,11 +180,11 @@ Console.WriteLine("PASS invalid arguments rejected before provider access");
         var properties = definitions.Single(d => d.Name == name).InputSchema.GetProperty("properties");
         Check(properties.TryGetProperty("selection", out _) && !properties.TryGetProperty("uri", out _), "Approval schema exposes URI instead of readable selection");
     }
-    Check(SpotifyToolCatalog.Choices.Where(c => c.EnabledByDefault).Count() == 15 && SpotifyToolCatalog.Choices.Where(c => !c.EnabledByDefault).Select(c => c.Name).ToHashSet().SetEquals(["spotify_list_devices", "spotify_transfer_to_device"]), "Device tools must default off");
+    Check(SpotifyToolCatalog.Choices.Where(c => c.EnabledByDefault).Count() == 14 && SpotifyToolCatalog.Choices.Where(c => !c.EnabledByDefault).Select(c => c.Name).ToHashSet().SetEquals(["spotify_list_devices", "spotify_transfer_to_device"]), "Device tools must default off");
     var settings = new SpotifyToolsSettings(new HashSet<string>(), [ChatStyles.Assistant]);
     var disabled = SpotifyToolCatalog.Create(f.Handler, settings, f.Playlists, NullLogger.Instance);
     Check(disabled.GetTools().All(t => !t.Enabled), "Disabled choices not preserved");
-    Check((await disabled.CallToolAsync("spotify_skip_next", null, default)).IsError && f.Backend.Calls.Count == 0, "Disabled tool executed");
+    Check((await disabled.CallToolAsync("spotify_skip", JsonSerializer.SerializeToElement(new { direction = "next" }), default)).IsError && f.Backend.Calls.Count == 0, "Disabled tool executed");
     Check((await f.Call("seek_playback", "{\"target\":\"forward\"}")).IsError == false, "Default seek failed");
     Check((int)f.Backend.Calls.Last(c => c.Name == "SeekPlayback").Args[0]! == 30000, "Default forward seek is not 10s");
     await f.Call("seek_playback", "{\"target\":\"to_time\",\"value\":2147483647}");
@@ -304,15 +314,15 @@ Console.WriteLine("PASS invalid arguments rejected before provider access");
     Check(service is IToolsChatAugmentationsService, "Missing tools marker");
     var plan = await service.PlanAsync(null!, default);
     var tools = plan.Single(p => p.Key == VoxtaModule.ToolsAugmentationKey);
-    Check(tools.Activation == AugmentationActivation.OptIn && !tools.IncludeInCatchAll && tools.Tools!.Count == 17, "Tools plan not independent/opt-in");
+    Check(tools.Activation == AugmentationActivation.OptIn && !tools.IncludeInCatchAll && tools.Tools!.Count == 16, "Tools plan not independent/opt-in");
     Check(plan.Length == 1 && VoxtaModule.Augmentations.Length == 1, "Legacy augmentation still registered");
     Check((await f.Catalog.CallToolAsync("spotify_connect", null, default)).IsError, "Removed connect tool executed");
     var monitor = new SpotifyPlaybackMonitor(f.Manager, session, NullLogger<SpotifyPlaybackMonitor>.Instance);
     var playback = new SpotifyPlaybackSession(monitor, f.Ducking);
     IToolsChatAugmentation instance = new SpotifyToolsSession(f.Catalog, playback);
     Check(instance.GetRequiredServiceTypes().Length == 0 && instance is not IActionInferenceAugmentation, "Tools depend on action inference");
-    await instance.CallToolAsync("spotify_skip_next", null, default);
-    await instance.CallToolAsync("spotify_skip_previous", null, default);
+    await instance.CallToolAsync("spotify_skip", JsonSerializer.SerializeToElement(new { direction = "next" }), default);
+    await instance.CallToolAsync("spotify_skip", JsonSerializer.SerializeToElement(new { direction = "previous" }), default);
     await playback.InitializeAsync(default);
     Check(((SessionProxy)session).Contexts.All(c => c.Name != "Spotify Last Command"), "Last command context retained");
     await instance.DisposeAsync();

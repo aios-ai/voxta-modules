@@ -28,7 +28,7 @@ internal static class SpotifyContextChecks
         async Task CheckAvailability(bool active)
         {
             var offered = await tools.GetToolsAsync(default);
-            Check(offered.Count == 17, "Dynamic availability removed discovery metadata");
+            Check(offered.Count == 16, "Dynamic availability removed discovery metadata");
             Check(offered.Where(t => t.Enabled).Select(t => t.Name).ToHashSet().SetEquals(
                 active ? SpotifyToolCatalog.Choices.Select(c => c.Name) : Array.Empty<string>()), "Incorrect live tool availability");
         }
@@ -86,7 +86,7 @@ internal static class SpotifyContextChecks
         var disabledCatalog = SpotifyToolCatalog.Create(f.Handler,
             SpotifyToolsSettings.From(new Voxta.Abstractions.Registration.StaticSettingsSource(new()
             {
-                ["SpotifyTools"] = "[{\"name\":\"spotify_skip_next\",\"disabled\":true},{\"name\":\"spotify_search\",\"disabled\":true},{\"name\":\"spotify_list_devices\",\"disabled\":true},{\"name\":\"spotify_transfer_to_device\",\"disabled\":true}]",
+                ["SpotifyTools"] = "[{\"name\":\"spotify_skip\",\"disabled\":true},{\"name\":\"spotify_search\",\"disabled\":true},{\"name\":\"spotify_list_devices\",\"disabled\":true},{\"name\":\"spotify_transfer_to_device\",\"disabled\":true}]",
             })),
             f.Playlists, NullLogger.Instance);
         var disabledSession = new SpotifyToolsSession(disabledCatalog, playback);
@@ -94,9 +94,9 @@ internal static class SpotifyContextChecks
         {
             f.Backend.State = active ? new() { Device = new() { IsActive = true }, IsPlaying = false } : null;
             await monitor.RefreshAsync(default);
-            Check((await disabledSession.GetToolsAsync(default)).Where(t => t.Name is "spotify_skip_next" or "spotify_search" or "spotify_list_devices" or "spotify_transfer_to_device").All(t => !t.Enabled), "Reconnection overrode saved switches");
+            Check((await disabledSession.GetToolsAsync(default)).Where(t => t.Name is "spotify_skip" or "spotify_search" or "spotify_list_devices" or "spotify_transfer_to_device").All(t => !t.Enabled), "Reconnection overrode saved switches");
         }
-        Check((await disabledSession.CallToolAsync("spotify_skip_next", null, default)).IsError, "Saved disabled tool executed");
+        Check((await disabledSession.CallToolAsync("spotify_skip", null, default)).IsError, "Saved disabled tool executed");
         Check((await disabledSession.CallToolAsync("spotify_list_devices", null, default)).IsError
             && (await disabledSession.CallToolAsync("spotify_transfer_to_device", null, default)).IsError, "Disabled device tool executed");
         Check(session.FlagWrites == 0, "Playback monitoring still writes legacy flags");

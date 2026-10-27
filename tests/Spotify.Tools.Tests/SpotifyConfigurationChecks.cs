@@ -15,15 +15,29 @@ internal static class SpotifyConfigurationChecks
         Check(empty.GetRequired(ModuleConfigurationProvider.SpeechDuckingVolumePercent) == 60, "Existing ducking limit changed");
         Check(empty.GetRequired(ModuleConfigurationProvider.SpeechDuckingReductionPercent) == 25, "Relative ducking default incorrect");
         var defaults = SpotifyToolsSettings.From(empty);
-        Check(defaults.Selected.Count == 15 && !defaults.Selected.Contains("spotify_list_devices") && !defaults.Selected.Contains("spotify_transfer_to_device"), "Device tools must default off");
+        Check(defaults.Selected.Count == 14 && !defaults.Selected.Contains("spotify_list_devices") && !defaults.Selected.Contains("spotify_transfer_to_device"), "Device tools must default off");
         Check(defaults.ChatStyles.ToHashSet().SetEquals([ChatStyles.Assistant, ChatStyles.Companion]), "Default styles");
         var cards = (FormArrayOfObjectsField)SpotifyToolsSettings.ConfigurationField(empty);
         Check(cards.AllowDisable && !cards.AllowRename && !cards.AllowAddRemove, "Fixed tool card UI");
-        Check(JsonSerializer.Deserialize<SpotifyToolSettings[]>(cards.DefaultValue!)!.Length == 17, "Missing cards");
+        Check(JsonSerializer.Deserialize<SpotifyToolSettings[]>(cards.DefaultValue!)!.Length == 16, "Missing cards");
         var old = new StaticSettingsSource(new() { ["Tools"] = "spotify_skip_next", ["ToolChatStyles"] = "Assistant" });
         var migrated = SpotifyToolsSettings.From(old);
-        Check(migrated.Selected.SetEquals(["spotify_skip_next"]), "Legacy selection changed");
+        Check(migrated.Selected.Count == 0, "A single enabled legacy direction must not enable both directions");
         Check(migrated.ChatStyles.SequenceEqual([ChatStyles.Assistant]), "Saved styles changed");
+        var bothLegacy = SpotifyToolsSettings.From(new StaticSettingsSource(new() { ["Tools"] = "spotify_skip_next\nspotify_skip_previous" }));
+        Check(bothLegacy.Selected.SetEquals(["spotify_skip"]), "Both enabled legacy directions did not migrate");
+        foreach (var disabledNext in new[] { false, true })
+        foreach (var disabledPrevious in new[] { false, true })
+        {
+            var legacyCards = JsonSerializer.Serialize(new[]
+            {
+                new SpotifyToolSettings { Name = "spotify_skip_next", Disabled = disabledNext.ToString(), Description = "Next only" },
+                new SpotifyToolSettings { Name = "spotify_skip_previous", Disabled = disabledPrevious.ToString(), Description = "Previous only" },
+            });
+            var migratedSkip = SpotifyToolsSettings.From(new StaticSettingsSource(new() { ["SpotifyTools"] = legacyCards }));
+            Check(migratedSkip.Selected.Contains("spotify_skip") == (!disabledNext && !disabledPrevious), "Skip migration overrode a disabled direction");
+            Check(!migratedSkip.Descriptions!.ContainsKey("spotify_skip"), "Directional description copied to unified tool");
+        }
         var none = SpotifyToolsSettings.From(new StaticSettingsSource(new() { ["Tools"] = "" }));
         Check(none.Selected.SetEquals(defaults.Selected), "Empty legacy defaults should adopt current defaults");
         var disabledCards = JsonSerializer.Serialize(SpotifyToolCatalog.Choices.Select(c => new SpotifyToolSettings { Name = c.Name, Disabled = "true" }));
@@ -33,16 +47,16 @@ internal static class SpotifyConfigurationChecks
             ["Tools"] = "",
             ["SpotifyTools"] = JsonSerializer.Serialize(new[]
             {
-                new SpotifyToolSettings { Name = "spotify_skip_next", Description = "Custom explanation", Disabled = "false" },
+                new SpotifyToolSettings { Name = "spotify_skip", Description = "Custom explanation", Disabled = "false" },
                 new SpotifyToolSettings { Name = "spotify_skip_previous", Disabled = "true" },
                 new SpotifyToolSettings { Name = "spotify_play_music", Description = "Search Spotify and play the requested music or podcast.", Disabled = "false" },
             }),
         }));
-        Check(settings.Selected.Contains("spotify_skip_next") && !settings.Selected.Contains("spotify_skip_previous"), "Card switches do not take precedence");
-        Check(settings.Descriptions!["spotify_skip_next"] == "Custom explanation", "Description was lost");
+        Check(settings.Selected.Contains("spotify_skip") && !settings.Selected.Contains("spotify_skip_previous"), "Card switches do not take precedence");
+        Check(settings.Descriptions!["spotify_skip"] == "Custom explanation", "Description was lost");
         Check(settings.Selected.Contains("spotify_search"), "New search tool missing from saved card configuration");
         var catalog = SpotifyToolCatalog.Create(null!, settings, new Dictionary<string, string>(), NullLogger.Instance);
-        var description = catalog.GetTools().Single(t => t.Name == "spotify_skip_next").Description;
+        var description = catalog.GetTools().Single(t => t.Name == "spotify_skip").Description;
         Check(description == "Custom explanation", "Shared policies must not be duplicated into custom descriptions");
         var transfer = catalog.GetTools().Single(t => t.Name == "spotify_transfer_to_device");
         var guidance = SpotifyToolGuidance.Build(settings.Selected);
@@ -56,7 +70,7 @@ internal static class SpotifyConfigurationChecks
             Check(!parsed.Selected.Contains("spotify_list_devices") && !parsed.Selected.Contains("spotify_transfer_to_device"), "Lowercase/boolean disabled switches ignored");
         }
         var enabledDevices = SpotifyToolsSettings.From(new StaticSettingsSource(new() { ["SpotifyTools"] = "[{\"Name\":\"spotify_list_devices\",\"Disabled\":\"false\"},{\"Name\":\"spotify_transfer_to_device\",\"Disabled\":\"false\"}]" }));
-        Check(enabledDevices.Selected.Count == 17, "Explicit device opt-in lost");
+        Check(enabledDevices.Selected.Count == 16, "Explicit device opt-in lost");
         Check(SpotifyToolGuidance.Build(new HashSet<string>()).Length == 0, "Guidance for no tools");
         Check(SpotifyToolGuidance.Build(new HashSet<string> { "spotify_search" }).Length == 0, "Mutation guidance for search-only selection");
         var playOnly = SpotifyToolGuidance.Build(new HashSet<string> { "spotify_play_music" });
@@ -81,8 +95,8 @@ internal static class SpotifyConfigurationChecks
         });
         var migratedCards = (FormArrayOfObjectsField)SpotifyToolsSettings.ConfigurationField(obsolete);
         var saved = JsonSerializer.Deserialize<SpotifyToolSettings[]>(migratedCards.DefaultValue!)!;
-        Check(saved.Length == 17 && saved.All(t => t.Name != "spotify_connect"), "Removed connect card retained");
-        Check(saved.Single(t => t.Name == "spotify_skip_next").Disabled == "true", "Existing tool preference lost");
+        Check(saved.Length == 16 && saved.All(t => t.Name != "spotify_connect"), "Removed connect card retained");
+        Check(saved.Single(t => t.Name == "spotify_skip").Disabled == "true", "Existing tool preference lost");
         Console.WriteLine("PASS tool cards, editable descriptions, defaults, saved settings, and single-flow authentication configuration");
     }
     private static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }

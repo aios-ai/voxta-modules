@@ -95,9 +95,11 @@ internal sealed class SpotifyToolHandler(
                 var clamped = (int)Math.Clamp(position, 0, duration);
                 return await Changed(await manager.SeekPlayback(clamped, token), $"Playback position set to {StringUtils.FormatMillisecondsToMinutesSeconds(clamped)}.", token);
             }
-            case "skip_next":
-            case "skip_previous":
-                return await Changed(await manager.SkipToPreviousOrNextTrack(operation == "skip_next" ? "next" : "previous", token), operation == "skip_next" ? "Skipped to the next track." : "Skipped to the previous track.", token);
+            case "skip":
+            {
+                var direction = Choice(args, "direction", "next", "previous");
+                return await Changed(await manager.SkipToPreviousOrNextTrack(direction, token), $"Skipped to the {direction} track.", token);
+            }
             case "repeat_mode":
             {
                 var mode = Choice(args, "mode", "track", "context", "off");

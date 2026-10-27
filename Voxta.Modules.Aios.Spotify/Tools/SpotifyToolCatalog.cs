@@ -39,8 +39,7 @@ internal static class SpotifyToolCatalog
         new("seek_playback", "Seek within the current track or episode.",
             [Text("target", "forward/backward: relative seconds; forward_percent/backward_percent: relative % of total duration; to_time: absolute seconds; to_percent: absolute %; middle: midpoint."),
              Number("Nonnegative integer seconds or 0–100 percent; required except forward/backward (default 10 seconds) and middle (omit).")]),
-        new("skip_next", "Skip to the next track.", []),
-        new("skip_previous", "Skip to the previous track.", []),
+        new("skip", "Skip to the next or previous track.", [Text("direction", "next or previous.")]),
         new("repeat_mode", "Set repeat mode.", [Text("mode", "track, context, or off.")]),
         new("shuffle_mode", "Turn shuffle on or off.", [Text("mode", "on or off.")]),
 

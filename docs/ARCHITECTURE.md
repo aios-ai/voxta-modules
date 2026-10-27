@@ -13,7 +13,7 @@ Other modules' behavior and versions are unchanged.
 
 ## Spotify integration
 
-- `Tools/SpotifyToolCatalog.cs` owns 17 native definitions and SDK schemas, permissions, choices, and bindings.
+- `Tools/SpotifyToolCatalog.cs` owns 16 native definitions and SDK schemas, permissions, choices, and bindings.
   `SpotifyToolHandler` validates and executes through `ISpotifyManager`; it never
   references the action handler or sends notes, cancels replies, or triggers generation. Mutating calls are
   serialized within the session and return immediate tool results; command summaries are not persisted in context.
@@ -44,6 +44,10 @@ Other modules' behavior and versions are unchanged.
   choices, with module-local Assistant and Companion defaults; explicitly saved styles remain intact.
   Obsolete `Actions` settings are ignored. `SpotifyChatAugmentationsService` implements the
   SDK tools-service marker and plans tools separately as opt-in, excluded from catch-all activation.
+- `spotify_skip` requires `direction` (`next` or `previous`) and replaces both directional skip tools.
+  Old card settings migrate conservatively: disabling either old direction disables the combined tool;
+  an explicit combined-tool card takes precedence. An old explicit `Tools` selection enables the combined
+  tool only if both directions were selected. Direction-specific description overrides are not copied.
 - Shuffle commands are sent once, then confirmed by up to five playback-state reads at 400 ms intervals.
   Success requires an active device and the requested shuffle state. Accepted but unchanged or missing-player
   observations return explicit unconfirmed feedback. Tools must not claim success, retry automatically, or
@@ -248,7 +252,7 @@ Prefix tool names as described above.
 | --- | --- | --- |
 | OpenWeather (5) | `get_weather`, `get_weather_forecast`, `get_air_pollution`, `get_air_pollution_forecast`, `get_weather_map` | Reuse `IOpenWeatherClient` and summarizers. Preserve configured location fallback, units, selected details, and cache path. Separate data/formatting from note feedback. Return maps as images plus descriptive text. All five are queries. |
 | Hue (8) | `turn_lights_on`, `turn_lights_off`, `hueBridge_connect`, `change_color`, `show_emotion`, `change_brightness`, `activate_scene`, `show_hue_inventory` | Reuse Hue manager/services. Validate brightness and target selection; expose useful disconnected/not-found errors. Inventory is Read; device/connection changes are Act. Keep emotion control gated by the configured character light and opt-in tool selection; agent-loop timing is distinct from the old after-assistant action timing. Preserve setup/link-button interaction separately from tool-result feedback. |
-| Spotify (17, completed) | `toggle_playback`, `search`, `play_random_music`, `play_special_playlist`, `play_music`, `queue_track`, `volume`, `seek_playback`, `skip_next`, `skip_previous`, `repeat_mode`, `shuffle_mode`, `add_to_favorites`, `get_playlists`, `add_to_playlist`, `list_devices`, `transfer_to_device` | Native tools use neutral manager operations. Search and playlist/device listing are Read; mutations are Act. Configured playlists, playback context, and speech ducking remain independent of tool dispatch. OAuth and passive monitoring remain session/setup concerns. |
+| Spotify (16, completed) | `toggle_playback`, `search`, `play_random_music`, `play_special_playlist`, `play_music`, `queue_track`, `volume`, `seek_playback`, `skip`, `repeat_mode`, `shuffle_mode`, `add_to_favorites`, `get_playlists`, `add_to_playlist`, `list_devices`, `transfer_to_device` | Native tools use neutral manager operations. Search and playlist/device listing are Read; mutations are Act. Configured playlists, playback context, and speech ducking remain independent of tool dispatch. OAuth and passive monitoring remain session/setup concerns. |
 
 Spotify speech events use `SpotifyPlaybackSession` and `SpotifySpeechDucking`, independently of tool dispatch.
 Spotify playback tools use the active player shown in context, including an active paused player. When Spotify
@@ -300,7 +304,7 @@ dotnet run --project tests/Spotify.Tools.Tests -c Release -p:RestoreLockedMode=t
 `Tools.Tests` is a standalone executable: assertions fail the process and successful checks print their names.
 It covers SDK dispatch, metadata ownership, disabled/unknown tools, invalid argument envelopes, safe failures,
 cancellation, and no automatic retry. It does not test live providers or host registration. `Spotify.Tools.Tests` exercises the compiled Spotify
-catalog/handler against a fake manager: all 17 operations, mutation failures, input validation, missing state,
+catalog/handler against a fake manager: all 16 operations, mutation failures, input validation, missing state,
 ambiguous devices, cancellation, metadata/settings defaults, ducking overlap and volume changes, session dispatch,
 playback-only preflight, manual-start recovery guidance, paused/playing states, private name-to-ID resolution,
 stable context identities, device switches, provider failures and recovery,
