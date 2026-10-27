@@ -67,7 +67,11 @@ public class SpotifyChatAugmentationsService(
         };
         var spotifyManager = await spotifyManagerFactory.CreateSpotifyManager(spotifyManagerConfig, cancellationToken);
 
-        var spotifyPlaybackMonitor = new SpotifyPlaybackMonitor(spotifyManager, session, loggerFactory.CreateLogger<SpotifyPlaybackMonitor>());
+        var toolSettings = SpotifyToolsSettings.From(ModuleConfiguration);
+        var spotifyPlaybackMonitor = new SpotifyPlaybackMonitor(spotifyManager, session, loggerFactory.CreateLogger<SpotifyPlaybackMonitor>())
+        {
+            ToolGuidance = SpotifyToolGuidance.Build(toolSettings.Selected),
+        };
         
         var relativeDucking = ModuleConfiguration.GetRequired(ModuleConfigurationProvider.SpeechDuckingMode) == "relative";
         var duckingAmount = ModuleConfiguration.GetRequired(relativeDucking
@@ -76,7 +80,7 @@ public class SpotifyChatAugmentationsService(
             relativeDucking ? SpotifyDuckingMode.Relative : SpotifyDuckingMode.Fixed);
         var playback = new SpotifyPlaybackSession(spotifyPlaybackMonitor, ducking);
         var handler = new SpotifyToolHandler(spotifyManager, playlistMap, ducking);
-        var instance = new SpotifyToolsSession(SpotifyToolCatalog.Create(handler, SpotifyToolsSettings.From(ModuleConfiguration), playlistMap, logger), playback);
+        var instance = new SpotifyToolsSession(SpotifyToolCatalog.Create(handler, toolSettings, playlistMap, logger), playback);
         try { await playback.InitializeAsync(cancellationToken); }
         catch { await instance.DisposeAsync(); throw; }
         return instance;

@@ -39,7 +39,8 @@ Other modules' behavior and versions are unchanged.
 - `SpotifyToolsSettings` exposes `SpotifyTools` through the same `FormArrayOfObjectsField` card editor used
   by actions, with fixed names, per-tool disable switches, and editable descriptions. It reads existing nonempty
   SDK `Tools` selections as a migration fallback until cards are saved; an empty beta.1 selection adopts the new
-  all-enabled defaults. Saved card switches take precedence. `ToolChatStyles` retains the SDK setting key and
+  current defaults (device discovery and transfer off, other tools on). Saved card switches take precedence.
+  Card parsing accepts property names without case sensitivity and both string and boolean disable switches. `ToolChatStyles` retains the SDK setting key and
   choices, with module-local Assistant and Companion defaults; explicitly saved styles remain intact.
   Obsolete `Actions` settings are ignored. `SpotifyChatAugmentationsService` implements the
   SDK tools-service marker and plans tools separately as opt-in, excluded from catch-all activation.
@@ -62,7 +63,7 @@ Other modules' behavior and versions are unchanged.
   the selected reduction. Fixed 100 or relative 0 disables ducking. Session disposal stops monitoring before
   releasing its cancellation source.
 - Voxta asks `IToolsChatAugmentation.GetToolsAsync` for definitions per generation and filters disabled tools.
-  The session combines saved switches with the monitored active-player state: all 17 tools
+  The session combines saved switches with the monitored active-player state: selected tools
   are offered only with an active device, including paused playback. Without a player, context asks the assistant
   to guide manual startup on the user's preferred device and continue the original request once available.
   No status/connect tool is registered; the background monitor restores availability. All definitions remain discoverable; a
@@ -229,7 +230,7 @@ During integration, expose a separate opt-in tools augmentation (`<existing augm
 existing action augmentation key for compatibility. Implement the SDK tools-service marker on the service and plan
 the tool instance independently. Selecting tools alone must not create an action instance or require ActionInference.
 During future migrations, users can select tools alone or legacy actions alone for comparison. Do not automatically select both, which
-could cause duplicate device commands. Spotify tools default enabled following user runtime feedback; the
+could cause duplicate device commands. Spotify tools default enabled except device discovery and transfer, which require explicit opt-in; the
 augmentation itself remains opt-in. Other migrations should choose defaults explicitly and version the change.
 
 Use `Read` for queries and `Act` for changes to playback, libraries, or lights. Do not force `AlwaysAllowed`.
@@ -253,8 +254,13 @@ Spotify speech events use `SpotifyPlaybackSession` and `SpotifySpeechDucking`, i
 Spotify playback tools use the active player shown in context, including an active paused player. When Spotify
 reports no active player, the assistant asks the user to open Spotify on the intended device, select a track or
 playlist and start playback manually, then waits for confirmation that playback has started. Discovery and transfer
-serve explicit user requests to change destination; they are not missing-player recovery steps. Standard recovery
-and transfer-name guidance is appended alongside saved description overrides. Explicit no-active-player errors
+serve explicit user requests to change destination; they are not missing-player recovery steps. Shared behavioral guidance is published once as **Spotify Tool Guidance**, built by `SpotifyToolGuidance`
+from saved enabled tools and included by `SpotifyPlaybackMonitor` only while a player is active. It covers
+pause/resume, exact selections and user-supplied URIs, accepted versus confirmed results, no automatic mutation
+retries, and explicit destination changes only where the respective tools are enabled. With search disabled,
+play/queue guidance asks for a retained selection, user-supplied URI, or enabling search. Editable descriptions
+contain selection/argument semantics; overrides do not remove shared policies. No-player startup guidance
+remains in Spotify Status. Explicit no-active-player errors
 produce manual-start guidance; generic 404 or device errors are not assumed to mean there is no active player.
 The tools session awaits a read-only player-state preflight before activation completes. The existing
 `SpotifyPlaybackMonitor` owns stable status, active-device, volume and track contexts, refreshed every second.

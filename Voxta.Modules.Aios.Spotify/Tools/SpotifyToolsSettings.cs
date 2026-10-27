@@ -3,6 +3,7 @@ using Voxta.Abstractions.Services.Agents;
 using Voxta.Model.Shared;
 using Voxta.Model.Shared.Forms;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Voxta.Modules.Aios.Spotify.Tools;
 
@@ -53,11 +54,16 @@ internal sealed record SpotifyToolsSettings(IReadOnlySet<string> Selected, ChatS
 
     public static SpotifyToolsSettings From(ISettingsSource settings)
     {
-        var entries = settings.GetOptional<SpotifyToolSettings>(Field);
+        // Read the saved cards without dropping switches or depending on JSON property casing.
+        var raw = settings.GetRawValue(Field.Name);
+        var entries = string.IsNullOrWhiteSpace(raw) ? null : JsonSerializer.Deserialize<SpotifyToolSettings[]>(raw,
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
         var configured = (entries ?? []).Where(e => !string.IsNullOrEmpty(e.Name))
             .GroupBy(e => e.Name, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Last(), StringComparer.Ordinal);
         var selected = SpotifyToolCatalog.Choices.Where(choice => entries != null
-                ? !configured.TryGetValue(choice.Name, out var entry) || !bool.TryParse(entry.Disabled, out var disabled) || !disabled
+                ? configured.TryGetValue(choice.Name, out var entry)
+                    ? !bool.TryParse(entry.Disabled, out var disabled) || !disabled
+                    : choice.EnabledByDefault
                 : ChatToolSettingsContributions.IsToolSelected(settings, SpotifyToolCatalog.Choices, choice.Name))
             .Select(choice => choice.Name).ToHashSet(StringComparer.Ordinal);
         return new(selected, settings.GetRequired(Styles), configured
@@ -70,5 +76,19 @@ internal sealed class SpotifyToolSettings
 {
     public required string Name { get; init; }
     public string? Description { get; init; }
+    [JsonConverter(typeof(SpotifyDisabledSwitchConverter))]
     public string? Disabled { get; init; }
+}
+
+internal sealed class SpotifyDisabledSwitchConverter : JsonConverter<string>
+{
+    public override string? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => reader.TokenType switch
+    {
+        JsonTokenType.True => "true",
+        JsonTokenType.False => "false",
+        JsonTokenType.String => reader.GetString(),
+        _ => throw new JsonException("A tool's Disabled switch must be a boolean or string."),
+    };
+
+    public override void Write(Utf8JsonWriter writer, string value, JsonSerializerOptions options) => writer.WriteStringValue(value);
 }

@@ -15,7 +15,7 @@ internal static class SpotifyConfigurationChecks
         Check(empty.GetRequired(ModuleConfigurationProvider.SpeechDuckingVolumePercent) == 60, "Existing ducking limit changed");
         Check(empty.GetRequired(ModuleConfigurationProvider.SpeechDuckingReductionPercent) == 25, "Relative ducking default incorrect");
         var defaults = SpotifyToolsSettings.From(empty);
-        Check(defaults.Selected.Count == 17, "New configurations must enable all tools");
+        Check(defaults.Selected.Count == 15 && !defaults.Selected.Contains("spotify_list_devices") && !defaults.Selected.Contains("spotify_transfer_to_device"), "Device tools must default off");
         Check(defaults.ChatStyles.ToHashSet().SetEquals([ChatStyles.Assistant, ChatStyles.Companion]), "Default styles");
         var cards = (FormArrayOfObjectsField)SpotifyToolsSettings.ConfigurationField(empty);
         Check(cards.AllowDisable && !cards.AllowRename && !cards.AllowAddRemove, "Fixed tool card UI");
@@ -25,7 +25,7 @@ internal static class SpotifyConfigurationChecks
         Check(migrated.Selected.SetEquals(["spotify_skip_next"]), "Legacy selection changed");
         Check(migrated.ChatStyles.SequenceEqual([ChatStyles.Assistant]), "Saved styles changed");
         var none = SpotifyToolsSettings.From(new StaticSettingsSource(new() { ["Tools"] = "" }));
-        Check(none.Selected.Count == 17, "Empty beta.1 defaults should adopt enabled defaults");
+        Check(none.Selected.SetEquals(defaults.Selected), "Empty legacy defaults should adopt current defaults");
         var disabledCards = JsonSerializer.Serialize(SpotifyToolCatalog.Choices.Select(c => new SpotifyToolSettings { Name = c.Name, Disabled = "true" }));
         Check(SpotifyToolsSettings.From(new StaticSettingsSource(new() { ["SpotifyTools"] = disabledCards })).Selected.Count == 0, "Explicit card disabling was not preserved");
         var settings = SpotifyToolsSettings.From(new StaticSettingsSource(new()
@@ -43,10 +43,26 @@ internal static class SpotifyConfigurationChecks
         Check(settings.Selected.Contains("spotify_search"), "New search tool missing from saved card configuration");
         var catalog = SpotifyToolCatalog.Create(null!, settings, new Dictionary<string, string>(), NullLogger.Instance);
         var description = catalog.GetTools().Single(t => t.Name == "spotify_skip_next").Description;
-        Check(description != null && description.StartsWith("Custom explanation") && description.Contains("start playback manually") && description.Contains("Wait for the user to confirm playback has started"), "Custom description lost manual playback prerequisite");
+        Check(description == "Custom explanation", "Shared policies must not be duplicated into custom descriptions");
         var transfer = catalog.GetTools().Single(t => t.Name == "spotify_transfer_to_device");
-        Check(catalog.GetTools().Single(t => t.Name == "spotify_play_music").Description!.Contains("exact readable Selection value from spotify_search"), "Saved description hid updated selection contract");
-        Check(transfer.Description!.Contains("human-readable device name") && transfer.Description.Contains("user-requested destination changes"), "Name-only transfer guidance missing");
+        var guidance = SpotifyToolGuidance.Build(settings.Selected);
+        Check(guidance.Contains("exact Selection returned by spotify_search") && guidance.Contains("Never automatically retry") && !guidance.Contains("device discovery"), "Shared guidance missing or includes disabled device tools");
+        Check(transfer.InputSchema.GetProperty("properties").GetProperty("device").GetProperty("description").GetString()!.Contains("Unique device name"), "Name-only transfer schema missing");
+        Check(!settings.Selected.Contains("spotify_list_devices") && !transfer.Enabled, "Missing device cards should default off");
+        foreach (var flag in new[] { "true", "\"true\"" })
+        {
+            var raw = "[{\"name\":\"spotify_list_devices\",\"disabled\":" + flag + "},{\"name\":\"spotify_transfer_to_device\",\"disabled\":" + flag + "}]";
+            var parsed = SpotifyToolsSettings.From(new StaticSettingsSource(new() { ["SpotifyTools"] = raw }));
+            Check(!parsed.Selected.Contains("spotify_list_devices") && !parsed.Selected.Contains("spotify_transfer_to_device"), "Lowercase/boolean disabled switches ignored");
+        }
+        var enabledDevices = SpotifyToolsSettings.From(new StaticSettingsSource(new() { ["SpotifyTools"] = "[{\"Name\":\"spotify_list_devices\",\"Disabled\":\"false\"},{\"Name\":\"spotify_transfer_to_device\",\"Disabled\":\"false\"}]" }));
+        Check(enabledDevices.Selected.Count == 17, "Explicit device opt-in lost");
+        Check(SpotifyToolGuidance.Build(new HashSet<string>()).Length == 0, "Guidance for no tools");
+        Check(SpotifyToolGuidance.Build(new HashSet<string> { "spotify_search" }).Length == 0, "Mutation guidance for search-only selection");
+        var playOnly = SpotifyToolGuidance.Build(new HashSet<string> { "spotify_play_music" });
+        Check(playOnly.Contains("Search is disabled") && !playOnly.Contains("spotify_queue_track") && !playOnly.Contains("device discovery"), "Guidance references disabled capabilities");
+        var listOnly = SpotifyToolGuidance.Build(new HashSet<string> { "spotify_list_devices" });
+        Check(listOnly.Contains("device discovery only") && !listOnly.Contains("transfer"), "Discovery-only guidance offers disabled transfer");
         var fields = await new ModuleConfigurationProvider().GetModuleConfigurationFieldsAsync(null!, empty, default);
         Check(fields.OfType<FormAuthorizeField>().Single().Name == "SpotifyAccount", "Missing account field");
         Check(fields.OfType<FormDocumentationField>().Any(f => f.Value.Contains(SpotifyRedirectUri.DesktopDefault) && f.Value.Contains(SpotifyRedirectUri.VoxtaDefault)), "Both callbacks must be explained");

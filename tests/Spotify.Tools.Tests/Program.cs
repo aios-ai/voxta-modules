@@ -170,7 +170,7 @@ Console.WriteLine("PASS invalid arguments rejected before provider access");
         var properties = definitions.Single(d => d.Name == name).InputSchema.GetProperty("properties");
         Check(properties.TryGetProperty("selection", out _) && !properties.TryGetProperty("uri", out _), "Approval schema exposes URI instead of readable selection");
     }
-    Check(SpotifyToolCatalog.Choices.All(c => c.EnabledByDefault), "Tools should default to enabled");
+    Check(SpotifyToolCatalog.Choices.Where(c => c.EnabledByDefault).Count() == 15 && SpotifyToolCatalog.Choices.Where(c => !c.EnabledByDefault).Select(c => c.Name).ToHashSet().SetEquals(["spotify_list_devices", "spotify_transfer_to_device"]), "Device tools must default off");
     var settings = new SpotifyToolsSettings(new HashSet<string>(), [ChatStyles.Assistant]);
     var disabled = SpotifyToolCatalog.Create(f.Handler, settings, f.Playlists, NullLogger.Instance);
     Check(disabled.GetTools().All(t => !t.Enabled), "Disabled choices not preserved");

@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using SpotifyAPI.Web;
 using Voxta.Abstractions.Chats.Sessions;
 using Voxta.Model.Shared;
+using Voxta.Modules.Aios.Spotify.Tools;
 
 namespace Voxta.Modules.Aios.Spotify.Clients.Services;
 
@@ -16,6 +17,7 @@ public class SpotifyPlaybackMonitor(
     private string? _playbackError;
     private bool _authorizationRequired;
     private string? _lastPublished;
+    internal string ToolGuidance { get; init; } = "";
     public CurrentlyPlayingContext? PlaybackState { get; private set; }
 
     public async Task MonitorSpotifyPlayback(CancellationToken cancellationToken, bool initialRefresh = true)
@@ -87,10 +89,12 @@ public class SpotifyPlaybackMonitor(
                     ? "Spotify player status is unavailable. " + _playbackError
                 : isConnected
                     ? playbackState?.IsPlaying == true ? "Spotify has an active player and is currently playing." : "Spotify has an active player and is currently paused."
-                    : "Spotify has no active player, so all Spotify tools are temporarily unavailable. If the user requests Spotify playback or control, ask them to open Spotify on their preferred device, choose any track or playlist and start playback manually. Explain that you can continue their original request once Spotify becomes available. Do not try searching or transferring devices to establish a connection. Player availability is checked automatically in the background; no status or connect tool needs to be called.");
+                    : "Spotify has no active player, so all Spotify tools are temporarily unavailable. If the user requests Spotify playback or control, ask them to open Spotify on their preferred device, choose any track or playlist and start playback manually. Wait for the user to confirm playback has started. Explain that you can continue their original request once Spotify becomes available. Do not try searching or transferring devices to establish a connection. Player availability is checked automatically in the background; no status or connect tool needs to be called.");
 
         if (isConnected && playbackState?.Device != null)
         {
+            if (!string.IsNullOrWhiteSpace(ToolGuidance))
+                AddContext(contexts, "tool_guidance", "Spotify Tool Guidance", ToolGuidance);
             var device = playbackState.Device;
             AddContext(
                 contexts,
