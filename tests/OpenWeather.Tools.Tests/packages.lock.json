@@ -14,6 +14,16 @@
           "Voxta.Model": "1.13.0-alpha.10"
         }
       },
+      "CosineKitty.AstronomyEngine": {
+        "type": "Transitive",
+        "resolved": "2.1.19",
+        "contentHash": "PLb0ZrLMLFdnYbnZDPzaiBD9arL1Mx2x3q5492/8pBV7EVbGA6syFCmeMKadgT07lrQ+UdrPaiSw2sMYejQ0AQ=="
+      },
+      "GeoTimeZone": {
+        "type": "Transitive",
+        "resolved": "6.1.0",
+        "contentHash": "HB3OJcaI2NNfB253co3XY0dUFllCtdR8Jn0kS7GR/m8XMhvEgurDfvgebNeac384S+OOvrgb7HEGbZXOps/8Mw=="
+      },
       "Microsoft.Extensions.Configuration": {
         "type": "Transitive",
         "resolved": "10.0.13",
@@ -175,6 +185,8 @@
       "voxta.modules.aios.openweather": {
         "type": "Project",
         "dependencies": {
+          "CosineKitty.AstronomyEngine": "[2.1.19, )",
+          "GeoTimeZone": "[6.1.0, )",
           "SixLabors.ImageSharp": "[3.1.12, )",
           "SixLabors.ImageSharp.Drawing": "[2.1.7, )",
           "Voxta.Sdk.Modules": "[1.13.0-alpha.10, )"

@@ -11,6 +11,8 @@
     
     <ItemGroup>
         <InternalsVisibleTo Include="OpenWeather.Tools.Tests" />
+        <PackageReference Include="CosineKitty.AstronomyEngine" Version="2.1.19" />
+        <PackageReference Include="GeoTimeZone" Version="6.1.0" />
         <!-- Read IMAGE_DEPENDENCIES.md before updating these intentionally pinned versions. -->
         <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
         <PackageReference Include="SixLabors.ImageSharp.Drawing" Version="2.1.7" />
@@ -19,6 +21,8 @@
     </ItemGroup>
     
     <ItemGroup>
+      <None Update="Licenses\*.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+      <EmbeddedResource Include="Licenses\*.txt" />
       <None Remove="Data\countries.csv" />
       <EmbeddedResource Include="Data\countries.csv" />
       <None Remove="Data\bounding-boxes.json" />

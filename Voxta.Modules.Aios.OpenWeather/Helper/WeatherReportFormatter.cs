@@ -40,6 +40,8 @@ internal static class WeatherReportFormatter
         if (details.Contains("WindGust")) sb.Append($"Wind gust: {(data.Wind.Gust is { } gust ? gust.ToString("0.#", CultureInfo.InvariantCulture) + " " + WindUnit(units) : "unavailable")}. ");
         if (details.Contains("Sunrise")) sb.Append($"Sunrise: {LocalTime(data.Sys.Sunrise, data.Timezone)}. ");
         if (details.Contains("Sunset")) sb.Append($"Sunset: {LocalTime(data.Sys.Sunset, data.Timezone)}. ");
+        if (details.Contains("Sunrise") || details.Contains("Sunset"))
+            sb.Append("These sun times apply only to their displayed date. For tomorrow or another date, use get_sun_times; future times cannot be inferred from this response. ");
         if (details.Contains("ObservationTime")) sb.Append($"Data time: {LocalTime(data.Dt, data.Timezone)}. ");
         if (details.Contains("PrecipitationProbability")) sb.Append("Precipitation probability is only available in the forecast. ");
 

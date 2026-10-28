@@ -19,12 +19,12 @@ network. Initial setup asks you to press the bridge link button.
 ### OpenWeather
 
 `Voxta.Modules.Aios.OpenWeather` adds current weather, forecasts, air quality, and generated weather maps to Voxta
-chats. Select **OpenWeather** to use its six native tools with a tool-capable model. The augmentation supports
+chats. Select **OpenWeather** to use its seven native tools with a tool-capable model. The augmentation supports
 configurable locations, units and reported details, without an action-inference service. Legacy actions and their
 settings have been removed after user acceptance. Existing chats using only the old action augmentation must
 select OpenWeather; existing tool-enabled chats keep their selection.
 
-All six tools default enabled in Assistant and Companion chats. The **OpenWeather Tools** cards let you disable
+All seven tools default enabled in Assistant and Companion chats. The **OpenWeather Tools** cards let you disable
 individual tools and edit their descriptions. City queries use **My Location** when no location is supplied;
 without either, the agent can ask which city to use. Maps support countries, continents and global views and
 attach images visibly to the chat and return them to the model with geographic bounds, layer units and a local
@@ -32,7 +32,12 @@ color-legend reference for brief visual descriptions. This adds no extra API req
 Weather and pollution detail selections are defaults for general questions. Explicit requests can select unchecked
 fields through the tools' optional `details` argument (a comma-separated field list), without changing settings.
 Weather includes humidity, pressure, gusts, sunrise/sunset and data time; forecasts also expose precipitation
-probability. Sun times include the destination offset; forecast sun times are single-date city metadata.
+probability. For sunrise/sunset on a specific date, `get_sun_times` accepts `today`, `tomorrow`, or `YYYY-MM-DD`
+(1901-2099). It calculates astronomical estimates from the resolved coordinates, with the destination time zone
+and daylight-saving rules. No additional API subscription is required. Times assume a sea-level unobstructed
+horizon; terrain and atmosphere may alter visible times. Polar dates can have no sunrise or sunset.
+Current weather sun times apply only to their displayed date; the forecast endpoint redirects date-specific sun
+questions to `get_sun_times` instead of repeating today's values.
 `get_air_pollution_history` accepts ISO 8601 `start`/`end` timestamps with a UTC offset or Z, from 27 November
 2020 onward, up to 31 days per call. The end is exclusive; history and pollution forecasts summarize UTC
 periods. Weather forecasts use destination day/night periods. Locations accept full city/state/country names,

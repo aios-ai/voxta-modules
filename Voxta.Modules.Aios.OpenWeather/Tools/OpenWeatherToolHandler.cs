@@ -48,6 +48,18 @@ internal sealed class OpenWeatherToolHandler(
         if (string.IsNullOrWhiteSpace(location))
             throw new ModuleToolInputException("No location was supplied and My Location is not configured. Ask the user which city to use, then call the tool with location.");
 
+        if (operation == "get_sun_times")
+        {
+            var date = Text(arguments, "date")?.ToLowerInvariant();
+            SunTimes.ValidateDate(date);
+            var result = await client.ResolveLocationAsync(location, token);
+            token.ThrowIfCancellationRequested();
+            if (!result.Success) return Failure(result);
+            var times = SunTimes.Calculate(result.Value!, date!, DateTimeOffset.UtcNow);
+            token.ThrowIfCancellationRequested();
+            return new(times.Describe(location));
+        }
+
         var pollution = operation.StartsWith("get_air_pollution", StringComparison.Ordinal);
         var details = WeatherDetailSelection.Resolve(Text(arguments, "details"), pollution ? _pollutionDetails : _weatherDetails,
             pollution ? WeatherDetailSelection.Pollution : operation == "get_weather_forecast" ? WeatherDetailSelection.Forecast : WeatherDetailSelection.Weather);
@@ -67,10 +79,11 @@ internal sealed class OpenWeatherToolHandler(
                 if (!result.Success) return Failure(result);
                 var data = result.Value!;
                 if (data.List.Count == 0) return new("OpenWeather returned no weather forecast data.", IsError: true);
-                var summary = WeatherForecastSummariser.Summarise(data.List, culture, details,
+                var forecastDetails = details.Except(["Sunrise", "Sunset"], StringComparer.OrdinalIgnoreCase).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                var summary = forecastDetails.Count == 0 ? "" : WeatherForecastSummariser.Summarise(data.List, culture, forecastDetails,
                     days: 5, unitSuffix: settings.Units == "imperial" ? "°F" : "°C", windUnit: WeatherReportFormatter.WindUnit(settings.Units), utcOffset: data.City.Timezone ?? 0);
-                if (details.Contains("Sunrise")) summary += $"\nCity sunrise: {WeatherReportFormatter.LocalTime(data.City.Sunrise, data.City.Timezone)} (single supplied date, not daily predictions).";
-                if (details.Contains("Sunset")) summary += $"\nCity sunset: {WeatherReportFormatter.LocalTime(data.City.Sunset, data.City.Timezone)} (single supplied date, not daily predictions).";
+                if (details.Contains("Sunrise") || details.Contains("Sunset"))
+                    summary += "\nDate-specific sunrise/sunset is unavailable from this forecast endpoint. Use get_sun_times with the requested date (e.g. tomorrow). Today's city metadata does not answer future dates.";
                 return new($"Weather forecast for {location} ({data.City.Country}):\n{summary}");
             }
             case "get_air_pollution":

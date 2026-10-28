@@ -48,6 +48,7 @@ public class OpenWeatherClientFactory(
 
 public interface IOpenWeatherClient
 {
+    Task<OpenWeatherResult<GeoResult>> ResolveLocationAsync(string location, CancellationToken cancellationToken);
     string LastUserVisibleError { get; }
     Task<OpenWeatherResult<OpenWeatherResponse>> FetchWeatherData(string location, string? units, CancellationToken cancellationToken);
     Task<OpenWeatherResult<OpenWeatherForecastResponse>> FetchForecastData(string location, string? units, CancellationToken cancellationToken);

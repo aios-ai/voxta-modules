@@ -18,11 +18,11 @@ The shared foundation is compiled privately into all three modules, and all thre
   activation and requiring no ActionInference service. The legacy `openweather` augmentation, action handler,
   action definitions, filters and action settings have been removed after user acceptance. Existing chats using
   only the removed key must select OpenWeather. The tools key is unchanged for existing tool-enabled chats.
-- `OpenWeatherToolCatalog` defines six read-only tools named `get_weather`, `get_weather_forecast`,
-  `get_air_pollution`, `get_air_pollution_forecast`, `get_air_pollution_history` and `get_weather_map`, as requested by the user.
+- `OpenWeatherToolCatalog` defines seven read-only tools named `get_weather`, `get_weather_forecast`,
+  `get_air_pollution`, `get_air_pollution_forecast`, `get_air_pollution_history`, `get_sun_times` and `get_weather_map`, as requested by the user.
   `OpenWeatherToolHandler` calls `IOpenWeatherClient` directly through `ModuleToolsAugmentation`; it never
   dispatches actions or triggers replies. All tools mark provider content as external.
-- `OpenWeatherToolCards` provides per-tool disable switches and editable descriptions. All six tools default
+- `OpenWeatherToolCards` provides per-tool disable switches and editable descriptions. All seven tools default
   enabled in Assistant and Companion chats. Saved cards with beta.1's `openweather_` prefixes retain switches
   and descriptions under the short names; an explicitly saved short-name card takes precedence. Obsolete
   action settings are ignored. `MapTargetType` is a client-owned type independent of action code.
@@ -55,13 +55,22 @@ The shared foundation is compiled privately into all three modules, and all thre
   claims such as clear skies from a precipitation map. The user-facing attachment retains a short caption.
 - Configured weather/pollution selections are defaults, not restrictions. Optional comma-separated `details`
   replaces defaults per call, including unchecked fields; unknown fields fail before provider requests. Weather
-  models include humidity, sea/ground pressure, gusts and UTC timestamps. Sun times include the destination
-  offset; forecast city sun times appear once with their date, never as per-day predictions. Weather summaries
+  models include humidity, sea/ground pressure, gusts and UTC timestamps. Current sun times apply only to their
+  displayed date; forecast results omit today's city sun metadata and redirect to `get_sun_times`. Weather summaries
   group destination-local periods and respect selected fields; pollution summaries explicitly use UTC.
 - Location resolution preserves full city/state names, uses `/geo/1.0/zip` for `zip:postal-code,country` and
   `/geo/1.0/reverse` for `latitude,longitude`. Reverse lookup retains the exact requested weather coordinates.
   All data/geocoding calls use HTTPS and invariant decimal coordinates. Postal countries and coordinate ranges
   are validated before requesting geocoding. These formats also work in My Location; maps retain their own targets.
+- `get_sun_times` resolves locations through the existing free geocoder and calculates events locally using pinned
+  Astronomy Engine and GeoTimeZone packages. `SunTimes` owns date validation, coordinate-to-IANA-zone lookup,
+  and a half-open destination civil-day search (23/24/25 hours), using system time-zone rules at each event.
+  `today`/`tomorrow` use the destination's current date, never the host date or today's fixed API offset.
+  Explicit dates support 1901-2099. Missing system zones, skipped civil dates and invalid coordinates return clear
+  errors; absent rise/set events return an explicit no-event result. Results identify astronomical sea-level,
+  unobstructed-horizon estimates, not provider observations. License notices ship under `Licenses/`.
+  `SunTimesChecks` covers an independent USNO Berlin reference, DST, polar day/night, international date-line
+  dates, relative dates near UTC midnight, one-request dispatch and honest routing from weather/forecast tools.
 - `get_air_pollution_history` shares forecast transport through `FetchPollutionSeriesData`, using the free
   `/data/2.5/air_pollution/history` endpoint. The handler requires offset-qualified ISO start/end timestamps,
   start >= 2020-11-27 UTC, exclusive end <= now, and a positive range no longer than 31 days. It filters returned
@@ -71,7 +80,7 @@ The shared foundation is compiled privately into all three modules, and all thre
   API key remains a host-encrypted password field, decrypted with `ILocalEncryptionProvider` when creating the
   client. No OAuth or extra token-store record is needed. Calls link tool and session cancellation.
 
-Run `dotnet run --project tests/OpenWeather.Tools.Tests -c Release -p:RestoreLockedMode=true` for all six
+Run `dotnet run --project tests/OpenWeather.Tools.Tests -c Release -p:RestoreLockedMode=true` for all seven
 operations, settings migration, input validation, metadata, provider failures, cancellation and attachment dispatch.
 Real map composition is checked using fake HTTP tiles: PNG decoding, grid dimensions, overlay pixels, composite
 cache, actual global/country/date-line viewport metadata, all five legends, no additional requests, tile errors
@@ -377,7 +386,7 @@ acceptance. Tool naming follows each module's contract above.
 
 | Module | Operations to cover | Migration-specific behavior |
 | --- | --- | --- |
-| OpenWeather (6, completed) | `get_weather`, `get_weather_forecast`, `get_air_pollution`, `get_air_pollution_forecast`, `get_air_pollution_history`, `get_weather_map` | Tools only, with short names and preserved saved tool cards. Reuse `IOpenWeatherClient`, configured location/units/details/cache and summarizers. Map images reach both the model and a visible chat attachment. |
+| OpenWeather (7, completed) | `get_weather`, `get_weather_forecast`, `get_air_pollution`, `get_air_pollution_forecast`, `get_air_pollution_history`, `get_sun_times`, `get_weather_map` | Tools only, with short names and preserved saved tool cards. Reuse `IOpenWeatherClient`, configured location/units/details/cache and summarizers. Map images reach both the model and a visible chat attachment. |
 | Hue (6, completed) | `toggle_lights`, `change_color`, `show_emotion`, `change_brightness`, `activate_scene`, `show_hue_inventory` | Tools only; startup pairing, disconnected availability/status and conservative toggle-setting migration are described above. |
 | Spotify (16, completed) | `toggle_playback`, `search`, `play_random_music`, `play_special_playlist`, `play_music`, `queue_track`, `volume`, `seek_playback`, `skip`, `repeat_mode`, `shuffle_mode`, `add_to_favorites`, `get_playlists`, `add_to_playlist`, `list_devices`, `transfer_to_device` | Native tools use neutral manager operations. Search and playlist/device listing are Read; mutations are Act. Configured playlists, playback context, and speech ducking remain independent of tool dispatch. OAuth and passive monitoring remain session/setup concerns. |
 

@@ -93,7 +93,7 @@ public static class WeatherForecastSummariser
         {
             var avgWindSpeed = block.Average(x => x.Wind.Speed);
             var avgWindDir = block.Average(x => x.Wind.Deg);
-            text += $". Wind: {avgWindSpeed:0.#} {windUnit} at {FormatWholeNumber(avgWindDir)}°";
+            text += $"Wind: {avgWindSpeed:0.#} {windUnit} at {FormatWholeNumber(avgWindDir)}°. ";
         }
 
         if (weatherDetails.Contains("CloudCover"))
@@ -115,7 +115,7 @@ public static class WeatherForecastSummariser
             }
         }
 
-        return text + ".";
+        return text.TrimEnd(' ', '.') + ".";
     }
 
     private static string FormatWholeNumber(double value)

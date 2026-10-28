@@ -36,7 +36,7 @@ internal static class WeatherDataChecks
         report = await Call("get_air_pollution_forecast", new { details = "NH3" });
         Check(report.Contains("NH₃: " + 3.5.ToString("0.#")) && !report.Contains("AQI"), "Forecast override");
         report = await Call("get_weather_forecast", new { details = "Humidity,PrecipitationProbability,Sunrise" });
-        Check(report.Contains("Humidity: 64%") && report.Contains("80%") && report.Contains("City sunrise:") && !report.Contains("Rain:"), "Forecast fields respect selection");
+        Check(report.Contains("Humidity: 64%") && report.Contains("80%") && report.Contains("Use get_sun_times") && !report.Contains("Rain:"), "Forecast fields respect selection");
         report = await Call("get_air_pollution_history", new { start = "2020-11-28T00:00:00Z", end = "2020-11-29T00:00:00Z", details = "NH3" });
         Check(report.Contains("2020-11-28") && report.Contains("NH₃: " + 3.5.ToString("0.#")) && transport.Urls.Any(u => u.AbsolutePath.EndsWith("/history") && u.Query.Contains("start=1606521600") && u.Query.Contains("end=1606608000")), "History range, dates and override");
         var count = transport.Urls.Count;
