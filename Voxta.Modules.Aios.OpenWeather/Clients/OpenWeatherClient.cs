@@ -1,4 +1,5 @@
-﻿using System.Net.Http.Json;
+using System.Globalization;
+using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
 using Voxta.Modules.Aios.OpenWeather.Helper;
 using SixLabors.ImageSharp;
@@ -52,6 +53,7 @@ public interface IOpenWeatherClient
     Task<OpenWeatherResult<OpenWeatherForecastResponse>> FetchForecastData(string location, string? units, CancellationToken cancellationToken);
     Task<OpenWeatherResult<OpenWeatherAirPollutionResponse>> FetchAirPollutionData(string location, CancellationToken cancellationToken);
     Task<OpenWeatherResult<OpenWeatherAirPollutionResponse>> FetchAirPollutionForecastData(string location, CancellationToken cancellationToken);
+    Task<OpenWeatherResult<OpenWeatherAirPollutionResponse>> FetchAirPollutionHistoryData(string location, long start, long end, CancellationToken cancellationToken);
     Task<OpenWeatherResult<WeatherMapImage>> FetchWeatherMapAsync(
         (MapTargetType Type, string Identifier) target,
         string layer,
@@ -89,7 +91,7 @@ public class OpenWeatherClient(
                 geo.Value!.Name, geo.Value.Country, geo.Value.Lat, geo.Value.Lon);
 
             // https://openweathermap.org/current#geo
-            var weatherUrl = $"http://api.openweathermap.org/data/2.5/weather?lat={geo.Value.Lat}&lon={geo.Value.Lon}&appid={apiKey}&units={units}";
+            var weatherUrl = $"https://api.openweathermap.org/data/2.5/weather?lat={geo.Value.Lat.ToString(CultureInfo.InvariantCulture)}&lon={geo.Value.Lon.ToString(CultureInfo.InvariantCulture)}&appid={apiKey}&units={units}";
             var response = await httpClient.GetAsync(weatherUrl, cancellationToken);
 
             if (!response.IsSuccessStatusCode)
@@ -140,7 +142,7 @@ public class OpenWeatherClient(
                 geo.Value!.Name, geo.Value.Country, geo.Value.Lat, geo.Value.Lon);
 
             // https://openweathermap.org/forecast5
-            var forecastUrl = $"http://api.openweathermap.org/data/2.5/forecast?lat={geo.Value.Lat}&lon={geo.Value.Lon}&appid={apiKey}&units={units}";
+            var forecastUrl = $"https://api.openweathermap.org/data/2.5/forecast?lat={geo.Value.Lat.ToString(CultureInfo.InvariantCulture)}&lon={geo.Value.Lon.ToString(CultureInfo.InvariantCulture)}&appid={apiKey}&units={units}";
             var response = await httpClient.GetAsync(forecastUrl, cancellationToken);
 
             if (!response.IsSuccessStatusCode)
@@ -185,7 +187,7 @@ public class OpenWeatherClient(
             }
 
             // https://openweathermap.org/api/air-pollution#current
-            var url = $"http://api.openweathermap.org/data/2.5/air_pollution?lat={geo.Value!.Lat}&lon={geo.Value.Lon}&appid={apiKey}";
+            var url = $"https://api.openweathermap.org/data/2.5/air_pollution?lat={geo.Value!.Lat.ToString(CultureInfo.InvariantCulture)}&lon={geo.Value.Lon.ToString(CultureInfo.InvariantCulture)}&appid={apiKey}";
             var response = await httpClient.GetAsync(url, cancellationToken);
 
             if (!response.IsSuccessStatusCode)
@@ -212,9 +214,15 @@ public class OpenWeatherClient(
         }
     }
     
-    public async Task<OpenWeatherResult<OpenWeatherAirPollutionResponse>> FetchAirPollutionForecastData(
-        string location,
-        CancellationToken cancellationToken)
+    public Task<OpenWeatherResult<OpenWeatherAirPollutionResponse>> FetchAirPollutionForecastData(
+        string location, CancellationToken cancellationToken) => FetchPollutionSeriesData(location, "forecast", "", cancellationToken);
+
+    public Task<OpenWeatherResult<OpenWeatherAirPollutionResponse>> FetchAirPollutionHistoryData(
+        string location, long start, long end, CancellationToken cancellationToken) =>
+        FetchPollutionSeriesData(location, "history", $"&start={start}&end={end}", cancellationToken);
+
+    private async Task<OpenWeatherResult<OpenWeatherAirPollutionResponse>> FetchPollutionSeriesData(
+        string location, string endpoint, string range, CancellationToken cancellationToken)
     {
         try
         {
@@ -225,34 +233,34 @@ public class OpenWeatherClient(
             var geo = await ResolveLocationAsync(location, cancellationToken);
             if (!geo.Success)
             {
-                logger.LogWarning("Could not resolve location '{Location}' for air pollution forecast", location);
+                logger.LogWarning("Could not resolve location '{Location}' for air pollution time series", location);
                 return Fail<OpenWeatherAirPollutionResponse>(geo.State, geo.UserVisibleError);
             }
 
             // https://openweathermap.org/api/air-pollution#forecast
-            var url = $"http://api.openweathermap.org/data/2.5/air_pollution/forecast?lat={geo.Value!.Lat}&lon={geo.Value.Lon}&appid={apiKey}";
+            var url = $"https://api.openweathermap.org/data/2.5/air_pollution/{endpoint}?lat={geo.Value!.Lat.ToString(CultureInfo.InvariantCulture)}&lon={geo.Value.Lon.ToString(CultureInfo.InvariantCulture)}&appid={apiKey}{range}";
             var response = await httpClient.GetAsync(url, cancellationToken);
 
             if (!response.IsSuccessStatusCode)
             {
                 var body = await response.Content.ReadAsStringAsync(cancellationToken);
-                logger.LogError("Failed to fetch air pollution forecast data. Status Code: {StatusCode}, Body: {Body}",
+                logger.LogError("Failed to fetch air pollution time series data. Status Code: {StatusCode}, Body: {Body}",
                     response.StatusCode, body);
-                return Fail<OpenWeatherAirPollutionResponse>(MapHttpState(response.StatusCode), BuildApiError("air pollution forecast", response.StatusCode));
+                return Fail<OpenWeatherAirPollutionResponse>(MapHttpState(response.StatusCode), BuildApiError("air pollution time series", response.StatusCode));
             }
 
             var content = await response.Content.ReadFromJsonAsync<OpenWeatherAirPollutionResponse>(cancellationToken);
             if (content == null)
             {
-                logger.LogError("Failed to parse air pollution forecast data for {Location}", location);
-                return Fail<OpenWeatherAirPollutionResponse>(OpenWeatherOperationState.ApiFailure, "OpenWeather returned an unreadable air pollution forecast response.");
+                logger.LogError("Failed to parse air pollution time series data for {Location}", location);
+                return Fail<OpenWeatherAirPollutionResponse>(OpenWeatherOperationState.ApiFailure, "OpenWeather returned an unreadable air pollution time series response.");
             }
 
             return Ok(content);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            logger.LogError(ex, "Unexpected error fetching air pollution forecast data for {Location}", location);
+            logger.LogError(ex, "Unexpected error fetching air pollution time series data for {Location}", location);
             return Fail<OpenWeatherAirPollutionResponse>(OpenWeatherOperationState.Unavailable, "OpenWeather is currently unavailable. Try again later.");
         }
     }
@@ -463,29 +471,46 @@ public class OpenWeatherClient(
             if (!ready.Success)
                 return ready;
 
-            var parts = location.Split(new[] { ',', ' ' }, StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length == 0)
+            var query = location.Trim();
+            if (query.Length == 0)
                 return Fail<GeoResult>(OpenWeatherOperationState.ConfigurationRequired, "No location was provided.");
-
-            string city = parts[0];
-            string? countryCode = null;
-
-            if (parts.Length > 1)
+            var parts = query.Split(',', StringSplitOptions.TrimEntries);
+            var coordinateInput = parts.Length == 2
+                && double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out _)
+                && double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out _);
+            double latitude = 0, longitude = 0;
+            string geoUrl;
+            if (coordinateInput)
             {
-                var possibleCountry = parts[^1];
-                if (CountryCodeMap.TryGetAlpha2(possibleCountry, out var code))
-                {
-                    countryCode = code;
-                }
+                latitude = double.Parse(parts[0], CultureInfo.InvariantCulture);
+                longitude = double.Parse(parts[1], CultureInfo.InvariantCulture);
+                if (!double.IsFinite(latitude) || !double.IsFinite(longitude) || Math.Abs(latitude) > 90 || Math.Abs(longitude) > 180)
+                    return Fail<GeoResult>(OpenWeatherOperationState.ConfigurationRequired, "Coordinates must be latitude (-90 to 90),longitude (-180 to 180), using decimal points.");
+                geoUrl = $"https://api.openweathermap.org/geo/1.0/reverse?lat={latitude.ToString(CultureInfo.InvariantCulture)}&lon={longitude.ToString(CultureInfo.InvariantCulture)}&limit=1&appid={apiKey}";
+            }
+            else if (query.StartsWith("zip:", StringComparison.OrdinalIgnoreCase))
+            {
+                if (parts.Length != 2 || parts[0].Length <= 4 || !CountryCodeMap.TryGetAlpha2(parts[1], out var zipCountry))
+                    return Fail<GeoResult>(OpenWeatherOperationState.ConfigurationRequired, "Postal codes require zip:postal-code,country, for example zip:10115,DE. Ask for the country if unknown.");
+                geoUrl = $"https://api.openweathermap.org/geo/1.0/zip?zip={Uri.EscapeDataString(parts[0][4..].Trim() + "," + zipCountry)}&appid={apiKey}";
+                using var zipResponse = await httpClient.GetAsync(geoUrl, cancellationToken);
+                if (!zipResponse.IsSuccessStatusCode)
+                    return Fail<GeoResult>(MapHttpState(zipResponse.StatusCode), BuildApiError("postal code", zipResponse.StatusCode));
+                var zip = await zipResponse.Content.ReadFromJsonAsync<GeoResult>(cancellationToken);
+                return zip == null ? Fail<GeoResult>(OpenWeatherOperationState.ApiFailure, "OpenWeather returned an unreadable postal-code response.") : Ok(zip);
+            }
+            else
+            {
+                // Preserve multiword city and state names; normalize only an explicit final country.
+                if (parts.Length > 1 && CountryCodeMap.TryGetAlpha2(parts[^1], out var country)) parts[^1] = country!;
+                query = string.Join(",", parts);
+                geoUrl = $"https://api.openweathermap.org/geo/1.0/direct?q={Uri.EscapeDataString(query)}&limit=1&appid={apiKey}";
             }
 
-            var query = countryCode != null ? $"{city},{countryCode}" : city;
-
-            // https://openweathermap.org/api/geocoding-api#direct
-            var geoUrl =
-                $"http://api.openweathermap.org/geo/1.0/direct?q={Uri.EscapeDataString(query)}&limit=1&appid={apiKey}";
-
-            var geoResults = await httpClient.GetFromJsonAsync<List<GeoResult>>(geoUrl, cancellationToken);
+            using var geoResponse = await httpClient.GetAsync(geoUrl, cancellationToken);
+            if (!geoResponse.IsSuccessStatusCode)
+                return Fail<GeoResult>(MapHttpState(geoResponse.StatusCode), BuildApiError("location", geoResponse.StatusCode));
+            var geoResults = await geoResponse.Content.ReadFromJsonAsync<List<GeoResult>>(cancellationToken);
 
             if (geoResults == null || geoResults.Count == 0)
             {
@@ -493,7 +518,10 @@ public class OpenWeatherClient(
                 return Fail<GeoResult>(OpenWeatherOperationState.MissingResource, $"OpenWeather could not find a location named {location}.");
             }
 
-            return Ok(geoResults[0]);
+            var resolved = geoResults[0];
+            // Reverse geocoding identifies a nearby place; keep the user's exact weather coordinates.
+            return Ok(coordinateInput ? new GeoResult { Name = resolved.Name, Country = resolved.Country,
+                Lat = latitude, Lon = longitude, State = resolved.State, LocalNames = resolved.LocalNames } : resolved);
         }
         catch (HttpRequestException ex)
         {

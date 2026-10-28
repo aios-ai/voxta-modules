@@ -11,14 +11,26 @@ internal static class OpenWeatherToolCatalog
     private static FunctionArgumentDefinition Location() => new()
     {
         Name = "location", Type = FunctionArgumentType.String, Required = false,
-        Description = "City and optional state/country, preserving punctuation. Omit to use My Location from settings. If no location is configured, ask the user. Do not guess a location.",
+        Description = "City and optional state/country, preserving full names; postal code as zip:10115,DE (country required); or latitude,longitude using decimal points, e.g. 52.52,13.405. Omit to use My Location from settings. If no location is configured, ask the user. Do not guess a location.",
+    };
+    private static FunctionArgumentDefinition Details(string fields) => new()
+    {
+        Name = "details", Type = FunctionArgumentType.String, Required = false,
+        Description = "Comma-separated fields: " + fields + ". Omit for configured defaults on general requests. For explicit questions, request the relevant fields even if unchecked in settings; this selection replaces defaults for this call.",
+    };
+    private static FunctionArgumentDefinition Date(string name, string description) => new()
+    {
+        Name = name, Type = FunctionArgumentType.String, Required = true,
+        Description = description + " ISO 8601 date-time with Z or explicit UTC offset, e.g. 2026-10-27T00:00:00+01:00. Ask for clarification if the intended date/time zone is unknown.",
     };
     private static readonly Definition[] Definitions =
     [
-        new("get_weather", "Get current weather for a requested city or the configured My Location, using the configured units and detail selection.", [Location()]),
-        new("get_weather_forecast", "Get the available weather forecast, summarized into day/night periods for up to five days. Use the requested city or configured My Location and configured units/details.", [Location()]),
-        new("get_air_pollution", "Get current air quality and selected pollutant concentrations for a requested city or configured My Location. AQI uses OpenWeather's 1 (good) to 5 (very poor) scale.", [Location()]),
-        new("get_air_pollution_forecast", "Get the available air quality forecast for up to five days, using selected pollutant details. Use the requested city or configured My Location. AQI uses OpenWeather's 1 to 5 scale.", [Location()]),
+        new("get_weather", "Get current weather for a requested city or the configured My Location, using configured units. Use details for explicitly requested fields, including humidity and sunrise/sunset.", [Location(), Details(WeatherDetailSelection.Weather)]),
+        new("get_weather_forecast", "Get the available weather forecast, summarized into day/night periods for up to five days. Use the requested city or configured My Location and configured units. Use details for explicit questions. Sunrise/sunset are city metadata for the supplied date, not daily predictions.", [Location(), Details(WeatherDetailSelection.Forecast)]),
+        new("get_air_pollution", "Get current air quality and selected pollutant concentrations for a requested city or configured My Location. AQI uses OpenWeather's 1 (good) to 5 (very poor) scale. Use details for explicit pollutant questions even if unchecked in settings.", [Location(), Details(WeatherDetailSelection.Pollution)]),
+        new("get_air_pollution_forecast", "Get the available air quality forecast for up to four days, using default or explicitly requested pollutant details. Use the requested city or configured My Location. AQI uses OpenWeather's 1 to 5 scale. Use details for explicit pollutant questions even if unchecked in settings.", [Location(), Details(WeatherDetailSelection.Pollution)]),
+        new("get_air_pollution_history", "Get historical air quality and pollutants from 27 November 2020 onward. Request up to 31 days per call; results summarize UTC day/night periods. AQI uses OpenWeather's 1 to 5 scale. Use details for explicit pollutant questions.",
+            [Location(), Date("start", "Inclusive start."), Date("end", "Exclusive end; later than start and no later than now."), Details(WeatherDetailSelection.Pollution)]),
         new("get_weather_map", "Get a weather map image for the world, a continent or a country. Omit location for a global map. City maps are unsupported: ask for a country or continent instead. The result includes the image, geographic bounds, layer units and a color reference. When vision is available, briefly describe the visible regional pattern using the supplied legend; do not invent a summary if you cannot inspect the image.",
         [
             new() { Name = "layer", Description = "Requested weather layer: clouds, precipitation, pressure, wind or temp.", Type = FunctionArgumentType.String, Required = true },

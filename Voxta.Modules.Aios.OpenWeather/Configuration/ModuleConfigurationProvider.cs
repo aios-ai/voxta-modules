@@ -27,7 +27,7 @@ public class ModuleConfigurationProvider : ModuleConfigurationProviderBase, IMod
         Name = "MyLocation",
         Label = "My Location",
         DefaultValue = "",
-        Text = "A default location if you want the AI to know where you are. E.g. 'New York, United States' or 'Berlin, Germany'.",
+        Text = "A default location if you want the AI to know where you are. E.g. 'New York, United States', 'zip:10115,DE', or '52.52,13.405' (latitude,longitude).",
     };
 
     public static readonly FormChoicesField Units = new()
@@ -45,7 +45,8 @@ public class ModuleConfigurationProvider : ModuleConfigurationProviderBase, IMod
     public static readonly FormMultipleChoicesField WeatherDetails = new()
     {
         Name = "WeatherDetails",
-        Label = "Weather details to show",
+        Label = "Default weather details",
+        Text = "Used for general requests. Explicitly requested fields override these defaults, including unchecked fields.",
         Choices =
         [
             new() { Label = "Temp", Value = "Temp", Metadata = new FormChoiceMetadata { Subtitle = "Current temperature." } },
@@ -55,6 +56,15 @@ public class ModuleConfigurationProvider : ModuleConfigurationProviderBase, IMod
             new() { Label = "Wind", Value = "Wind", Metadata = new FormChoiceMetadata { Subtitle = "Wind speed and direction." } },
             new() { Label = "CloudCover", Value = "CloudCover", Metadata = new FormChoiceMetadata { Subtitle = "Cloud coverage percentage." } },
             new() { Label = "Visibility", Value = "Visibility", Metadata = new FormChoiceMetadata { Subtitle = "Visibility in kilometers." } },
+            new() { Label = "Humidity", Value = "Humidity", Metadata = new FormChoiceMetadata { Subtitle = "Relative humidity (%)." } },
+            new() { Label = "Pressure", Value = "Pressure", Metadata = new FormChoiceMetadata { Subtitle = "Sea-level atmospheric pressure (hPa)." } },
+            new() { Label = "SeaLevelPressure", Value = "SeaLevelPressure", Metadata = new FormChoiceMetadata { Subtitle = "Explicit sea-level pressure where supplied (hPa)." } },
+            new() { Label = "GroundPressure", Value = "GroundPressure", Metadata = new FormChoiceMetadata { Subtitle = "Ground-level pressure (hPa)." } },
+            new() { Label = "WindGust", Value = "WindGust", Metadata = new FormChoiceMetadata { Subtitle = "Wind gust speed." } },
+            new() { Label = "Sunrise", Value = "Sunrise", Metadata = new FormChoiceMetadata { Subtitle = "Sunrise in the destination local time." } },
+            new() { Label = "Sunset", Value = "Sunset", Metadata = new FormChoiceMetadata { Subtitle = "Sunset in the destination local time." } },
+            new() { Label = "ObservationTime", Value = "ObservationTime", Metadata = new FormChoiceMetadata { Subtitle = "Time of the weather data." } },
+            new() { Label = "PrecipitationProbability", Value = "PrecipitationProbability", Metadata = new FormChoiceMetadata { Subtitle = "Forecast precipitation probability (%); unavailable for current weather." } },
         ],
         StartValue = ["Temp", "TempMinMax", "Precipitation"],
     };
@@ -62,7 +72,8 @@ public class ModuleConfigurationProvider : ModuleConfigurationProviderBase, IMod
     public static readonly FormMultipleChoicesField PollutionDetails = new()
     {
         Name = "PollutionDetails",
-        Label = "Air pollution details to show",
+        Label = "Default air pollution details",
+        Text = "Used for general requests. Explicitly requested pollutants override these defaults, including unchecked fields.",
         Choices =
         [
             new() { Label = "AQI", Value = "AQI", Metadata = new FormChoiceMetadata { Subtitle = "Air Quality Index." } },

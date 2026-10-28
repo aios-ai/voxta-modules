@@ -20,7 +20,7 @@ internal static class WeatherReportFormatter
         if (details.Contains("Temp"))
             sb.Append($"The current temperature in {location} ({data.Sys.Country}) is {FormatWholeNumber(data.Main.Temp)}{unitSuffix} ");
         else
-            sb.Append($"The current weather in {location} ({data.Sys.Country}) is ");
+            sb.Append($"The current weather in {location} ({data.Sys.Country}) is reported below. ");
         if (details.Contains("FeelsLike"))
             sb.Append($"(feels like {FormatWholeNumber(data.Main.FeelsLike)}{unitSuffix}) ");
         if (details.Contains("Condition"))
@@ -36,7 +36,36 @@ internal static class WeatherReportFormatter
         if (details.Contains("Visibility") && data.Visibility is { } visibility)
             sb.Append($"Visibility: {FormatWholeNumber(visibility / 1000.0)} km. ");
 
+        AppendWeatherExtras(sb, data.Main, details);
+        if (details.Contains("WindGust")) sb.Append($"Wind gust: {(data.Wind.Gust is { } gust ? gust.ToString("0.#", CultureInfo.InvariantCulture) + " " + WindUnit(units) : "unavailable")}. ");
+        if (details.Contains("Sunrise")) sb.Append($"Sunrise: {LocalTime(data.Sys.Sunrise, data.Timezone)}. ");
+        if (details.Contains("Sunset")) sb.Append($"Sunset: {LocalTime(data.Sys.Sunset, data.Timezone)}. ");
+        if (details.Contains("ObservationTime")) sb.Append($"Data time: {LocalTime(data.Dt, data.Timezone)}. ");
+        if (details.Contains("PrecipitationProbability")) sb.Append("Precipitation probability is only available in the forecast. ");
+
         return sb.ToString().Trim();
+    }
+
+    internal static string LocalTime(long? timestamp, int? offset)
+    {
+        if (timestamp is not { } value) return "unavailable";
+        var time = DateTimeOffset.FromUnixTimeSeconds(value);
+        // Without a destination offset, report UTC rather than the host's local time.
+        if (offset is { } seconds && Math.Abs((long)seconds) <= 14 * 3600)
+            time = time.ToOffset(TimeSpan.FromSeconds(seconds));
+        return time.ToString("yyyy-MM-dd HH:mm zzz", CultureInfo.InvariantCulture);
+    }
+
+    internal static void AppendWeatherExtras(StringBuilder sb, MainInfo main, HashSet<string> details)
+    {
+        foreach (var (key, label, value, unit) in new[]
+        {
+            ("Humidity", "Humidity", main.Humidity, "%"),
+            ("Pressure", "Pressure", main.Pressure, " hPa"),
+            ("SeaLevelPressure", "Sea-level pressure", main.SeaLevelPressure, " hPa"),
+            ("GroundPressure", "Ground-level pressure", main.GroundPressure, " hPa"),
+        })
+            if (details.Contains(key)) sb.Append($"{label}: {(value.HasValue ? value.Value.ToString("0.#", CultureInfo.InvariantCulture) + unit : "unavailable")}. ");
     }
 
     public static string Pollution(OpenWeatherAirPollutionResponse data, string location, HashSet<string> details)

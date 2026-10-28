@@ -16,7 +16,7 @@ public static class AirPollutionForecastSummariser
         var sb = new StringBuilder();
         
         var groupedByDate = forecastItems
-            .GroupBy(f => DateTimeOffset.FromUnixTimeSeconds(f.Dt).ToLocalTime().Date)
+            .GroupBy(f => DateTimeOffset.FromUnixTimeSeconds(f.Dt).ToUniversalTime().Date)
             .OrderBy(g => g.Key)
             .Take(days);
 
@@ -27,7 +27,7 @@ public static class AirPollutionForecastSummariser
             var dayBlock = dayGroup
                 .Where(x =>
                 {
-                    var hour = DateTimeOffset.FromUnixTimeSeconds(x.Dt).ToLocalTime().Hour;
+                    var hour = DateTimeOffset.FromUnixTimeSeconds(x.Dt).ToUniversalTime().Hour;
                     return hour >= 6 && hour < 18;
                 })
                 .ToList();
@@ -35,7 +35,7 @@ public static class AirPollutionForecastSummariser
             var nightBlock = dayGroup
                 .Where(x =>
                 {
-                    var hour = DateTimeOffset.FromUnixTimeSeconds(x.Dt).ToLocalTime().Hour;
+                    var hour = DateTimeOffset.FromUnixTimeSeconds(x.Dt).ToUniversalTime().Hour;
                     return hour >= 18 || hour < 6;
                 })
                 .ToList();
@@ -73,7 +73,7 @@ public static class AirPollutionForecastSummariser
         };
 
         var sb = new StringBuilder();
-        sb.Append($"{date.ToString("dddd", culture)} {label}: ");
+        sb.Append($"{date.ToString("yyyy-MM-dd dddd", culture)} {label}: ");
 
         if (pollutionDetails.Contains("AQI"))
             sb.Append($"AQI {avgAqi} ({aqiLabel})");
@@ -95,7 +95,7 @@ public static class AirPollutionForecastSummariser
         if (pollutionDetails.Contains("NH3"))
             sb.Append($", NH₃: {avg.Nh3:0.#} µg/m³");
 
-        return sb.ToString();
+        return sb.ToString().Replace(": , ", ": ");
     }
 
     public static string GetAqiLabel(int aqi) => aqi switch

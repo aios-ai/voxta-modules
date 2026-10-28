@@ -5,6 +5,11 @@ namespace Voxta.Modules.Aios.OpenWeather.Clients;
 [Serializable]
 public class OpenWeatherResponse
 {
+    [JsonPropertyName("dt")]
+    public long? Dt { get; init; }
+    [JsonPropertyName("timezone")]
+    public int? Timezone { get; init; }
+
     [JsonPropertyName("main")]
     public required MainInfo Main { get; init; }
 
@@ -143,8 +148,10 @@ public class Clouds
 
 public class Coord
 {
-    [JsonPropertyName("all")]
-    public int All { get; init; }
+    [JsonPropertyName("lat")]
+    public double Lat { get; init; }
+    [JsonPropertyName("lon")]
+    public double Lon { get; init; }
 }
 
 public class Wind
@@ -198,6 +205,15 @@ public class Components
 [Serializable]
 public class MainInfo
 {
+    [JsonPropertyName("humidity")]
+    public double? Humidity { get; init; }
+    [JsonPropertyName("pressure")]
+    public double? Pressure { get; init; }
+    [JsonPropertyName("grnd_level")]
+    public double? GroundPressure { get; init; }
+    [JsonPropertyName("sea_level")]
+    public double? SeaLevelPressure { get; init; }
+
     [JsonPropertyName("temp")]
     public required double Temp { get; init; }
 
@@ -224,6 +240,11 @@ public class WeatherDetail
 [Serializable]
 public class SysInfo
 {
+    [JsonPropertyName("sunrise")]
+    public long? Sunrise { get; init; }
+    [JsonPropertyName("sunset")]
+    public long? Sunset { get; init; }
+
     [JsonPropertyName("country")]
     public required string Country { get; init; }
 }

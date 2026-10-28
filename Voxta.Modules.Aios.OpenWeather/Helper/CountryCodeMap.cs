@@ -21,6 +21,7 @@ public static class CountryCodeMap
         };
 
         _countryToAlpha2 = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var canonicalCodes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         bool first = true;
         while (!parser.EndOfData)
@@ -34,6 +35,8 @@ public static class CountryCodeMap
                 var name = parts[1].Trim();           // English
                 var iso3 = parts[2].Trim();      // ISO3
                 var iso2 = parts[3].Trim();      // ISO2
+                canonicalCodes[iso2] = iso2;
+                canonicalCodes[iso3] = iso2;
                 var tld = parts[10].Trim();      // TLD
                 var native = parts[11].Trim();   // Native
                 var nationality = parts[18].Trim();
@@ -53,6 +56,10 @@ public static class CountryCodeMap
                     AddAlias(alias, iso2);
             }
         }
+
+        // Shared TLD aliases (e.g. .us for US and UM) must never overwrite ISO codes.
+        foreach (var (code, country) in canonicalCodes)
+            _countryToAlpha2[code] = country;
     }
 
     public static bool TryGetAlpha2(string countryName, out string? alpha2) =>
