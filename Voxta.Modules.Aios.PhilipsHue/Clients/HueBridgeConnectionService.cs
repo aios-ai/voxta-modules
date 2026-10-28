@@ -175,6 +175,7 @@ public class HueBridgeConnectionService : IHueBridgeConnectionService
                 _logger.LogWarning("Link button not pressed. Attempt {Retries} of {MaxRetries}. Retrying in {RetryDelaySeconds} seconds.", retries, MaxRetries, retryDelay.Seconds);
                 await Task.Delay(retryDelay, cancellationToken);
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to register with the Hue bridge.");

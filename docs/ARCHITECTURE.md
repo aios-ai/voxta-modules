@@ -252,6 +252,23 @@ access token. Missing or rejected credentials produce account-field instructions
 browser flow. `ModulesAuthController.SignOut` owns token deletion and clearing the account field. The provider
 also cancels pending consent and logs a diagnostic. The manager drops its cached client on observing removal.
 
+### Settings authorization recovery
+
+Spotify and Hue expose a native SDK `FormInvokeActionField` labeled **Re-authenticate**.
+`ModuleAuthorizationReset` uses `IUnitOfWorkFactory.CreateUnitOfWork(auth.UserId)` to load the current module,
+verify its service name, delete only token rows with the account field identifier, and remove that field's
+configuration pointer in one save. This also removes duplicate rows from previous Hue pairings. The SDK token
+store's list API returns values without row IDs, so this recovery uses the SDK repositories. It never decrypts
+old credentials, allowing recovery from damaged ciphertext; other accounts, modules and settings are preserved.
+
+Spotify recovery also cancels pending OAuth flows. Reopen settings after clearing authorization, then use
+**Spotify Account → Sign in** to start the host's normal OAuth flow with client-owned state and callback
+selection. Settings actions cannot launch that client flow. Client ID and encrypted Client Secret are retained.
+Hue recovery immediately starts the existing discovery/link-button pairing flow with a fresh credential store
+read, and saves the replacement through `IModuleOAuthTokenStore` and `ILocalEncryptionProvider` as before.
+Failed pairing leaves the account cleared and can be retried with the same button. Restart active chats after
+either recovery to replace session-held credentials and clients.
+
 The listener, callback manager, manual redirect/mode fields, token-file helpers, and interaction-request wrappers
 have been removed following user acceptance of native authorization. Existing `SpotifyAccount` references remain
 compatible. Obsolete persisted settings are ignored. Old local token files are neither read nor deleted; they

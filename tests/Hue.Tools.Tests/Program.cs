@@ -128,7 +128,8 @@ var service = new PhilipsHueChatAugmentationsService(NullLoggerFactory.Instance,
 Check(service is IToolsChatAugmentationsService, "Tools marker");
 var plans = await service.PlanAsync(null!, default);
 Check(plans.Length == 1 && VoxtaModule.Augmentations.Length == 1 && plans.Single() is { Key: "hue_tools", IncludeInCatchAll: false, Activation: AugmentationActivation.OptIn }, "Legacy plan remains");
-var fields = await new Voxta.Modules.Aios.PhilipsHue.Configuration.ModuleConfigurationProvider().GetModuleConfigurationFieldsAsync(null!, new StaticSettingsSource(new()), default);
+var fields = await new Voxta.Modules.Aios.PhilipsHue.Configuration.ModuleConfigurationProvider(null!, null!, null!, null!, null!, null!).GetModuleConfigurationFieldsAsync(null!, new StaticSettingsSource(new()), default);
+Check(fields.OfType<Voxta.Model.Shared.Forms.FormInvokeActionField>().Single().Name == "ReauthenticateHue", "Missing native Hue authorization recovery button");
 Check(fields.All(f => f.Name is not ("Actions" or "SendInventoryAtSessionStart" or "AuthPath")), "Legacy configuration remains");
 await new HueUserInteractionWrapper(session).RequestUserInteraction(default);
 Check(proxy.PairingImage == HuePairingRequest.ImageUrl && proxy.PairingImage.StartsWith("data:image/png;base64,"), "Pairing logo missing");

@@ -3,11 +3,33 @@ using Voxta.Modules.Aios.Spotify.Tools;
 using Voxta.Abstractions.Registration;
 using Voxta.Abstractions.Security;
 using Voxta.Model.Shared.Forms;
+using Voxta.Model.ApiMessages.Requests;
+using Voxta.Model.ApiMessages.Responses;
+using Voxta.Abstractions.Repositories;
+using Voxta.Modules.Aios.Tools;
 
 namespace Voxta.Modules.Aios.Spotify.Configuration;
 
-public class ModuleConfigurationProvider : ModuleConfigurationProviderBase, IModuleConfigurationProvider
+public class ModuleConfigurationProvider(IUnitOfWorkFactory unitOfWorkFactory, SpotifyOAuthFlows flows) : ModuleConfigurationProviderBase, IModuleConfigurationProvider
 {
+    public static readonly FormInvokeActionField Reauthenticate = new()
+    {
+        Name = "ReauthenticateSpotify",
+        Label = "Spotify Authorization Recovery",
+        ButtonText = "Re-authenticate",
+        Text = "If Spotify authorization fails, clear the saved authorization here. Then reopen settings and sign in using Spotify Account. Your Client ID and Client Secret are kept. Restart active chats after signing in.",
+    };
+
+    public override async Task<FormInvokeActionResponse> InvokeAction(IAuthenticationContext auth, Guid moduleId,
+        StaticSettingsSource settings, FormInvokeActionRequest request, CancellationToken cancellationToken)
+    {
+        if (request.FieldName != Reauthenticate.Name)
+            throw new NotSupportedException("Unknown Spotify settings action.");
+        await ModuleAuthorizationReset.ClearAsync(unitOfWorkFactory, auth.UserId, moduleId,
+            VoxtaModule.ServiceName, SpotifyAccount.Name, cancellationToken);
+        flows.Cancel(auth.UserId, moduleId);
+        return new() { Text = "Spotify authorization cleared. Reopen these settings, then click **Sign in** under **Spotify Account** to authorize again. Restart active chats after signing in." };
+    }
     public static string[] FieldsRequiringReload => [ClientId.Name, ClientSecret.Name, SpotifyAccount.Name, "Tools", "SpotifyTools", ChatToolSettingsContributions.ToolChatStyles.Name, SpeechDuckingMode.Name, SpeechDuckingVolumePercent.Name, SpeechDuckingReductionPercent.Name, SpecialPlaylists.Name];
     public static readonly FormDocumentationField SpotifySetup = FormDocumentationField.Create("""
         Create or open your application in the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard/).
@@ -109,6 +131,7 @@ Daily Mix 6="
             ClientId,
             ClientSecret,
             SpotifyAccount,
+            Reauthenticate,
             SpeechDuckingMode,
             SpeechDuckingVolumePercent,
             SpeechDuckingReductionPercent,

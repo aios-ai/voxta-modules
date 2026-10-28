@@ -77,8 +77,10 @@ internal static class SpotifyConfigurationChecks
         Check(playOnly.Contains("Search is disabled") && !playOnly.Contains("spotify_queue_track") && !playOnly.Contains("device discovery"), "Guidance references disabled capabilities");
         var listOnly = SpotifyToolGuidance.Build(new HashSet<string> { "spotify_list_devices" });
         Check(listOnly.Contains("device discovery only") && !listOnly.Contains("transfer"), "Discovery-only guidance offers disabled transfer");
-        var fields = await new ModuleConfigurationProvider().GetModuleConfigurationFieldsAsync(null!, empty, default);
+        var fields = await new ModuleConfigurationProvider(null!, new SpotifyOAuthFlows()).GetModuleConfigurationFieldsAsync(null!, empty, default);
         Check(fields.OfType<FormAuthorizeField>().Single().Name == "SpotifyAccount", "Missing account field");
+        Check(fields.OfType<FormInvokeActionField>().Single().Name == ModuleConfigurationProvider.Reauthenticate.Name,
+            "Missing native Spotify authorization recovery button");
         Check(fields.OfType<FormDocumentationField>().Any(f => f.Value.Contains(SpotifyRedirectUri.DesktopDefault) && f.Value.Contains(SpotifyRedirectUri.VoxtaDefault)), "Both callbacks must be explained");
         foreach (var name in new[] { "AuthorizationMode", "VoxtaRedirectUri", "RedirectUri", "TokenPath", "MatchFilterWakeWord", "Actions" })
             Check(fields.All(f => f.Name != name), "Obsolete authentication setting still displayed: " + name);

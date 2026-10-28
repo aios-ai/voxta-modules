@@ -106,6 +106,7 @@ foreach (var (name, run) in tests)
     Console.WriteLine($"PASS {name}");
 }
 Console.WriteLine($"Passed {tests.Length} tool framework checks.");
+await ModuleAuthorizationResetChecks.RunAsync();
 
 static ModuleToolCatalog Catalog(params ModuleTool[] tools) => new(tools, NullLogger.Instance);
 static ModuleTool Tool(string name, Func<JsonElement?, CancellationToken, ValueTask<ChatToolCallResult>> handler) =>
