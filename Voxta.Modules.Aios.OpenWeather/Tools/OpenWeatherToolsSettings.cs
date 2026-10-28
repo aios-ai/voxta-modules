@@ -37,7 +37,6 @@ internal sealed record OpenWeatherToolsSettings(IReadOnlySet<string> Selected, C
             new FormMultilineField
             {
                 Name = nameof(OpenWeatherToolSettings.Description), Label = "Description", Rows = 5,
-                Text = "Explains to the model when and how to use this tool. An empty description uses the built-in explanation. Arguments and permissions are fixed by the module.",
             },
             ModuleToolDocumentation.ArgumentsField(),
             ModuleToolDocumentation.ArgumentsLock(),

@@ -371,6 +371,8 @@ Description. `ModuleToolDocumentation` generates the text from the same `Functio
 arrays used for agent schemas (names, types, required/optional status and full descriptions). An advanced,
 default-on boolean uses the SDK's native disable dependency to keep this reference field read-only; the
 card editor hides advanced fields. Argument text and this UI dependency never configure agent behavior.
+The combined Arguments text is only a display format: the agent receives each argument as a separate
+property in the tool input schema, with its own type, description and required status.
 The `WithArguments` card fields read legacy cards as a fallback and generate argument text when migrating,
 so saved switches and custom descriptions survive without requiring Reset. Future changes to argument
 metadata must refresh saved card reference text as well as the defaults.

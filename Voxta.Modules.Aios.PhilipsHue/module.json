@@ -1,6 +1,6 @@
 {
   "id": "Voxta.Modules.Aios.PhilipsHue",
-  "version": "0.1.7-beta.2",
+  "version": "0.1.7-beta.3",
   "voxta": ">=1.13.0-alpha.10",
   "label": "Philips Hue",
   "author": "aios",

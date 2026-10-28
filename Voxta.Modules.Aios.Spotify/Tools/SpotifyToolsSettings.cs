@@ -20,7 +20,7 @@ internal sealed record SpotifyToolsSettings(IReadOnlySet<string> Selected, ChatS
         Text = "Offer Spotify tools in these chat styles. Defaults to Assistant and Companion.",
     };
 
-    public const string CardsFieldName = "SpotifyToolsWithArguments";
+    public const string CardsFieldName = "SpotifyToolsWithArgumentsV2";
 
     private static FormArrayOfObjectsField Field => new()
     {
@@ -37,7 +37,6 @@ internal sealed record SpotifyToolsSettings(IReadOnlySet<string> Selected, ChatS
             new FormMultilineField
             {
                 Name = nameof(SpotifyToolSettings.Description), Label = "Description", Rows = 5,
-                Text = "Explains to the model when and how to use this tool. An empty description uses the built-in explanation. Arguments and permissions are fixed by the module.",
             },
             ModuleToolDocumentation.ArgumentsField(),
             ModuleToolDocumentation.ArgumentsLock(),
@@ -62,6 +61,7 @@ internal sealed record SpotifyToolsSettings(IReadOnlySet<string> Selected, ChatS
     {
         // Read the saved cards without dropping switches or depending on JSON property casing.
         var raw = settings.GetRawValue(Field.Name);
+        if (string.IsNullOrWhiteSpace(raw)) raw = settings.GetRawValue("SpotifyToolsWithArguments");
         if (string.IsNullOrWhiteSpace(raw)) raw = settings.GetRawValue("SpotifyTools");
         var entries = string.IsNullOrWhiteSpace(raw) ? null : JsonSerializer.Deserialize<SpotifyToolSettings[]>(raw,
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true });

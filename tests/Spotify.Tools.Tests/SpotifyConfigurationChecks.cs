@@ -91,6 +91,17 @@ internal static class SpotifyConfigurationChecks
             }
             Check(argumentHelp == SpotifyToolCatalog.DescribeArguments(tool.Name), "Wrong tool's arguments displayed");
         }
+        var seekSchema = catalog.GetTools().Single(t => t.Name == "spotify_seek_playback").InputSchema;
+        Check(seekSchema.GetProperty("properties").EnumerateObject().Select(p => p.Name).ToHashSet().SetEquals(["target", "value"]), "UI argument text must not replace structured agent arguments");
+        Check(seekSchema.GetProperty("required").EnumerateArray().Select(p => p.GetString()).SequenceEqual(["target"]), "Seek argument requirements changed");
+        var previousCards = new StaticSettingsSource(new()
+        {
+            ["SpotifyToolsWithArguments"] = "[{\"Name\":\"spotify_repeat_mode\",\"Description\":\"Saved repeat description\",\"Disabled\":\"true\",\"Arguments\":\"mode (string, required): track, context, or off.\"}]",
+        });
+        var upgradedField = (FormArrayOfObjectsField)SpotifyToolsSettings.ConfigurationField(previousCards);
+        var upgradedRepeat = JsonSerializer.Deserialize<SpotifyToolSettings[]>(upgradedField.DefaultValue!)!.Single(c => c.Name == "spotify_repeat_mode");
+        Check(upgradedRepeat.Description == "Saved repeat description" && upgradedRepeat.Disabled == "true", "Argument reference refresh lost saved settings");
+        Check(upgradedRepeat.Arguments!.Contains("current album or playlist"), "Saved argument reference was not refreshed");
         var description = catalog.GetTools().Single(t => t.Name == "spotify_skip").Description;
         Check(description == "Custom explanation", "Shared policies must not be duplicated into custom descriptions");
         var transfer = catalog.GetTools().Single(t => t.Name == "spotify_transfer_to_device");

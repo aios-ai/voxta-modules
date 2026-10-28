@@ -14,7 +14,6 @@ internal static class ModuleToolDocumentation
     public static FormMultilineField ArgumentsField() => new()
     {
         Name = "Arguments", Label = "Arguments", Rows = 8,
-        Text = "The inputs the agent can provide, including required and optional arguments, accepted values and defaults.",
     };
 
     // The SDK has no ReadOnly property. Its native dependency rule disables the

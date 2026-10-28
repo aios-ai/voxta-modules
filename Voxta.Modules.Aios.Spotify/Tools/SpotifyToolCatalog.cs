@@ -40,7 +40,7 @@ internal static class SpotifyToolCatalog
             [Text("target", "forward/backward: relative seconds; forward_percent/backward_percent: relative % of total duration; to_time: absolute seconds; to_percent: absolute %; middle: midpoint."),
              Number("Nonnegative integer seconds or 0–100 percent; required except forward/backward (default 10 seconds) and middle (omit).")]),
         new("skip", "Skip to the next or previous track.", [Text("direction", "next or previous.")]),
-        new("repeat_mode", "Set repeat mode.", [Text("mode", "track, context, or off.")]),
+        new("repeat_mode", "Set repeat mode.", [Text("mode", "track: repeat the current track; context: repeat the current playback collection, such as the current album or playlist; off: disable repeat.")]),
         new("shuffle_mode", "Turn shuffle on or off.", [Text("mode", "on or off.")]),
 
         new("add_to_favorites", "Save the current track to Liked Songs.", []),
