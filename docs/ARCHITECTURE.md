@@ -34,11 +34,19 @@ The shared foundation is compiled privately into all three modules, and all thre
   display, following Voxta's built-in MCP image-tool path. Result images alone reach the model but are not
   rendered as transcript attachments by the inspected host. The attachment is queued once, marked with
   `ComputerVisionSource.Tool`, and does not trigger another reply. Attachment failures/cancellation do not
-  produce a successful tool result. No separate feedback note or follow-up generation is sent.
+  produce a successful tool result when reported by the attachment API. No separate feedback note or follow-up
+  generation is sent. In the inspected Voxta host, `SendNoteAttachmentAsync` enqueues a foreground message and
+  returns immediately; it does not wait for display. That queue waits behind the active reply/speech, so the user
+  may see the map after narration. The module already calls it before returning the tool result, with speech
+  synchronization off. The public SDK exposes no immediate-attachment option: earlier display requires a host
+  change to send a silent image note during the tool call. Awaiting this queue-based API cannot establish that
+  the image is visible. Tool output therefore says attachment queued.
 - `WeatherMapImage` carries PNG bytes, the actual stitched Web Mercator viewport, pixel dimensions, zoom and
   composite-cache reuse from the existing tile plan. `WeatherMapPresentation` adds a local text color legend
   from [OpenWeather's published default styles](https://openweathermap.org/api/map_legend), layer units and
-  qualitative vision guidance to the same tool result. No extra provider requests, images or tools are added.
+  qualitative vision guidance to the same tool result. Output is compact and self-contained: no legend source
+  URL or fetch instruction is sent to the agent. The source link remains developer documentation only.
+  No extra provider requests, images or tools are added.
   Bounds cover the full tile rectangle (including neighboring territory); wrapped viewports explicitly identify
   the antimeridian. Map units are fixed by the layer, independently of configured weather-report units. The
   result distinguishes cached composition from unknown provider observation time and does not claim live radar.
@@ -54,8 +62,8 @@ Run `dotnet run --project tests/OpenWeather.Tools.Tests -c Release -p:RestoreLoc
 operations, settings migration, input validation, metadata, provider failures, cancellation and attachment dispatch.
 Real map composition is checked using fake HTTP tiles: PNG decoding, grid dimensions, overlay pixels, composite
 cache, actual global/country/date-line viewport metadata, all five legends, no additional requests, tile errors
-and cancellation. The user accepted weather tools; chat display of the corrected map attachment
-still requires live acceptance in Voxta.
+and cancellation. The user verified map display and visual descriptions; delayed attachment delivery is the
+known host limitation above. Compact output still requires live acceptance after this version.
 
 ## Philips Hue integration
 

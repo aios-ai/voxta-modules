@@ -135,9 +135,12 @@ foreach (var (layer, unit) in new[] { ("temp", "°C"), ("wind", "m/s"), ("pressu
     attachments.Clear();
     var result = await Call(catalog, "get_weather_map", JsonSerializer.Serialize(new { layer, location = "Germany" }));
     Check(!result.IsError && fake.Calls.Count == 1 && attachments.Count == 1, "Metadata adds no provider calls or images");
-    Check(result.Text.Contains("Rendered viewport") && result.Text.Contains("north up") && result.Text.Contains("neighboring countries"), "Geographic interpretation context");
-    Check(result.Text.Contains("Color legend:") && result.Text.Contains(unit) && result.Text.Contains("https://openweathermap.org/api/map_legend"), "Layer legend and fixed provider units");
-    Check(result.Text.Contains("observation time is not supplied") && result.Text.Contains("cannot view the image") && result.Text.Contains("qualitative"), "Honest time and vision limitations");
+    Check(result.Text.Contains("Bounds (degrees)") && result.Text.Contains("north up") && result.Text.Contains("Neighboring territory"), "Geographic interpretation context");
+    Check(result.Text.Contains("Color legend (fixed map units)") && result.Text.Contains(unit), "Layer legend and fixed provider units");
+    Check(result.Text.Contains("observation time unknown") && result.Text.Contains("cannot view or interpret") && result.Text.Contains("qualitative"), "Honest time and vision limitations");
+    Check(!result.Text.Contains("http", StringComparison.OrdinalIgnoreCase) && !result.Text.Contains("Legend source") && result.Text.Length < 1400,
+        "Compact standalone result without source links or fetch requirements");
+    Check(result.Text.Contains("attachment queued") && !result.Text.Contains("image was attached"), "Do not claim queued images are already visible");
     if (layer == "precipitation") Check(result.Text.Contains("clear skies") && result.Text.Contains("do not establish zero"), "Precipitation cannot prove clear skies or zero precipitation");
 }
 var originalCulture = CultureInfo.CurrentCulture;
@@ -145,7 +148,7 @@ try
 {
     CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("de-DE");
     var text = WeatherMapPresentation.Describe(new WeatherMapImage([1], new(170, -25.1234, -170, -10, true, 5, 512, 256), true), (MapTargetType.Country, "FJ"), "wind_new");
-    Check(text.Contains("south -25.1234") && text.Contains("antimeridian: true") && text.Contains("cache: true"), "Invariant bounds, date-line crossing and cache metadata");
+    Check(text.Contains("south -25.1234") && text.Contains("Crosses the antimeridian") && text.Contains("cache reused: true"), "Invariant bounds, date-line crossing and cache metadata");
 }
 finally { CultureInfo.CurrentCulture = originalCulture; }
 Console.WriteLine("PASS all five map legends, fixed units, geography, vision limitations and no extra requests");
