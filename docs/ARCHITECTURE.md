@@ -366,12 +366,14 @@ an action handler or construct synthetic action messages. Keep transport and dat
 presentation. The augmentation labels are **OpenWeather**, **Philips Hue** and **Spotify Control**, while stable internal
 keys retain their `_tools` suffix. Spotify's augmentation label matches its module label so Voxta's selector
 shows a single Spotify Control name instead of Spotify Control: Spotify. Tool cards remain labeled as tools
-because they configure individual tools. Each module displays a read-only **Tool arguments** reference directly
-below its tool cards. `ModuleToolDocumentation` generates the reference from the same
-`FunctionArgumentDefinition` arrays used for agent schemas, including names, types, required/optional status
-and full descriptions (accepted values, limits and defaults). Tools without arguments are labeled explicitly.
-The reference is configuration documentation only; it is never appended to editable descriptions or agent context
-and does not introduce argument settings or change saved tool preferences.
+because they configure individual tools. Each selected tool card displays its own **Arguments** field below
+Description. `ModuleToolDocumentation` generates the text from the same `FunctionArgumentDefinition`
+arrays used for agent schemas (names, types, required/optional status and full descriptions). An advanced,
+default-on boolean uses the SDK's native disable dependency to keep this reference field read-only; the
+card editor hides advanced fields. Argument text and this UI dependency never configure agent behavior.
+The `WithArguments` card fields read legacy cards as a fallback and generate argument text when migrating,
+so saved switches and custom descriptions survive without requiring Reset. Future changes to argument
+metadata must refresh saved card reference text as well as the defaults.
 
 For future migrations, expose a separate opt-in tools augmentation during comparison and remove the old path
 after acceptance. Spotify tools default enabled except device discovery and transfer, which require explicit

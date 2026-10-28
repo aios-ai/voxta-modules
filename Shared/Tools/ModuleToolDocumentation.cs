@@ -1,34 +1,27 @@
-using System.Text;
 using Voxta.Model.Shared;
 using Voxta.Model.Shared.Forms;
 
 namespace Voxta.Modules.Aios.Tools;
 
-/// <summary>Read-only configuration help derived from the agent's argument definitions.</summary>
+/// <summary>Configuration-only argument help; never read as agent settings.</summary>
 internal static class ModuleToolDocumentation
 {
-    public static FormDocumentationField Arguments(
-        IEnumerable<(string Name, FunctionArgumentDefinition[] Arguments)> tools)
+    public static string Arguments(FunctionArgumentDefinition[] arguments) => arguments.Length == 0
+        ? "No arguments."
+        : string.Join("\n\n", arguments.Select(argument =>
+            $"{argument.Name} ({argument.Type.ToString().ToLowerInvariant()}, {(argument.Required ? "required" : "optional")}): {argument.Description}"));
+
+    public static FormMultilineField ArgumentsField() => new()
     {
-        var text = new StringBuilder("### Tool arguments\n\nThese are the arguments the agent can provide. Required arguments must be supplied; optional arguments can be omitted. Accepted values, limits and defaults are described below. Arguments are fixed by the module.\n");
-        foreach (var (name, arguments) in tools)
-        {
-            text.Append("\n#### ").Append(name).Append("\n\n");
-            if (arguments.Length == 0)
-            {
-                text.Append("No arguments.\n");
-                continue;
-            }
+        Name = "Arguments", Label = "Arguments", Rows = 8,
+        Text = "The inputs the agent can provide, including required and optional arguments, accepted values and defaults.",
+    };
 
-            foreach (var argument in arguments)
-            {
-                text.Append("- **").Append(argument.Name).Append("** (")
-                    .Append(argument.Type.ToString().ToLowerInvariant()).Append(", ")
-                    .Append(argument.Required ? "required" : "optional").Append("): ")
-                    .Append(argument.Description).Append('\n');
-            }
-        }
-
-        return FormDocumentationField.Create(text.ToString());
-    }
+    // The SDK has no ReadOnly property. Its native dependency rule disables the
+    // reference field; advanced fields are hidden in the card's inner editor.
+    public static FormBooleanField ArgumentsLock() => new()
+    {
+        Name = "ArgumentsReadOnly", Label = "Module-defined arguments", Advanced = true,
+        DefaultValue = true, DisablesFieldsOnActive = ["Arguments"],
+    };
 }

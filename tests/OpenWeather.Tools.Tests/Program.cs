@@ -37,7 +37,6 @@ foreach (var flag in new[] { "true", "\"true\"" })
     Check(JsonSerializer.Deserialize<OpenWeatherToolSettings[]>(field.DefaultValue!)!.Single(c => c.Name == "get_weather").Disabled == "true", "Card round trip");
 }
 var fields = await new ModuleConfigurationProvider().GetModuleConfigurationFieldsAsync(null!, new StaticSettingsSource(new()), default);
-Check(fields.OfType<FormDocumentationField>().Any(f => f.Value == OpenWeatherToolCatalog.ArgumentsDocumentation().Value), "Missing read-only tool argument reference");
 var migrated = OpenWeatherToolsSettings.From(new StaticSettingsSource(new()
 {
     ["OpenWeatherToolCards"] = "[{\"name\":\"openweather_get_weather\",\"description\":\"Saved weather description\",\"disabled\":true},{\"name\":\"openweather_get_weather_map\",\"disabled\":true},{\"name\":\"get_weather_map\",\"disabled\":false}]",
@@ -48,7 +47,7 @@ var migratedField = (FormArrayOfObjectsField)OpenWeatherToolsSettings.Configurat
 { ["OpenWeatherToolCards"] = "[{\"Name\":\"openweather_get_weather_map\",\"Disabled\":true}]" }));
 Check(JsonSerializer.Deserialize<OpenWeatherToolSettings[]>(migratedField.DefaultValue!)!.Single(c => c.Name == "get_weather_map").Disabled == "true", "Card editor saves migrated short names");
 Check(fields.OfType<FormPasswordField>().Single().Name == "ApiKey", "API key stays a host-encrypted password");
-Check(fields.All(f => f.Name != "Actions") && fields.Any(f => f.Name == "OpenWeatherToolCards"), "Legacy action configuration removed");
+Check(fields.All(f => f.Name != "Actions") && fields.Any(f => f.Name == OpenWeatherToolsSettings.CardsFieldName), "Legacy action configuration removed");
 Console.WriteLine("PASS tool cards, defaults, saved descriptions/styles and encrypted-key configuration");
 
 var settings = new OpenWeatherChatAugmentationsSettings
@@ -71,21 +70,39 @@ ModuleToolCatalog Catalog(OpenWeatherChatAugmentationsSettings? config = null, O
     OpenWeatherToolCatalog.Create(new OpenWeatherToolHandler(client, config ?? settings, CultureInfo.InvariantCulture, Attach, abort), tools ?? defaults, NullLogger.Instance);
 var catalog = Catalog();
 
-// Configuration help must cover every agent argument without changing the agent-facing description.
-var argumentHelp = OpenWeatherToolCatalog.ArgumentsDocumentation().Value;
+// Each card must show only its own schema, including when upgrading saved cards.
+var argumentField = (FormArrayOfObjectsField)OpenWeatherToolsSettings.ConfigurationField(new StaticSettingsSource(new()));
+var argumentCards = JsonSerializer.Deserialize<OpenWeatherToolSettings[]>(argumentField.DefaultValue!)!;
+Check(argumentField.FieldTemplate.OfType<FormMultilineField>().Any(f => f.Name == "Arguments"), "Missing Arguments inside tool card");
+var argumentLock = argumentField.FieldTemplate.OfType<FormBooleanField>().Single(f => f.Name == "ArgumentsReadOnly");
+Check(argumentLock.Advanced && argumentLock.DefaultValue == true && argumentLock.DisablesFieldsOnActive!.Contains("Arguments"), "Argument reference must be read-only");
+var savedArgumentCards = new StaticSettingsSource(new()
+{
+    [OpenWeatherToolsSettings.CardsFieldName] = JsonSerializer.Serialize(new[]
+    {
+        new OpenWeatherToolSettings { Name = "get_weather", Description = "Saved card description", Disabled = "true", Arguments = "Not agent instructions" },
+    }),
+});
+var savedArgumentSettings = OpenWeatherToolsSettings.From(savedArgumentCards);
+Check(!savedArgumentSettings.Selected.Contains("get_weather") && savedArgumentSettings.Descriptions!["get_weather"] == "Saved card description", "New card settings lost");
+var refreshedArgumentField = (FormArrayOfObjectsField)OpenWeatherToolsSettings.ConfigurationField(savedArgumentCards);
+var refreshedCard = JsonSerializer.Deserialize<OpenWeatherToolSettings[]>(refreshedArgumentField.DefaultValue!)!.Single(c => c.Name == "get_weather");
+Check(refreshedCard.Arguments == OpenWeatherToolCatalog.DescribeArguments("get_weather"), "Saved argument text must not configure the agent");
 foreach (var tool in catalog.GetTools())
 {
-    Check(argumentHelp.Contains("#### " + tool.Name + "\n"), "Missing argument reference for " + tool.Name);
+    var argumentHelp = argumentCards.Single(c => c.Name == tool.Name).Arguments!;
     var required = tool.InputSchema.TryGetProperty("required", out var requiredNames)
         ? requiredNames.EnumerateArray().Select(n => n.GetString()).ToHashSet() : [];
-    foreach (var property in tool.InputSchema.GetProperty("properties").EnumerateObject())
+    var properties = tool.InputSchema.GetProperty("properties").EnumerateObject().ToArray();
+    if (properties.Length == 0) Check(argumentHelp == "No arguments.", "No-argument tools must be explicit");
+    foreach (var property in properties)
     {
-        var expected = "**" + property.Name + "** (" + property.Value.GetProperty("type").GetString()
+        var expected = property.Name + " (" + property.Value.GetProperty("type").GetString()
             + ", " + (required.Contains(property.Name) ? "required" : "optional") + "): "
             + property.Value.GetProperty("description").GetString();
         Check(argumentHelp.Contains(expected), "Incomplete argument help for " + tool.Name + "." + property.Name);
     }
-    Check(tool.Description?.Contains("### Tool arguments") != true, "Configuration help leaked into agent description");
+    Check(argumentHelp == OpenWeatherToolCatalog.DescribeArguments(tool.Name), "Wrong tool's arguments displayed");
 }
 
 var augmentation = new ModuleToolsAugmentation(catalog);

@@ -20,9 +20,8 @@ internal static class HueToolCatalog
         new("show_hue_inventory", "List available Hue lights, smart plugs, rooms, zones, groups and scenes with their target. Ask the user to resolve ambiguous names before controlling devices.", []),
     ];
     public static readonly ChatToolChoice[] Choices = Definitions.Select(d => new ChatToolChoice("hue_" + d.Name, d.Description, d.Name != "show_emotion")).ToArray();
-    public static Voxta.Model.Shared.Forms.FormDocumentationField ArgumentsDocumentation() =>
-        ModuleToolDocumentation.Arguments(Definitions.Select((definition, index) =>
-            (Choices[index].Name, definition.Arguments)));
+    public static string DescribeArguments(string name) =>
+        ModuleToolDocumentation.Arguments(Definitions[Array.FindIndex(Choices, choice => choice.Name == name)].Arguments);
 
     public static ModuleToolCatalog Create(HueToolHandler handler, HueToolsSettings settings, string? characterTarget, ILogger logger) => new(
         Definitions.Select((d, i) => new ModuleTool(new ChatTool(Choices[i].Name,

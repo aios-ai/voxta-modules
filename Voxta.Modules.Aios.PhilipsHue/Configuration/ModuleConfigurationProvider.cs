@@ -43,7 +43,7 @@ public class ModuleConfigurationProvider(IUnitOfWorkFactory unitOfWorkFactory,
             ? "Hue bridge paired again. The new credentials are saved in Voxta's encrypted store. Restart active chats to use them."
             : (bridge.LastUserVisibleError ?? "Hue pairing failed.") + " Click **Re-authenticate** to try again." };
     }
-    public static string[] FieldsRequiringReload => ["HueToolCards", "ToolChatStyles", CharacterControlledLight.Name];
+    public static string[] FieldsRequiringReload => ["HueToolCards", HueToolsSettings.CardsFieldName, "ToolChatStyles", CharacterControlledLight.Name];
     public static readonly FormTextField CharacterControlledLight = new()
     {
         Name = "CharacterControlledLight",
@@ -62,7 +62,6 @@ public class ModuleConfigurationProvider(IUnitOfWorkFactory unitOfWorkFactory,
            Reauthenticate,
            CharacterControlledLight,
            HueToolsSettings.ConfigurationField(settings),
-           HueToolCatalog.ArgumentsDocumentation(),
            HueToolsSettings.Styles.AsField()
        );
         return Task.FromResult(fields);

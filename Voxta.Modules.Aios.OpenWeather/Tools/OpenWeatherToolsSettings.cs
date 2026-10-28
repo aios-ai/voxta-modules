@@ -2,6 +2,7 @@ using Voxta.Abstractions.Registration;
 using Voxta.Abstractions.Services.Agents;
 using Voxta.Model.Shared;
 using Voxta.Model.Shared.Forms;
+using Voxta.Modules.Aios.Tools;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -19,11 +20,13 @@ internal sealed record OpenWeatherToolsSettings(IReadOnlySet<string> Selected, C
         Text = "Offer OpenWeather tools in these chat styles. Defaults to Assistant and Companion.",
     };
 
+    public const string CardsFieldName = "OpenWeatherToolCardsWithArguments";
+
     private static FormArrayOfObjectsField Field => new()
     {
-        Name = "OpenWeatherToolCards",
+        Name = CardsFieldName,
         Label = "OpenWeather Tools",
-        Text = "Select a tool to edit the description offered to the model. Disable individual tools using their switches. See Tool arguments below for the inputs each tool accepts.",
+        Text = "Select a tool to edit the description offered to the model. Disable individual tools using their switches. Arguments below the description show the inputs this tool accepts.",
         AllowAddRemove = false,
         AllowRename = false,
         AllowDisable = true,
@@ -36,6 +39,8 @@ internal sealed record OpenWeatherToolsSettings(IReadOnlySet<string> Selected, C
                 Name = nameof(OpenWeatherToolSettings.Description), Label = "Description", Rows = 5,
                 Text = "Explains to the model when and how to use this tool. An empty description uses the built-in explanation. Arguments and permissions are fixed by the module.",
             },
+            ModuleToolDocumentation.ArgumentsField(),
+            ModuleToolDocumentation.ArgumentsLock(),
         ],
     };
 
@@ -46,6 +51,7 @@ internal sealed record OpenWeatherToolsSettings(IReadOnlySet<string> Selected, C
         field.DefaultValue = JsonSerializer.Serialize(OpenWeatherToolCatalog.Choices.Select(choice => new OpenWeatherToolSettings
         {
             Name = choice.Name,
+            Arguments = OpenWeatherToolCatalog.DescribeArguments(choice.Name),
             Description = current.Descriptions?.GetValueOrDefault(choice.Name) ?? choice.Label,
             Disabled = (!current.Selected.Contains(choice.Name)).ToString().ToLowerInvariant(),
         }));
@@ -56,6 +62,7 @@ internal sealed record OpenWeatherToolsSettings(IReadOnlySet<string> Selected, C
     {
         // Read the saved cards without dropping switches or depending on JSON property casing.
         var raw = settings.GetRawValue(Field.Name);
+        if (string.IsNullOrWhiteSpace(raw)) raw = settings.GetRawValue("OpenWeatherToolCards");
         var entries = string.IsNullOrWhiteSpace(raw) ? null : JsonSerializer.Deserialize<OpenWeatherToolSettings[]>(raw,
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
         // Retain saved cards from beta.1's prefixed names. An explicitly saved short name takes precedence.
@@ -79,6 +86,7 @@ internal sealed class OpenWeatherToolSettings
 {
     public required string Name { get; init; }
     public string? Description { get; init; }
+    public string? Arguments { get; init; }
     [JsonConverter(typeof(OpenWeatherDisabledSwitchConverter))]
     public string? Disabled { get; init; }
 }

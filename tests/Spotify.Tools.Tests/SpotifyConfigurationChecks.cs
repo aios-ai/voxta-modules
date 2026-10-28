@@ -57,23 +57,40 @@ internal static class SpotifyConfigurationChecks
         Check(settings.Selected.Contains("spotify_search"), "New search tool missing from saved card configuration");
         var catalog = SpotifyToolCatalog.Create(null!, settings, new Dictionary<string, string>(), NullLogger.Instance);
 
-        // Configuration help must cover every agent argument without changing the agent-facing description.
-        var argumentHelp = SpotifyToolCatalog.ArgumentsDocumentation().Value;
+        // Each card must show only its own schema, including when upgrading saved cards.
+        var argumentField = (FormArrayOfObjectsField)SpotifyToolsSettings.ConfigurationField(new StaticSettingsSource(new()));
+        var argumentCards = JsonSerializer.Deserialize<SpotifyToolSettings[]>(argumentField.DefaultValue!)!;
+        Check(argumentField.FieldTemplate.OfType<FormMultilineField>().Any(f => f.Name == "Arguments"), "Missing Arguments inside tool card");
+        var argumentLock = argumentField.FieldTemplate.OfType<FormBooleanField>().Single(f => f.Name == "ArgumentsReadOnly");
+        Check(argumentLock.Advanced && argumentLock.DefaultValue == true && argumentLock.DisablesFieldsOnActive!.Contains("Arguments"), "Argument reference must be read-only");
+        var savedArgumentCards = new StaticSettingsSource(new()
+        {
+            [SpotifyToolsSettings.CardsFieldName] = JsonSerializer.Serialize(new[]
+            {
+                new SpotifyToolSettings { Name = "spotify_skip", Description = "Saved card description", Disabled = "true", Arguments = "Not agent instructions" },
+            }),
+        });
+        var savedArgumentSettings = SpotifyToolsSettings.From(savedArgumentCards);
+        Check(!savedArgumentSettings.Selected.Contains("spotify_skip") && savedArgumentSettings.Descriptions!["spotify_skip"] == "Saved card description", "New card settings lost");
+        var refreshedArgumentField = (FormArrayOfObjectsField)SpotifyToolsSettings.ConfigurationField(savedArgumentCards);
+        var refreshedCard = JsonSerializer.Deserialize<SpotifyToolSettings[]>(refreshedArgumentField.DefaultValue!)!.Single(c => c.Name == "spotify_skip");
+        Check(refreshedCard.Arguments == SpotifyToolCatalog.DescribeArguments("spotify_skip"), "Saved argument text must not configure the agent");
         foreach (var tool in catalog.GetTools())
         {
-            Check(argumentHelp.Contains("#### " + tool.Name + "\n"), "Missing argument reference for " + tool.Name);
+            var argumentHelp = argumentCards.Single(c => c.Name == tool.Name).Arguments!;
             var required = tool.InputSchema.TryGetProperty("required", out var requiredNames)
                 ? requiredNames.EnumerateArray().Select(n => n.GetString()).ToHashSet() : [];
-            foreach (var property in tool.InputSchema.GetProperty("properties").EnumerateObject())
+            var properties = tool.InputSchema.GetProperty("properties").EnumerateObject().ToArray();
+            if (properties.Length == 0) Check(argumentHelp == "No arguments.", "No-argument tools must be explicit");
+            foreach (var property in properties)
             {
-                var expected = "**" + property.Name + "** (" + property.Value.GetProperty("type").GetString()
+                var expected = property.Name + " (" + property.Value.GetProperty("type").GetString()
                     + ", " + (required.Contains(property.Name) ? "required" : "optional") + "): "
                     + property.Value.GetProperty("description").GetString();
                 Check(argumentHelp.Contains(expected), "Incomplete argument help for " + tool.Name + "." + property.Name);
             }
-            Check(tool.Description?.Contains("### Tool arguments") != true, "Configuration help leaked into agent description");
+            Check(argumentHelp == SpotifyToolCatalog.DescribeArguments(tool.Name), "Wrong tool's arguments displayed");
         }
-        Check(argumentHelp.Contains("No arguments."), "No-argument tools must be explicit");
         var description = catalog.GetTools().Single(t => t.Name == "spotify_skip").Description;
         Check(description == "Custom explanation", "Shared policies must not be duplicated into custom descriptions");
         var transfer = catalog.GetTools().Single(t => t.Name == "spotify_transfer_to_device");
@@ -96,7 +113,6 @@ internal static class SpotifyConfigurationChecks
         var listOnly = SpotifyToolGuidance.Build(new HashSet<string> { "spotify_list_devices" });
         Check(listOnly.Contains("device discovery only") && !listOnly.Contains("transfer"), "Discovery-only guidance offers disabled transfer");
         var fields = await new ModuleConfigurationProvider(null!, new SpotifyOAuthFlows()).GetModuleConfigurationFieldsAsync(null!, empty, default);
-        Check(fields.OfType<FormDocumentationField>().Any(f => f.Value == argumentHelp), "Missing read-only tool argument reference");
         Check(fields.OfType<FormAuthorizeField>().Single().Name == "SpotifyAccount", "Missing account field");
         Check(fields.OfType<FormInvokeActionField>().Single().Name == ModuleConfigurationProvider.Reauthenticate.Name,
             "Missing native Spotify authorization recovery button");
@@ -116,6 +132,7 @@ internal static class SpotifyConfigurationChecks
         });
         var migratedCards = (FormArrayOfObjectsField)SpotifyToolsSettings.ConfigurationField(obsolete);
         var saved = JsonSerializer.Deserialize<SpotifyToolSettings[]>(migratedCards.DefaultValue!)!;
+        Check(saved.All(c => c.Arguments == SpotifyToolCatalog.DescribeArguments(c.Name)), "Migrated arguments missing");
         Check(saved.Length == 16 && saved.All(t => t.Name != "spotify_connect"), "Removed connect card retained");
         Check(saved.Single(t => t.Name == "spotify_skip").Disabled == "true", "Existing tool preference lost");
         Console.WriteLine("PASS tool cards, editable descriptions, defaults, saved settings, and single-flow authentication configuration");

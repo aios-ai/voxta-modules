@@ -57,9 +57,8 @@ internal static class SpotifyToolCatalog
         new ChatToolChoice("spotify_" + d.Operation, d.Description,
             d.Operation is not ("list_devices" or "transfer_to_device"))).ToArray();
 
-    public static Voxta.Model.Shared.Forms.FormDocumentationField ArgumentsDocumentation() =>
-        ModuleToolDocumentation.Arguments(Definitions.Select((definition, index) =>
-            (Choices[index].Name, definition.Arguments)));
+    public static string DescribeArguments(string name) =>
+        ModuleToolDocumentation.Arguments(Definitions[Array.FindIndex(Choices, choice => choice.Name == name)].Arguments);
 
     public static ModuleToolCatalog Create(SpotifyToolHandler handler, SpotifyToolsSettings settings,
         IReadOnlyDictionary<string, string> playlists, ILogger logger) => new(

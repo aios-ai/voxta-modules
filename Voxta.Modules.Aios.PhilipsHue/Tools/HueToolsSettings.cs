@@ -2,6 +2,7 @@ using Voxta.Abstractions.Registration;
 using Voxta.Abstractions.Services.Agents;
 using Voxta.Model.Shared;
 using Voxta.Model.Shared.Forms;
+using Voxta.Modules.Aios.Tools;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -19,11 +20,13 @@ internal sealed record HueToolsSettings(IReadOnlySet<string> Selected, ChatStyle
         Text = "Offer Hue tools in these chat styles. Defaults to Assistant and Companion.",
     };
 
+    public const string CardsFieldName = "HueToolCardsWithArguments";
+
     private static FormArrayOfObjectsField Field => new()
     {
-        Name = "HueToolCards",
+        Name = CardsFieldName,
         Label = "Hue Tools",
-        Text = "Select a tool to edit the description offered to the model. Disable individual tools using their switches. See Tool arguments below for the inputs each tool accepts.",
+        Text = "Select a tool to edit the description offered to the model. Disable individual tools using their switches. Arguments below the description show the inputs this tool accepts.",
         AllowAddRemove = false,
         AllowRename = false,
         AllowDisable = true,
@@ -36,6 +39,8 @@ internal sealed record HueToolsSettings(IReadOnlySet<string> Selected, ChatStyle
                 Name = nameof(HueToolSettings.Description), Label = "Description", Rows = 5,
                 Text = "Explains to the model when and how to use this tool. An empty description uses the built-in explanation. Arguments and permissions are fixed by the module.",
             },
+            ModuleToolDocumentation.ArgumentsField(),
+            ModuleToolDocumentation.ArgumentsLock(),
         ],
     };
 
@@ -46,6 +51,7 @@ internal sealed record HueToolsSettings(IReadOnlySet<string> Selected, ChatStyle
         field.DefaultValue = JsonSerializer.Serialize(HueToolCatalog.Choices.Select(choice => new HueToolSettings
         {
             Name = choice.Name,
+            Arguments = HueToolCatalog.DescribeArguments(choice.Name),
             Description = current.Descriptions?.GetValueOrDefault(choice.Name) ?? choice.Label,
             Disabled = (!current.Selected.Contains(choice.Name)).ToString().ToLowerInvariant(),
         }));
@@ -56,6 +62,7 @@ internal sealed record HueToolsSettings(IReadOnlySet<string> Selected, ChatStyle
     {
         // Read the saved cards without dropping switches or depending on JSON property casing.
         var raw = settings.GetRawValue(Field.Name);
+        if (string.IsNullOrWhiteSpace(raw)) raw = settings.GetRawValue("HueToolCards");
         var entries = string.IsNullOrWhiteSpace(raw) ? null : JsonSerializer.Deserialize<HueToolSettings[]>(raw,
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
         var configured = (entries ?? []).Where(e => !string.IsNullOrEmpty(e.Name))
@@ -74,6 +81,7 @@ internal sealed class HueToolSettings
 {
     public required string Name { get; init; }
     public string? Description { get; init; }
+    public string? Arguments { get; init; }
     [JsonConverter(typeof(HueDisabledSwitchConverter))]
     public string? Disabled { get; init; }
 }

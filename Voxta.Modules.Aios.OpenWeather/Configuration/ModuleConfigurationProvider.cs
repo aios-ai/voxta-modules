@@ -7,7 +7,7 @@ namespace Voxta.Modules.Aios.OpenWeather.Configuration;
 
 public class ModuleConfigurationProvider : ModuleConfigurationProviderBase, IModuleConfigurationProvider
 {
-    public static string[] FieldsRequiringReload => [ApiKey.Name, "OpenWeatherToolCards", OpenWeatherToolsSettings.Styles.Name];
+    public static string[] FieldsRequiringReload => [ApiKey.Name, "OpenWeatherToolCards", OpenWeatherToolsSettings.CardsFieldName, OpenWeatherToolsSettings.Styles.Name];
     private static readonly string DefaultTileCachePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "Voxta",
@@ -119,7 +119,6 @@ public class ModuleConfigurationProvider : ModuleConfigurationProviderBase, IMod
             MyLocation,
             Units,
             OpenWeatherToolsSettings.ConfigurationField(settings),
-            OpenWeatherToolCatalog.ArgumentsDocumentation(),
             OpenWeatherToolsSettings.Styles.AsField(),
             WeatherDetails,
             PollutionDetails,

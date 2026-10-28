@@ -74,21 +74,39 @@ Check((await Call("toggle_lights", """{"state":"on"}""")).IsError && commands.Co
 commands.Success = true;
 var definitions = catalog.GetTools();
 
-// Configuration help must cover every agent argument without changing the agent-facing description.
-var argumentHelp = HueToolCatalog.ArgumentsDocumentation().Value;
+// Each card must show only its own schema, including when upgrading saved cards.
+var argumentField = (FormArrayOfObjectsField)HueToolsSettings.ConfigurationField(new StaticSettingsSource(new()));
+var argumentCards = JsonSerializer.Deserialize<HueToolSettings[]>(argumentField.DefaultValue!)!;
+Check(argumentField.FieldTemplate.OfType<FormMultilineField>().Any(f => f.Name == "Arguments"), "Missing Arguments inside tool card");
+var argumentLock = argumentField.FieldTemplate.OfType<FormBooleanField>().Single(f => f.Name == "ArgumentsReadOnly");
+Check(argumentLock.Advanced && argumentLock.DefaultValue == true && argumentLock.DisablesFieldsOnActive!.Contains("Arguments"), "Argument reference must be read-only");
+var savedArgumentCards = new StaticSettingsSource(new()
+{
+    [HueToolsSettings.CardsFieldName] = JsonSerializer.Serialize(new[]
+    {
+        new HueToolSettings { Name = "hue_toggle_lights", Description = "Saved card description", Disabled = "true", Arguments = "Not agent instructions" },
+    }),
+});
+var savedArgumentSettings = HueToolsSettings.From(savedArgumentCards);
+Check(!savedArgumentSettings.Selected.Contains("hue_toggle_lights") && savedArgumentSettings.Descriptions!["hue_toggle_lights"] == "Saved card description", "New card settings lost");
+var refreshedArgumentField = (FormArrayOfObjectsField)HueToolsSettings.ConfigurationField(savedArgumentCards);
+var refreshedCard = JsonSerializer.Deserialize<HueToolSettings[]>(refreshedArgumentField.DefaultValue!)!.Single(c => c.Name == "hue_toggle_lights");
+Check(refreshedCard.Arguments == HueToolCatalog.DescribeArguments("hue_toggle_lights"), "Saved argument text must not configure the agent");
 foreach (var tool in catalog.GetTools())
 {
-    Check(argumentHelp.Contains("#### " + tool.Name + "\n"), "Missing argument reference for " + tool.Name);
+    var argumentHelp = argumentCards.Single(c => c.Name == tool.Name).Arguments!;
     var required = tool.InputSchema.TryGetProperty("required", out var requiredNames)
         ? requiredNames.EnumerateArray().Select(n => n.GetString()).ToHashSet() : [];
-    foreach (var property in tool.InputSchema.GetProperty("properties").EnumerateObject())
+    var properties = tool.InputSchema.GetProperty("properties").EnumerateObject().ToArray();
+    if (properties.Length == 0) Check(argumentHelp == "No arguments.", "No-argument tools must be explicit");
+    foreach (var property in properties)
     {
-        var expected = "**" + property.Name + "** (" + property.Value.GetProperty("type").GetString()
+        var expected = property.Name + " (" + property.Value.GetProperty("type").GetString()
             + ", " + (required.Contains(property.Name) ? "required" : "optional") + "): "
             + property.Value.GetProperty("description").GetString();
         Check(argumentHelp.Contains(expected), "Incomplete argument help for " + tool.Name + "." + property.Name);
     }
-    Check(tool.Description?.Contains("### Tool arguments") != true, "Configuration help leaked into agent description");
+    Check(argumentHelp == HueToolCatalog.DescribeArguments(tool.Name), "Wrong tool's arguments displayed");
 }
 
 Check(definitions.Count == 6 && definitions.All(t => t.Source == VoxtaModule.ServiceName && t.AugmentationKey == VoxtaModule.ToolsAugmentationKey && !t.AlwaysAllowed), "Metadata");
@@ -105,10 +123,9 @@ foreach (var flag in new[] { "true", "\"true\"" })
     Check(!saved.Selected.Contains("hue_toggle_lights") && saved.Descriptions!["hue_toggle_lights"] == "Custom toggle", "Card parsing");
 }
 var cards = (FormArrayOfObjectsField)HueToolsSettings.ConfigurationField(new StaticSettingsSource(new()));
-Check(cards.Name == "HueToolCards" && JsonSerializer.Deserialize<HueToolSettings[]>(cards.DefaultValue!)!.Length == 6, "Current tool editor");
+Check(cards.Name == HueToolsSettings.CardsFieldName && JsonSerializer.Deserialize<HueToolSettings[]>(cards.DefaultValue!)!.Length == 6, "Current tool editor");
 var configurationFields = await new Voxta.Modules.Aios.PhilipsHue.Configuration.ModuleConfigurationProvider(null!, null!, null!, null!, null!, null!).GetModuleConfigurationFieldsAsync(null!, new StaticSettingsSource(new()), default);
-Check(configurationFields.OfType<FormDocumentationField>().Any(f => f.Value == argumentHelp), "Missing read-only tool argument reference");
-Check(argumentHelp.Contains("No arguments."), "No-argument tools must be explicit");
+Check(configurationFields.All(f => f is not FormDocumentationField), "Separate argument reference retained");
 var session = DispatchProxy.Create<IChatSessionChatAugmentationApi, SessionProxy>();
 var proxy = (SessionProxy)(object)session;
 var defaultCatalog = HueToolCatalog.Create(new HueToolHandler(manager, "Desk"), defaults, "Desk", NullLogger.Instance);
