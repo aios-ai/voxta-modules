@@ -23,7 +23,7 @@ internal sealed record OpenWeatherToolsSettings(IReadOnlySet<string> Selected, C
     {
         Name = "OpenWeatherToolCards",
         Label = "OpenWeather Tools",
-        Text = "Select a tool to edit the description offered to the model. Disable individual tools using their switches.",
+        Text = "Select a tool to edit the description offered to the model. Disable individual tools using their switches. See Tool arguments below for the inputs each tool accepts.",
         AllowAddRemove = false,
         AllowRename = false,
         AllowDisable = true,

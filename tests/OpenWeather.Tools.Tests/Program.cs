@@ -37,6 +37,7 @@ foreach (var flag in new[] { "true", "\"true\"" })
     Check(JsonSerializer.Deserialize<OpenWeatherToolSettings[]>(field.DefaultValue!)!.Single(c => c.Name == "get_weather").Disabled == "true", "Card round trip");
 }
 var fields = await new ModuleConfigurationProvider().GetModuleConfigurationFieldsAsync(null!, new StaticSettingsSource(new()), default);
+Check(fields.OfType<FormDocumentationField>().Any(f => f.Value == OpenWeatherToolCatalog.ArgumentsDocumentation().Value), "Missing read-only tool argument reference");
 var migrated = OpenWeatherToolsSettings.From(new StaticSettingsSource(new()
 {
     ["OpenWeatherToolCards"] = "[{\"name\":\"openweather_get_weather\",\"description\":\"Saved weather description\",\"disabled\":true},{\"name\":\"openweather_get_weather_map\",\"disabled\":true},{\"name\":\"get_weather_map\",\"disabled\":false}]",
@@ -69,6 +70,24 @@ Task Attach(string description, IImage image, CancellationToken token)
 ModuleToolCatalog Catalog(OpenWeatherChatAugmentationsSettings? config = null, OpenWeatherToolsSettings? tools = null, CancellationToken abort = default) =>
     OpenWeatherToolCatalog.Create(new OpenWeatherToolHandler(client, config ?? settings, CultureInfo.InvariantCulture, Attach, abort), tools ?? defaults, NullLogger.Instance);
 var catalog = Catalog();
+
+// Configuration help must cover every agent argument without changing the agent-facing description.
+var argumentHelp = OpenWeatherToolCatalog.ArgumentsDocumentation().Value;
+foreach (var tool in catalog.GetTools())
+{
+    Check(argumentHelp.Contains("#### " + tool.Name + "\n"), "Missing argument reference for " + tool.Name);
+    var required = tool.InputSchema.TryGetProperty("required", out var requiredNames)
+        ? requiredNames.EnumerateArray().Select(n => n.GetString()).ToHashSet() : [];
+    foreach (var property in tool.InputSchema.GetProperty("properties").EnumerateObject())
+    {
+        var expected = "**" + property.Name + "** (" + property.Value.GetProperty("type").GetString()
+            + ", " + (required.Contains(property.Name) ? "required" : "optional") + "): "
+            + property.Value.GetProperty("description").GetString();
+        Check(argumentHelp.Contains(expected), "Incomplete argument help for " + tool.Name + "." + property.Name);
+    }
+    Check(tool.Description?.Contains("### Tool arguments") != true, "Configuration help leaked into agent description");
+}
+
 var augmentation = new ModuleToolsAugmentation(catalog);
 Check(augmentation.GetRequiredServiceTypes().Length == 0, "Tools must not require action inference");
 var definitions = await augmentation.GetToolsAsync(default);

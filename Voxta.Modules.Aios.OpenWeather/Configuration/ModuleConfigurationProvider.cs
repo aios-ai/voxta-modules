@@ -119,6 +119,7 @@ public class ModuleConfigurationProvider : ModuleConfigurationProviderBase, IMod
             MyLocation,
             Units,
             OpenWeatherToolsSettings.ConfigurationField(settings),
+            OpenWeatherToolCatalog.ArgumentsDocumentation(),
             OpenWeatherToolsSettings.Styles.AsField(),
             WeatherDetails,
             PollutionDetails,

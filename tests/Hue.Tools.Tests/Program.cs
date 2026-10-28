@@ -73,6 +73,24 @@ commands.Success = false;
 Check((await Call("toggle_lights", """{"state":"on"}""")).IsError && commands.Count == before + 1, "Failure retried or hidden");
 commands.Success = true;
 var definitions = catalog.GetTools();
+
+// Configuration help must cover every agent argument without changing the agent-facing description.
+var argumentHelp = HueToolCatalog.ArgumentsDocumentation().Value;
+foreach (var tool in catalog.GetTools())
+{
+    Check(argumentHelp.Contains("#### " + tool.Name + "\n"), "Missing argument reference for " + tool.Name);
+    var required = tool.InputSchema.TryGetProperty("required", out var requiredNames)
+        ? requiredNames.EnumerateArray().Select(n => n.GetString()).ToHashSet() : [];
+    foreach (var property in tool.InputSchema.GetProperty("properties").EnumerateObject())
+    {
+        var expected = "**" + property.Name + "** (" + property.Value.GetProperty("type").GetString()
+            + ", " + (required.Contains(property.Name) ? "required" : "optional") + "): "
+            + property.Value.GetProperty("description").GetString();
+        Check(argumentHelp.Contains(expected), "Incomplete argument help for " + tool.Name + "." + property.Name);
+    }
+    Check(tool.Description?.Contains("### Tool arguments") != true, "Configuration help leaked into agent description");
+}
+
 Check(definitions.Count == 6 && definitions.All(t => t.Source == VoxtaModule.ServiceName && t.AugmentationKey == VoxtaModule.ToolsAugmentationKey && !t.AlwaysAllowed), "Metadata");
 foreach (var removed in new[] { "bridge_connect", "turn_lights_on", "turn_lights_off" })
     Check((await Call(removed)).IsError, "Removed tool dispatched");
@@ -88,6 +106,9 @@ foreach (var flag in new[] { "true", "\"true\"" })
 }
 var cards = (FormArrayOfObjectsField)HueToolsSettings.ConfigurationField(new StaticSettingsSource(new()));
 Check(cards.Name == "HueToolCards" && JsonSerializer.Deserialize<HueToolSettings[]>(cards.DefaultValue!)!.Length == 6, "Current tool editor");
+var configurationFields = await new Voxta.Modules.Aios.PhilipsHue.Configuration.ModuleConfigurationProvider(null!, null!, null!, null!, null!, null!).GetModuleConfigurationFieldsAsync(null!, new StaticSettingsSource(new()), default);
+Check(configurationFields.OfType<FormDocumentationField>().Any(f => f.Value == argumentHelp), "Missing read-only tool argument reference");
+Check(argumentHelp.Contains("No arguments."), "No-argument tools must be explicit");
 var session = DispatchProxy.Create<IChatSessionChatAugmentationApi, SessionProxy>();
 var proxy = (SessionProxy)(object)session;
 var defaultCatalog = HueToolCatalog.Create(new HueToolHandler(manager, "Desk"), defaults, "Desk", NullLogger.Instance);

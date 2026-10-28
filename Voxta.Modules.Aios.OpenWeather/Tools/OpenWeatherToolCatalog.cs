@@ -45,6 +45,10 @@ internal static class OpenWeatherToolCatalog
 
     public static readonly ChatToolChoice[] Choices = Definitions.Select(d => new ChatToolChoice(d.Name, d.Description, true)).ToArray();
 
+    public static Voxta.Model.Shared.Forms.FormDocumentationField ArgumentsDocumentation() =>
+        ModuleToolDocumentation.Arguments(Definitions.Select((definition, index) =>
+            (Choices[index].Name, definition.Arguments)));
+
     public static ModuleToolCatalog Create(OpenWeatherToolHandler handler, OpenWeatherToolsSettings settings, ILogger logger) => new(
         Definitions.Select((d, i) => new ModuleTool(new ChatTool(Choices[i].Name,
             settings.Descriptions?.GetValueOrDefault(Choices[i].Name) ?? d.Description,

@@ -56,6 +56,24 @@ internal static class SpotifyConfigurationChecks
         Check(settings.Descriptions!["spotify_skip"] == "Custom explanation", "Description was lost");
         Check(settings.Selected.Contains("spotify_search"), "New search tool missing from saved card configuration");
         var catalog = SpotifyToolCatalog.Create(null!, settings, new Dictionary<string, string>(), NullLogger.Instance);
+
+        // Configuration help must cover every agent argument without changing the agent-facing description.
+        var argumentHelp = SpotifyToolCatalog.ArgumentsDocumentation().Value;
+        foreach (var tool in catalog.GetTools())
+        {
+            Check(argumentHelp.Contains("#### " + tool.Name + "\n"), "Missing argument reference for " + tool.Name);
+            var required = tool.InputSchema.TryGetProperty("required", out var requiredNames)
+                ? requiredNames.EnumerateArray().Select(n => n.GetString()).ToHashSet() : [];
+            foreach (var property in tool.InputSchema.GetProperty("properties").EnumerateObject())
+            {
+                var expected = "**" + property.Name + "** (" + property.Value.GetProperty("type").GetString()
+                    + ", " + (required.Contains(property.Name) ? "required" : "optional") + "): "
+                    + property.Value.GetProperty("description").GetString();
+                Check(argumentHelp.Contains(expected), "Incomplete argument help for " + tool.Name + "." + property.Name);
+            }
+            Check(tool.Description?.Contains("### Tool arguments") != true, "Configuration help leaked into agent description");
+        }
+        Check(argumentHelp.Contains("No arguments."), "No-argument tools must be explicit");
         var description = catalog.GetTools().Single(t => t.Name == "spotify_skip").Description;
         Check(description == "Custom explanation", "Shared policies must not be duplicated into custom descriptions");
         var transfer = catalog.GetTools().Single(t => t.Name == "spotify_transfer_to_device");
@@ -78,6 +96,7 @@ internal static class SpotifyConfigurationChecks
         var listOnly = SpotifyToolGuidance.Build(new HashSet<string> { "spotify_list_devices" });
         Check(listOnly.Contains("device discovery only") && !listOnly.Contains("transfer"), "Discovery-only guidance offers disabled transfer");
         var fields = await new ModuleConfigurationProvider(null!, new SpotifyOAuthFlows()).GetModuleConfigurationFieldsAsync(null!, empty, default);
+        Check(fields.OfType<FormDocumentationField>().Any(f => f.Value == argumentHelp), "Missing read-only tool argument reference");
         Check(fields.OfType<FormAuthorizeField>().Single().Name == "SpotifyAccount", "Missing account field");
         Check(fields.OfType<FormInvokeActionField>().Single().Name == ModuleConfigurationProvider.Reauthenticate.Name,
             "Missing native Spotify authorization recovery button");

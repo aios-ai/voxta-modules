@@ -62,6 +62,7 @@ public class ModuleConfigurationProvider(IUnitOfWorkFactory unitOfWorkFactory,
            Reauthenticate,
            CharacterControlledLight,
            HueToolsSettings.ConfigurationField(settings),
+           HueToolCatalog.ArgumentsDocumentation(),
            HueToolsSettings.Styles.AsField()
        );
         return Task.FromResult(fields);

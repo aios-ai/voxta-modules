@@ -137,6 +137,7 @@ Daily Mix 6="
             SpeechDuckingReductionPercent,
             SpecialPlaylists,
             SpotifyToolsSettings.ConfigurationField(settings),
+            SpotifyToolCatalog.ArgumentsDocumentation(),
             SpotifyToolsSettings.Styles.AsField()
         );
         return Task.FromResult(fields);

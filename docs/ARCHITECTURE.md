@@ -366,7 +366,12 @@ an action handler or construct synthetic action messages. Keep transport and dat
 presentation. The augmentation labels are **OpenWeather**, **Philips Hue** and **Spotify Control**, while stable internal
 keys retain their `_tools` suffix. Spotify's augmentation label matches its module label so Voxta's selector
 shows a single Spotify Control name instead of Spotify Control: Spotify. Tool cards remain labeled as tools
-because they configure individual tools.
+because they configure individual tools. Each module displays a read-only **Tool arguments** reference directly
+below its tool cards. `ModuleToolDocumentation` generates the reference from the same
+`FunctionArgumentDefinition` arrays used for agent schemas, including names, types, required/optional status
+and full descriptions (accepted values, limits and defaults). Tools without arguments are labeled explicitly.
+The reference is configuration documentation only; it is never appended to editable descriptions or agent context
+and does not introduce argument settings or change saved tool preferences.
 
 For future migrations, expose a separate opt-in tools augmentation during comparison and remove the old path
 after acceptance. Spotify tools default enabled except device discovery and transfer, which require explicit
