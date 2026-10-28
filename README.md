@@ -27,7 +27,9 @@ select OpenWeather; existing tool-enabled chats keep their selection.
 All five tools default enabled in Assistant and Companion chats. The **OpenWeather Tools** cards let you disable
 individual tools and edit their descriptions. City queries use **My Location** when no location is supplied;
 without either, the agent can ask which city to use. Maps support countries, continents and global views and
-attach images visibly to the chat and return them to the model. The API key stays in Voxta's encrypted password-field configuration.
+attach images visibly to the chat and return them to the model with geographic bounds, layer units and a local
+color-legend reference for brief visual descriptions. This adds no extra API requests.
+The API key stays in Voxta's encrypted password-field configuration.
 
 The module itself is free. It requires Voxta `1.13.0` or newer and an OpenWeather API key; OpenWeather offers a
 rate-limited free plan.

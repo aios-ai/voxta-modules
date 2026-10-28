@@ -35,6 +35,16 @@ The shared foundation is compiled privately into all three modules, and all thre
   rendered as transcript attachments by the inspected host. The attachment is queued once, marked with
   `ComputerVisionSource.Tool`, and does not trigger another reply. Attachment failures/cancellation do not
   produce a successful tool result. No separate feedback note or follow-up generation is sent.
+- `WeatherMapImage` carries PNG bytes, the actual stitched Web Mercator viewport, pixel dimensions, zoom and
+  composite-cache reuse from the existing tile plan. `WeatherMapPresentation` adds a local text color legend
+  from [OpenWeather's published default styles](https://openweathermap.org/api/map_legend), layer units and
+  qualitative vision guidance to the same tool result. No extra provider requests, images or tools are added.
+  Bounds cover the full tile rectangle (including neighboring territory); wrapped viewports explicitly identify
+  the antimeridian. Map units are fixed by the layer, independently of configured weather-report units. The
+  result distinguishes cached composition from unknown provider observation time and does not claim live radar.
+  Reference colors blend with the base map and are not extracted measurements. Vision guidance asks for a brief
+  visible pattern only when the model can inspect the image; it prohibits invented exact values and cross-layer
+  claims such as clear skies from a precipitation map. The user-facing attachment retains a short caption.
 - `WeatherReportFormatter` formats tool weather and pollution results; forecasts reuse the existing summarizers.
   Wind labels follow configured units and current precipitation honors its detail selector. The manually entered
   API key remains a host-encrypted password field, decrypted with `ILocalEncryptionProvider` when creating the
@@ -43,7 +53,8 @@ The shared foundation is compiled privately into all three modules, and all thre
 Run `dotnet run --project tests/OpenWeather.Tools.Tests -c Release -p:RestoreLockedMode=true` for all five
 operations, settings migration, input validation, metadata, provider failures, cancellation and attachment dispatch.
 Real map composition is checked using fake HTTP tiles: PNG decoding, grid dimensions, overlay pixels, composite
-cache, tile errors and cancellation. The user accepted weather tools; chat display of the corrected map attachment
+cache, actual global/country/date-line viewport metadata, all five legends, no additional requests, tile errors
+and cancellation. The user accepted weather tools; chat display of the corrected map attachment
 still requires live acceptance in Voxta.
 
 ## Philips Hue integration

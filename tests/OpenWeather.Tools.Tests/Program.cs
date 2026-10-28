@@ -85,7 +85,7 @@ foreach (var operation in new[] { "get_weather", "get_weather_forecast", "get_ai
     Check(result.Text.Contains(operation == "get_weather_map" ? "DE" : "Frankfurt am Main, DE"), operation + " preserves location");
     if (operation == "get_weather")
     {
-        Check(result.Text.Contains("°F") && result.Text.Contains("mph") && result.Text.Contains("Rain: 2"), "Current units and precipitation selection");
+        Check(result.Text.Contains("°F") && result.Text.Contains("mph") && result.Text.Contains("Rain: 2"), "Current units and precipitation selection: " + result.Text);
         Check(!result.Text.Contains("Cloud cover"), "Unselected details omitted");
     }
     if (operation == "get_weather_forecast") Check(result.Text.Contains("°F") && result.Text.Contains("mph"), "Forecast units");
@@ -129,6 +129,26 @@ await Call(catalog, "get_weather_map", "{\"layer\":\"clouds\"}");
 Check(fake.Target.Type == MapTargetType.Global, "Maps default global without My Location");
 await Call(catalog, "get_weather_map", "{\"layer\":\"wind\",\"location\":\"Europe\"}");
 Check(fake.Target.Type == MapTargetType.Continent && fake.Target.Identifier == "EU", "Continent map");
+foreach (var (layer, unit) in new[] { ("temp", "°C"), ("wind", "m/s"), ("pressure", "hPa"), ("clouds", "%"), ("precipitation", "mm") })
+{
+    fake.Calls.Clear();
+    attachments.Clear();
+    var result = await Call(catalog, "get_weather_map", JsonSerializer.Serialize(new { layer, location = "Germany" }));
+    Check(!result.IsError && fake.Calls.Count == 1 && attachments.Count == 1, "Metadata adds no provider calls or images");
+    Check(result.Text.Contains("Rendered viewport") && result.Text.Contains("north up") && result.Text.Contains("neighboring countries"), "Geographic interpretation context");
+    Check(result.Text.Contains("Color legend:") && result.Text.Contains(unit) && result.Text.Contains("https://openweathermap.org/api/map_legend"), "Layer legend and fixed provider units");
+    Check(result.Text.Contains("observation time is not supplied") && result.Text.Contains("cannot view the image") && result.Text.Contains("qualitative"), "Honest time and vision limitations");
+    if (layer == "precipitation") Check(result.Text.Contains("clear skies") && result.Text.Contains("do not establish zero"), "Precipitation cannot prove clear skies or zero precipitation");
+}
+var originalCulture = CultureInfo.CurrentCulture;
+try
+{
+    CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("de-DE");
+    var text = WeatherMapPresentation.Describe(new WeatherMapImage([1], new(170, -25.1234, -170, -10, true, 5, 512, 256), true), (MapTargetType.Country, "FJ"), "wind_new");
+    Check(text.Contains("south -25.1234") && text.Contains("antimeridian: true") && text.Contains("cache: true"), "Invariant bounds, date-line crossing and cache metadata");
+}
+finally { CultureInfo.CurrentCulture = originalCulture; }
+Console.WriteLine("PASS all five map legends, fixed units, geography, vision limitations and no extra requests");
 fake.Empty = true;
 foreach (var operation in new[] { "get_weather_forecast", "get_air_pollution", "get_air_pollution_forecast", "get_weather_map" })
     Check((await Call(catalog, operation, operation == "get_weather_map" ? "{\"layer\":\"temp\"}" : "{}")).IsError, "Empty provider data: " + operation);
@@ -268,7 +288,8 @@ public class WeatherClientProxy : DispatchProxy
         {
             Target = ((MapTargetType, string))args[0]!;
             Layer = (string)args[1]!; Cache = (string)args[2]!;
-            return Task.FromResult(Result(Empty ? Array.Empty<byte>() : new byte[] { 137, 80, 78, 71 }));
+            return Task.FromResult(Result(new WeatherMapImage(Empty ? Array.Empty<byte>() : new byte[] { 137, 80, 78, 71 },
+                new(-180, -85.0511, 180, 85.0511, false, 2, 1024, 1024), CompositeFromCache: false)));
         }
         Location = (string)args[0]!;
         if (name == "FetchWeatherData" || name == "FetchForecastData") Units = (string?)args[1];

@@ -32,15 +32,15 @@ internal sealed class OpenWeatherToolHandler(
             var result = await client.FetchWeatherMapAsync(target, normalizedLayer, settings.TileCachePath, token);
             token.ThrowIfCancellationRequested();
             if (!result.Success) return Failure(result);
-            if (result.Value is not { Length: > 0 }) return new("OpenWeather returned an empty map image.", IsError: true);
+            if (result.Value is not { Bytes.Length: > 0 }) return new("OpenWeather returned an empty map image.", IsError: true);
             var description = $"Weather map for {target.Identifier}: {WeatherMapHelper.ToDisplayName(normalizedLayer)}.";
-            var image = new BytesImage("image/png", result.Value, ComputerVisionSource.Tool)
+            var image = new BytesImage("image/png", result.Value.Bytes, ComputerVisionSource.Tool)
             { FileName = $"weathermap_{normalizedLayer}_{target.Identifier}.png" };
             // SDK result images reach the model. A chat attachment also makes the map visible to the user,
             // matching Voxta's own MCP image-tool integration. This does not trigger another reply.
             await attachImage(description, image, token);
             token.ThrowIfCancellationRequested();
-            return new(description + " The map image was attached to the conversation.") { Images = [image] };
+            return new(WeatherMapPresentation.Describe(result.Value, target, normalizedLayer)) { Images = [image] };
 
         }
 

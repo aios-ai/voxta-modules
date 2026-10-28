@@ -1,5 +1,4 @@
 using System.Net;
-using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
@@ -17,14 +16,29 @@ internal static class WeatherMapChecks
             var logger = new MapLogger();
             var client = new OpenWeatherClient(http, "test-key", logger);
             var result = await client.FetchWeatherMapAsync((MapTargetType.Global, "Global"), "temp_new", cache, default);
-            Check(result.Success && result.Value is { Length: > 0 }, "Real compositor returns PNG data: " + logger.Error);
-            using var map = Image.Load<Rgba32>(result.Value!);
+            Check(result.Success && result.Value is { Bytes.Length: > 0 }, "Real compositor returns PNG data: " + logger.Error);
+            using var map = Image.Load<Rgba32>(result.Value!.Bytes);
             Check(map.Width == 1024 && map.Height == 1024, "Global tile grid is stitched correctly");
             Check(map[20, 20].B > map[20, 20].R, "Weather overlay is drawn on the base map");
             Check(transport.Requests == 32, "Sixteen base tiles and sixteen overlays fetched once");
             var count = transport.Requests;
             var cached = await client.FetchWeatherMapAsync((MapTargetType.Global, "Global"), "temp_new", cache, default);
-            Check(cached.Success && cached.Value!.SequenceEqual(result.Value!) && transport.Requests == count, "Composite cache preserves PNG without more requests");
+            Check(cached.Success && cached.Value!.Bytes.SequenceEqual(result.Value!.Bytes) && transport.Requests == count, "Composite cache preserves PNG without more requests");
+
+            Check(result.Value!.Viewport == cached.Value!.Viewport && !result.Value.CompositeFromCache && cached.Value.CompositeFromCache, "Cache retains identical viewport and reports image reuse");
+            var viewport = result.Value.Viewport;
+            Check(viewport.West == -180 && viewport.East == 180 && Math.Abs(viewport.North - 85.05112878) < 0.0001
+                && Math.Abs(viewport.South + 85.05112878) < 0.0001 && !viewport.CrossesAntimeridian, "Actual global Mercator viewport");
+            Check(viewport.Width == map.Width && viewport.Height == map.Height && viewport.Zoom == 2, "Viewport dimensions match the generated image");
+            var country = await client.FetchWeatherMapAsync((MapTargetType.Country, "DE"), "temp_new", cache, default);
+            Check(country.Success, "Country composition succeeds");
+            var cv = country.Value!.Viewport;
+            CountryCentroids.TryGetBounds("DE", out var bounds);
+            Check(cv.West <= bounds.MinLon && cv.East >= bounds.MaxLon && cv.South <= bounds.MinLat && cv.North >= bounds.MaxLat, "Rendered country viewport covers requested bounds");
+            using var countryImage = Image.Load<Rgba32>(country.Value.Bytes);
+            Check(countryImage.Width == cv.Width && countryImage.Height == cv.Height, "Country viewport matches actual tile rectangle");
+            var crossing = await client.FetchWeatherMapAsync((MapTargetType.Country, "FJ"), "temp_new", cache, default);
+            Check(crossing.Success && crossing.Value!.Viewport.CrossesAntimeridian && crossing.Value.Viewport.West > crossing.Value.Viewport.East, "Actual date-line country viewport is represented correctly");
 
             transport.Fail = true;
             var failed = await client.FetchWeatherMapAsync((MapTargetType.Country, "DE"), "wind_new", cache, default);

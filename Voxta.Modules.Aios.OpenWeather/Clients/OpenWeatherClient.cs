@@ -52,7 +52,7 @@ public interface IOpenWeatherClient
     Task<OpenWeatherResult<OpenWeatherForecastResponse>> FetchForecastData(string location, string? units, CancellationToken cancellationToken);
     Task<OpenWeatherResult<OpenWeatherAirPollutionResponse>> FetchAirPollutionData(string location, CancellationToken cancellationToken);
     Task<OpenWeatherResult<OpenWeatherAirPollutionResponse>> FetchAirPollutionForecastData(string location, CancellationToken cancellationToken);
-    Task<OpenWeatherResult<byte[]>> FetchWeatherMapAsync(
+    Task<OpenWeatherResult<WeatherMapImage>> FetchWeatherMapAsync(
         (MapTargetType Type, string Identifier) target,
         string layer,
         string cacheDir,
@@ -257,13 +257,13 @@ public class OpenWeatherClient(
         }
     }
     
-    public async Task<OpenWeatherResult<byte[]>> FetchWeatherMapAsync(
+    public async Task<OpenWeatherResult<WeatherMapImage>> FetchWeatherMapAsync(
         (MapTargetType Type, string Identifier) target,
         string layer,
         string cacheDir,
         CancellationToken cancellationToken)
     {
-        var ready = EnsureConfigured<byte[]>();
+        var ready = EnsureConfigured<WeatherMapImage>();
         if (!ready.Success)
             return ready;
 
@@ -274,14 +274,14 @@ public class OpenWeatherClient(
             if (maybePlan is not { } plan)
             {
                 logger.LogWarning("No map bounds found for {TargetType} {Identifier}", target.Type, target.Identifier);
-                return Fail<byte[]>(OpenWeatherOperationState.MissingResource, $"No map target was found for {target.Identifier}.");
+                return Fail<WeatherMapImage>(OpenWeatherOperationState.MissingResource, $"No map target was found for {target.Identifier}.");
             }
 
             var compositeCacheKey =
                 $"{target.Type}_{target.Identifier}_{layer}_z{plan.Zoom}_x{plan.MinX}-{plan.MaxX}_y{plan.MinY}-{plan.MaxY}";
             var cachedComposite = await tileFetcher.TryGetCompositeMapAsync(compositeCacheKey, cancellationToken);
             if (cachedComposite is { Length: > 0 })
-                return Ok(cachedComposite);
+                return Ok(new WeatherMapImage(cachedComposite, plan.Viewport(), CompositeFromCache: true));
 
             const int tileSize = 256;
             using var stitched = new Image<Rgba32>(tileSize * plan.Width, tileSize * plan.Height);
@@ -310,7 +310,7 @@ public class OpenWeatherClient(
             await stitched.SaveAsPngAsync(output, cancellationToken);
             var bytes = output.ToArray();
             await tileFetcher.SaveCompositeMapAsync(compositeCacheKey, bytes, cancellationToken);
-            return Ok(bytes);
+            return Ok(new WeatherMapImage(bytes, plan.Viewport(), CompositeFromCache: false));
         }
         catch (TileFetchException ex)
         {
@@ -325,12 +325,12 @@ public class OpenWeatherClient(
                 ? "OpenStreetMap blocked the map tile request. Check the module logs for the tile usage policy response."
                 : $"{ex.Provider} could not return a map tile. Check the module logs for details.";
 
-            return Fail<byte[]>(OpenWeatherOperationState.Unavailable, message);
+            return Fail<WeatherMapImage>(OpenWeatherOperationState.Unavailable, message);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogError(ex, "Unexpected error generating weather map for {Target}", target.Identifier);
-            return Fail<byte[]>(OpenWeatherOperationState.Unavailable, "OpenWeather map data is currently unavailable. Try again later.");
+            return Fail<WeatherMapImage>(OpenWeatherOperationState.Unavailable, "OpenWeather map data is currently unavailable. Try again later.");
         }
     }
 
@@ -423,6 +423,18 @@ public class OpenWeatherClient(
         public int Width => MaxX - MinX + 1;
         public int Height => MaxY - MinY + 1;
         public int TileCount => Width * Height;
+
+        public WeatherMapViewport Viewport()
+        {
+            var count = 1 << Zoom;
+            var west = MinX / (double)count * 360 - 180;
+            var east = (MaxX + 1) / (double)count * 360 - 180;
+            var crosses = east > 180;
+            if (crosses) east -= 360;
+            static double Latitude(int y, int tiles) => Math.Atan(Math.Sinh(Math.PI * (1 - 2.0 * y / tiles))) * 180 / Math.PI;
+            return new(west, Latitude(MaxY + 1, count), east, Latitude(MinY, count), crosses,
+                Zoom, Width * 256, Height * 256);
+        }
 
         public static TilePlan FromBounds(GeoBounds bounds, int zoom, int padding)
         {
