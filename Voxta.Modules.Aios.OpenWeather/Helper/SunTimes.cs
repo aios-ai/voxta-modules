@@ -1,6 +1,5 @@
 using System.Globalization;
 using CosineKitty;
-using GeoTimeZone;
 using Voxta.Modules.Aios.OpenWeather.Clients;
 using Voxta.Modules.Aios.Tools;
 
@@ -19,11 +18,7 @@ internal sealed record SunTimes(DateOnly Date, string TimeZone, DateTimeOffset? 
     public static SunTimes Calculate(GeoResult location, string date, DateTimeOffset utcNow)
     {
         ValidateDate(date);
-        if (!double.IsFinite(location.Lat) || !double.IsFinite(location.Lon) || Math.Abs(location.Lat) > 90 || Math.Abs(location.Lon) > 180)
-            throw new ModuleToolInputException("Sun times require valid location coordinates.");
-        var zoneId = TimeZoneLookup.GetTimeZone(location.Lat, location.Lon).Result;
-        if (!TimeZoneInfo.TryFindSystemTimeZoneById(zoneId, out var zone))
-            throw new ModuleToolInputException("The destination time zone is unavailable on this system; date-specific local sun times cannot be determined reliably.");
+        var zone = LocationTimeZone.Resolve(location);
         var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(utcNow, zone).DateTime);
         var requested = date switch
         {
@@ -45,7 +40,7 @@ internal sealed record SunTimes(DateOnly Date, string TimeZone, DateTimeOffset? 
             // Search bounds are inclusive in the library; our local calendar day is half-open.
             return utc >= start && utc < end ? TimeZoneInfo.ConvertTime(utc, zone) : null;
         }
-        return new(requested, zoneId, Event(Direction.Rise), Event(Direction.Set));
+        return new(requested, zone.Id, Event(Direction.Rise), Event(Direction.Set));
     }
 
     private static DateTimeOffset StartOfDay(DateOnly date, TimeZoneInfo zone)

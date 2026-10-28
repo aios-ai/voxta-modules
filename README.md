@@ -39,8 +39,18 @@ horizon; terrain and atmosphere may alter visible times. Polar dates can have no
 Current weather sun times apply only to their displayed date; the forecast endpoint redirects date-specific sun
 questions to `get_sun_times` instead of repeating today's values.
 `get_air_pollution_history` accepts ISO 8601 `start`/`end` timestamps with a UTC offset or Z, from 27 November
-2020 onward, up to 31 days per call. The end is exclusive; history and pollution forecasts summarize UTC
-periods. Weather forecasts use destination day/night periods. Locations accept full city/state/country names,
+2020 onward, up to 31 days per call. The end is exclusive; history summarizes UTC periods.
+Weather and pollution forecasts accept optional `start` AND `end` to target a time frame. Use `today`,
+`tomorrow`, `YYYY-MM-DD`, or a date with `THH:mm[:ss]` and optional `Z`/UTC offset. Without an offset,
+times use the destination time zone and daylight-saving rules; date-only values mean local midnight. For
+example, `start: tomorrowT06:00`, `end: tomorrowT12:00` requests tomorrow morning (end exclusive).
+Targeted weather results show individual three-hour entries (approximately five days ahead); pollution shows
+hourly entries (approximately four days ahead). Each includes at most one surrounding entry per side, labelled
+as context. Actual returned timestamps determine availability; gaps and partial coverage are explicit, and
+wholly unavailable windows return a limitation. No interpolation or extrapolation is performed. Ambiguous or
+skipped local clock times require an explicit offset. With no range, the existing weather day/night summaries
+and UTC pollution summaries remain the default. `details` still controls which fields are returned.
+Locations accept full city/state/country names,
 `zip:10115,DE` (country required), or `52.52,13.405` (latitude,longitude). These features use the standard
 free APIs without a One Call subscription.
 The API key stays in Voxta's encrypted password-field configuration.

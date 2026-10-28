@@ -252,6 +252,7 @@ Console.WriteLine("PASS tools-only registration, stable key, short names, native
 await WeatherMapChecks.RunAsync();
 await WeatherDataChecks.RunAsync();
 await SunTimesChecks.RunAsync();
+await ForecastWindowChecks.RunAsync();
 
 static Task<ChatToolCallResult> Call(ModuleToolCatalog catalog, string operation, string json) =>
     catalog.CallToolAsync(operation, JsonSerializer.SerializeToElement(JsonSerializer.Deserialize<JsonElement>(json)), default).AsTask();

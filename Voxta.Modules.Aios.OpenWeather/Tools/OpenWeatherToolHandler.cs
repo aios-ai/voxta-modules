@@ -63,6 +63,8 @@ internal sealed class OpenWeatherToolHandler(
         var pollution = operation.StartsWith("get_air_pollution", StringComparison.Ordinal);
         var details = WeatherDetailSelection.Resolve(Text(arguments, "details"), pollution ? _pollutionDetails : _weatherDetails,
             pollution ? WeatherDetailSelection.Pollution : operation == "get_weather_forecast" ? WeatherDetailSelection.Forecast : WeatherDetailSelection.Weather);
+        var windowRequest = operation is "get_weather_forecast" or "get_air_pollution_forecast"
+            ? ForecastWindowRequest.Parse(Text(arguments, "start"), Text(arguments, "end")) : null;
 
         switch (operation)
         {
@@ -80,6 +82,14 @@ internal sealed class OpenWeatherToolHandler(
                 var data = result.Value!;
                 if (data.List.Count == 0) return new("OpenWeather returned no weather forecast data.", IsError: true);
                 var forecastDetails = details.Except(["Sunrise", "Sunset"], StringComparer.OrdinalIgnoreCase).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                if (windowRequest != null)
+                {
+                    var window = windowRequest.Resolve(data.ResolvedLocation, DateTimeOffset.UtcNow);
+                    var text = forecastDetails.Count == 0 ? "" : ForecastWindowFormatter.Weather(data, window, location, settings.Units, forecastDetails);
+                    if (details.Contains("Sunrise") || details.Contains("Sunset"))
+                        text += "\nUse get_sun_times for sunrise/sunset on the requested date; these fields are unavailable from this forecast endpoint.";
+                    return new(text.Trim());
+                }
                 var summary = forecastDetails.Count == 0 ? "" : WeatherForecastSummariser.Summarise(data.List, culture, forecastDetails,
                     days: 5, unitSuffix: settings.Units == "imperial" ? "°F" : "°C", windUnit: WeatherReportFormatter.WindUnit(settings.Units), utcOffset: data.City.Timezone ?? 0);
                 if (details.Contains("Sunrise") || details.Contains("Sunset"))
@@ -100,6 +110,12 @@ internal sealed class OpenWeatherToolHandler(
                 token.ThrowIfCancellationRequested();
                 if (!result.Success) return Failure(result);
                 if (result.Value!.List.Count == 0) return new("OpenWeather returned no air quality forecast data.", IsError: true);
+                if (windowRequest != null)
+                {
+                    var data = result.Value;
+                    var window = windowRequest.Resolve(data.ResolvedLocation, DateTimeOffset.UtcNow);
+                    return new(ForecastWindowFormatter.Pollution(data, window, location, details));
+                }
                 return new($"Air pollution forecast for {location} (UTC day/night averages):\n{AirPollutionForecastSummariser.Summarise(result.Value.List, culture, details, days: 5)}");
             }
             case "get_air_pollution_history":

@@ -70,13 +70,13 @@ internal static class WeatherReportFormatter
             if (details.Contains(key)) sb.Append($"{label}: {(value.HasValue ? value.Value.ToString("0.#", CultureInfo.InvariantCulture) + unit : "unavailable")}. ");
     }
 
-    public static string Pollution(OpenWeatherAirPollutionResponse data, string location, HashSet<string> details)
+    public static string Pollution(OpenWeatherAirPollutionResponse data, string location, HashSet<string> details, bool includeHeading = true)
     {
         var aqi = data.List[0].Main.Aqi;
         var components = data.List[0].Components;
 
         var sb = new StringBuilder();
-        sb.Append($"Current air quality in {location}: ");
+        if (includeHeading) sb.Append($"Current air quality in {location}: ");
 
         if (details.Contains("AQI"))
         {

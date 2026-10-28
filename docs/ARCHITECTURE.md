@@ -62,8 +62,21 @@ The shared foundation is compiled privately into all three modules, and all thre
   `/geo/1.0/reverse` for `latitude,longitude`. Reverse lookup retains the exact requested weather coordinates.
   All data/geocoding calls use HTTPS and invariant decimal coordinates. Postal countries and coordinate ranges
   are validated before requesting geocoding. These formats also work in My Location; maps retain their own targets.
+- Weather/pollution forecast tools retain their default summaries when both optional `start`/`end` arguments
+  are omitted. Supplying both enables targeted output: `ForecastWindowRequest` validates strict date/time formats,
+  resolves `today`/`tomorrow` in the destination zone, and requires clarification for ambiguous/skipped local clock
+  times without an explicit offset. The end is exclusive. A request wholly outside the returned timestamps fails
+  with the available range; partial bounds and missing entries are stated explicitly. Horizons are approximately
+  five days at three-hour steps for weather and four days at hourly steps for pollution; actual responses are
+  authoritative. `ForecastWindow` selects individual entries plus one real context entry on either side, labelled
+  outside the window, without interpolating or extrapolating. `ForecastWindowFormatter` preserves selected details
+  and units and identifies precipitation as three-hour accumulations ending at each valid time, not window totals.
+  The client retains the already-resolved geolocation in JSON-ignored response metadata, so targeted output adds
+  no provider calls. Shared `LocationTimeZone` owns offline coordinate-to-zone lookup for forecasts and sun times.
+  `ForecastWindowChecks` covers local/UTC and relative dates, exclusive bounds, DST days/repeated hours, context
+  around narrow windows, partial/missing coverage, detail overrides, default summaries and request counts.
 - `get_sun_times` resolves locations through the existing free geocoder and calculates events locally using pinned
-  Astronomy Engine and GeoTimeZone packages. `SunTimes` owns date validation, coordinate-to-IANA-zone lookup,
+  Astronomy Engine and GeoTimeZone packages. `SunTimes` owns date validation,
   and a half-open destination civil-day search (23/24/25 hours), using system time-zone rules at each event.
   `today`/`tomorrow` use the destination's current date, never the host date or today's fixed API offset.
   Explicit dates support 1901-2099. Missing system zones, skipped civil dates and invalid coordinates return clear

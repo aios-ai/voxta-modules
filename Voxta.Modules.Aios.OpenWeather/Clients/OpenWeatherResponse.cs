@@ -60,6 +60,8 @@ public class GeoResult
 
 public class OpenWeatherForecastResponse
 {
+    [JsonIgnore]
+    public GeoResult? ResolvedLocation { get; set; }
     [JsonPropertyName("cod")]
     public string? Cod { get; init; }
 
@@ -174,6 +176,8 @@ public class ForecastSys
 
 public class OpenWeatherAirPollutionResponse
 {
+    [JsonIgnore]
+    public GeoResult? ResolvedLocation { get; set; }
     public List<AirPollutionData> List { get; set; } = new();
 }
 

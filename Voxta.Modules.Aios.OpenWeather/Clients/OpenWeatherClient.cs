@@ -161,6 +161,7 @@ public class OpenWeatherClient(
                 return Fail<OpenWeatherForecastResponse>(OpenWeatherOperationState.ApiFailure, "OpenWeather returned an unreadable forecast response.");
             }
 
+            content.ResolvedLocation = geo.Value;
             return Ok(content);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -257,6 +258,7 @@ public class OpenWeatherClient(
                 return Fail<OpenWeatherAirPollutionResponse>(OpenWeatherOperationState.ApiFailure, "OpenWeather returned an unreadable air pollution time series response.");
             }
 
+            content.ResolvedLocation = geo.Value;
             return Ok(content);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
