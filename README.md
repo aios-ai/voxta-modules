@@ -72,10 +72,10 @@ addresses require HTTPS; local HTTP requires an explicit loopback IP such as `12
 next provider request, an active client notices the removed token and clears its cached connection. The module
 logs `Spotify OAuth sign-out requested` when the request reaches it.
 
-Select **Spotify** for native tool calling. All tools default on and **Offer Tools In** defaults to
+Select **Spotify Control** for native tool calling. All tools default on and **Offer Tools In** defaults to
 Assistant and Companion. The **Spotify Tools** cards provide individual switches and editable descriptions.
 Saved selections/styles are retained. Spotify's legacy actions, wake word, connect gate, and connection flags
-have been removed. Chats that used only **Spotify Actions (Legacy)** must select **Spotify**.
+have been removed. Chats that used only **Spotify Actions (Legacy)** must select **Spotify Control**.
 
 All Spotify tools appear automatically when an active player is detected, including a paused player.
 Without one, all Spotify tools are hidden. Context guides the assistant to ask the user to open Spotify on

@@ -15,7 +15,7 @@ public class VoxtaModule : IVoxtaModule
 
     public static readonly AugmentationKeyDescriptor[] Augmentations =
     [
-        new(ToolsAugmentationKey, "Spotify", "Control Spotify through native chat tools. Enable the desired tools in module settings."),
+        new(ToolsAugmentationKey, "Spotify Control", "Control Spotify through native chat tools. Enable the desired tools in module settings."),
     ];
 
     public void Configure(IVoxtaModuleBuilder builder)

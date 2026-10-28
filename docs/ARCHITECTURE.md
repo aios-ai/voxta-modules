@@ -8,7 +8,7 @@ Hue exposes only the opt-in
 `spotify_tools` augmentation and uses the shared catalog and native agent loop. Its legacy actions, wake word,
 connection/playing flags, connect alias, automatic search ranking, and action feedback have been removed after
 user verification of tools. Existing chats configured only for the removed `spotify` augmentation must select
-**Spotify**. Obsolete action settings are ignored; saved tool choices and styles remain compatible.
+**Spotify Control**. Obsolete action settings are ignored; saved tool choices and styles remain compatible.
 
 The shared foundation is compiled privately into all three modules, and all three register native tools.
 
@@ -159,7 +159,7 @@ inventory and native storage in Voxta. Disconnected-only status behavior still n
   through the monitor. SDK pagination has no transport cancellation parameter; cancellation stops waiting for
   subsequent read-only playlist pages.
 
-In Voxta, review **Spotify Tools** cards and **Offer Tools In**, then select **Spotify** for a new chat
+In Voxta, review **Spotify Tools** cards and **Offer Tools In**, then select **Spotify Control** for a new chat
 with a tool-capable model. Check playback/search, playlists, queue, seek/volume, library changes, transfer,
 multiple calls, cancellation, and speech ducking. Without an active player, verify no Spotify tools are offered
 and context provides manual-start guidance without requiring a tool call;
@@ -305,8 +305,10 @@ Tools/<Module>ToolsSettings.cs     tool-specific settings, independent of legacy
 
 All three modules now use native tools without legacy action registrations. Tools must never dispatch through
 an action handler or construct synthetic action messages. Keep transport and data operations independent of
-presentation. The augmentation labels are **OpenWeather**, **Philips Hue** and **Spotify**, while stable internal
-keys retain their `_tools` suffix. Tool cards remain labeled as tools because they configure individual tools.
+presentation. The augmentation labels are **OpenWeather**, **Philips Hue** and **Spotify Control**, while stable internal
+keys retain their `_tools` suffix. Spotify's augmentation label matches its module label so Voxta's selector
+shows a single Spotify Control name instead of Spotify Control: Spotify. Tool cards remain labeled as tools
+because they configure individual tools.
 
 For future migrations, expose a separate opt-in tools augmentation during comparison and remove the old path
 after acceptance. Spotify tools default enabled except device discovery and transfer, which require explicit
