@@ -11,6 +11,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System;
+using Voxta.Modules.Aios.OpenWeather.Tools;
+using Voxta.Modules.Aios.Tools;
 
 namespace Voxta.Modules.Aios.OpenWeather.ChatAugmentations;
 
@@ -18,7 +20,7 @@ public class OpenWeatherChatAugmentationsService(
     IOpenWeatherClientFactory clientFactory,
     ILocalEncryptionProvider localEncryptionProvider,
     ILoggerFactory loggerFactory
-) : ServiceBase(loggerFactory.CreateLogger<OpenWeatherChatAugmentationsService>()), IChatAugmentationsService
+) : ServiceBase(loggerFactory.CreateLogger<OpenWeatherChatAugmentationsService>()), IToolsChatAugmentationsService
 {
     public Task<AugmentationPlanItem[]> PlanAsync(
         IChatAugmentationPlanContext context,
@@ -27,6 +29,7 @@ public class OpenWeatherChatAugmentationsService(
     {
         return Task.FromResult<AugmentationPlanItem[]>(
         [
+            CreateToolsPlan(),
             VoxtaModule.Augmentations.Get(VoxtaModule.AugmentationKey).Plan(
                 AugmentationActivation.OptIn,
                 CreateOpenWeatherChatAugmentationsServiceInstance
@@ -34,10 +37,30 @@ public class OpenWeatherChatAugmentationsService(
         ]);
     }
 
+    private AugmentationPlanItem CreateToolsPlan()
+    {
+        var plan = VoxtaModule.Augmentations.Get(VoxtaModule.ToolsAugmentationKey).Plan(
+            AugmentationActivation.OptIn, (session, token) => CreateInstance(session, token, tools: true));
+        return new AugmentationPlanItem
+        {
+            Key = plan.Key, Label = plan.Label, Description = plan.Description,
+            Activation = plan.Activation, ActivateAsync = plan.ActivateAsync, IncludeInCatchAll = false,
+            Tools = OpenWeatherToolCatalog.Choices.Select(choice => new AugmentationToolDeclaration(choice.Name, VoxtaModule.ServiceName)).ToArray(),
+        };
+    }
+
     private Task<IChatAugmentationServiceInstanceBase?> CreateOpenWeatherChatAugmentationsServiceInstance(
         IChatSessionChatAugmentationApi session,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken) => CreateInstance(session, cancellationToken, tools: false);
+
+    private Task<IChatAugmentationServiceInstanceBase?> CreateInstance(
+        IChatSessionChatAugmentationApi session, CancellationToken cancellationToken, bool tools)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        // Explicit tools take precedence if both are selected, avoiding duplicate provider requests and replies.
+        if (!tools && session.IsAugmentationEnabled(VoxtaModule.ToolsAugmentationKey, includeInCatchAll: false)
+            && !session.IsAugmentationSuppressed(VoxtaModule.ToolsAugmentationKey))
+            return Task.FromResult<IChatAugmentationServiceInstanceBase?>(null);
         var logger = loggerFactory.CreateLogger<OpenWeatherChatAugmentationsServiceInstance>();
         string apiKey;
         try
@@ -69,7 +92,7 @@ public class OpenWeatherChatAugmentationsService(
             "TileCachePath",
             logger);
         var tileCachePath = Path.GetFullPath(Environment.ExpandEnvironmentVariables(rawTileCachePath));
-        var actions = GetSettingOrDefault(
+        var actions = tools ? [] : GetSettingOrDefault(
             () => ModuleConfiguration.GetOptional<OpenWeatherActionSettings>(ModuleConfigurationProvider.Actions),
             ModuleConfigurationProvider.DefaultActions,
             "Actions",
@@ -83,6 +106,12 @@ public class OpenWeatherChatAugmentationsService(
             PollutionDetails = selectedPollution.ToArray(),
             TileCachePath = tileCachePath,
         };
+        if (tools)
+        {
+            var handler = new OpenWeatherToolHandler(client, config, session.MainCharacter.Culture, session.Abort);
+            return Task.FromResult<IChatAugmentationServiceInstanceBase?>(new ModuleToolsAugmentation(
+                OpenWeatherToolCatalog.Create(handler, OpenWeatherToolsSettings.From(ModuleConfiguration), logger)));
+        }
         logger.LogInformation("Chat session {SessionId} has been augmented with {Augmentation}", session.SessionId, VoxtaModule.AugmentationKey);
         return Task.FromResult<IChatAugmentationServiceInstanceBase?>(
             new OpenWeatherChatAugmentationsServiceInstance(session, client, config, logger));

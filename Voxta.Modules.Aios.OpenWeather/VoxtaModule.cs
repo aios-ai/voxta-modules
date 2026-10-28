@@ -12,9 +12,11 @@ public class VoxtaModule : IVoxtaModule
 {
     public const string ServiceName = "Aios.OpenWeather";
     public const string AugmentationKey = "openweather";
+    public const string ToolsAugmentationKey = "openweather_tools";
 
     public static readonly AugmentationKeyDescriptor[] Augmentations =
     [
+        new(ToolsAugmentationKey, "OpenWeather Tools", "Query weather, forecasts, air quality and maps through native chat tools."),
         new(
             AugmentationKey,
             "OpenWeather",

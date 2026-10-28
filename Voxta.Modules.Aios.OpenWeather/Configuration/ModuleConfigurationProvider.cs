@@ -3,12 +3,13 @@ using Voxta.Abstractions.Security;
 using Voxta.Model.Shared.Forms;
 using Voxta.Modules.Aios.OpenWeather.ChatAugmentations;
 using System.Text.Json;
+using Voxta.Modules.Aios.OpenWeather.Tools;
 
 namespace Voxta.Modules.Aios.OpenWeather.Configuration;
 
 public class ModuleConfigurationProvider : ModuleConfigurationProviderBase, IModuleConfigurationProvider
 {
-    public static string[] FieldsRequiringReload => [ApiKey.Name, Actions.Name];
+    public static string[] FieldsRequiringReload => [ApiKey.Name, Actions.Name, "OpenWeatherToolCards", OpenWeatherToolsSettings.Styles.Name];
     private static readonly string DefaultTileCachePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "Voxta",
@@ -203,6 +204,8 @@ public class ModuleConfigurationProvider : ModuleConfigurationProviderBase, IMod
             ApiKey,
             MyLocation,
             Units,
+            OpenWeatherToolsSettings.ConfigurationField(settings),
+            OpenWeatherToolsSettings.Styles.AsField(),
             Actions,
             WeatherDetails,
             PollutionDetails,

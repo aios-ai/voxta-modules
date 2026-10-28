@@ -4,7 +4,7 @@ using Voxta.Modules.Aios.OpenWeather.Clients;
 
 public static class WeatherForecastSummariser
 {
-    public static string Summarise(List<ForecastItem> forecastItems, CultureInfo culture, HashSet<string> weatherDetails, int days = 5, string unitSuffix = "")
+    public static string Summarise(List<ForecastItem> forecastItems, CultureInfo culture, HashSet<string> weatherDetails, int days = 5, string unitSuffix = "", string windUnit = "m/s")
     {
         if (forecastItems == null || forecastItems.Count == 0)
             return "No forecast data available.";
@@ -37,10 +37,10 @@ public static class WeatherForecastSummariser
                 .ToList();
 
             if (dayBlock.Any())
-                sb.AppendLine(BuildBlockSummary(date, "Day", dayBlock, unitSuffix, culture, weatherDetails));
+                sb.AppendLine(BuildBlockSummary(date, "Day", dayBlock, unitSuffix, culture, weatherDetails, windUnit));
 
             if (nightBlock.Any())
-                sb.AppendLine(BuildBlockSummary(date, "Night", nightBlock, unitSuffix, culture, weatherDetails));
+                sb.AppendLine(BuildBlockSummary(date, "Night", nightBlock, unitSuffix, culture, weatherDetails, windUnit));
         }
 
         return sb.ToString().Trim();
@@ -52,7 +52,7 @@ public static class WeatherForecastSummariser
         List<ForecastItem> block,
         string unitSuffix,
         CultureInfo culture,
-        HashSet<string> weatherDetails)
+        HashSet<string> weatherDetails, string windUnit)
     {
         var minTemp = block.Min(x => x.Main.TempMin);
         var maxTemp = block.Max(x => x.Main.TempMax);
@@ -82,7 +82,7 @@ public static class WeatherForecastSummariser
         {
             var avgWindSpeed = block.Average(x => x.Wind.Speed);
             var avgWindDir = block.Average(x => x.Wind.Deg);
-            text += $". Wind: {avgWindSpeed:0.#} m/s at {FormatWholeNumber(avgWindDir)}°";
+            text += $". Wind: {avgWindSpeed:0.#} {windUnit} at {FormatWholeNumber(avgWindDir)}°";
         }
 
         if (weatherDetails.Contains("CloudCover"))

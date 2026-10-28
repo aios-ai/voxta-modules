@@ -2,14 +2,44 @@
 
 ## Current boundary
 
-OpenWeather continues to use `IActionInferenceAugmentation`. Hue exposes only the opt-in
+OpenWeather offers the opt-in `openweather_tools` augmentation alongside its existing
+`openweather` action-inference augmentation for comparison. Hue exposes only the opt-in
 `hue_tools` augmentation after user acceptance of its tools. Spotify exposes only the opt-in
 `spotify_tools` augmentation and uses the shared catalog and native agent loop. Its legacy actions, wake word,
 connection/playing flags, connect alias, automatic search ranking, and action feedback have been removed after
 user verification of tools. Existing chats configured only for the removed `spotify` augmentation must select
 **Spotify Tools**. Obsolete action settings are ignored; saved tool choices and styles remain compatible.
 
-The shared foundation is compiled privately into all three modules. Spotify and Hue register tools; OpenWeather remains actions-only.
+The shared foundation is compiled privately into all three modules, and all three register native tools.
+
+## OpenWeather integration
+
+- `OpenWeatherToolCatalog` defines five prefixed read-only tools: current weather, weather forecast,
+  current air quality, air quality forecast and weather maps. `OpenWeatherToolHandler` calls the existing
+  `IOpenWeatherClient` directly and returns results through `ModuleToolsAugmentation`. It has no action
+  dispatch, filters, note feedback or reply triggers and requires no ActionInference service.
+- Both chat options remain opt-in. **OpenWeather Tools** (`openweather_tools`) is excluded from catch-all
+  activation. **OpenWeather** (`openweather`) retains all five legacy actions and their settings. Explicitly
+  selecting tools suppresses legacy activation if both are selected; select only OpenWeather to compare actions.
+- `OpenWeatherToolCards` provides independent per-tool disable switches and editable descriptions. All five
+  tools default enabled, with Assistant and Companion chat styles. Legacy action settings do not affect tools.
+- Tools share the configured My Location fallback, units, detail selections and expanded tile-cache path.
+  Explicit city arguments preserve punctuation for geocoding. Missing city/default location returns clarification
+  guidance. Maps accept global, continent or country targets; omitted map location means global, and an
+  unsupported target or layer is rejected instead of silently producing a different map. Map images return
+  in `ChatToolCallResult.Images` with descriptive text. All definitions mark provider content as external.
+- `WeatherReportFormatter` formats tool weather and pollution results without feedback side effects; forecasts
+  reuse the existing summarizers. Tool wind labels follow metric/imperial units and current precipitation honors
+  the Precipitation selector. The forecast summarizer's optional wind-unit parameter preserves existing action
+  defaults. The legacy action handler remains unchanged for comparison.
+- The manually entered API key remains a `FormPasswordField`, encrypted by Voxta's configuration sanitizer and
+  decrypted with `ILocalEncryptionProvider` when creating the client. No OAuth flow, token-store record or
+  additional credential copy is needed. Cancellation links each tool call with the session abort token.
+
+Run `dotnet run --project tests/OpenWeather.Tools.Tests -c Release -p:RestoreLockedMode=true` for fake-client
+coverage of all five operations, settings, metadata, location/map validation, units/details, provider errors,
+empty responses, images and cancellation. Live provider requests, map display and tools-versus-actions
+comparison still require acceptance in Voxta with a tool-capable model.
 
 ## Philips Hue integration
 
@@ -267,7 +297,7 @@ Tools/<Module>ToolHandler.cs       validation and execution, returning ChatToolC
 Tools/<Module>ToolsSettings.cs     tool-specific settings, independent of legacy action configuration
 ```
 
-For the future OpenWeather migration, keep action files and legacy registrations until user acceptance; suppress activation when tools take precedence. Tools must never call `TryHandleActionInference`,
+For OpenWeather, keep action files and legacy registrations until user acceptance; suppress activation when tools take precedence. Tools must never call `TryHandleActionInference`,
 an action handler, or construct synthetic `ServerActionMessage` objects. Actions must never dispatch through
 the tool catalog. Both may call transport-neutral domain clients/services. If a useful operation currently lives
 inside an action handler, extract a domain operation returning data/results, then give actions and tools their own
@@ -276,7 +306,7 @@ presentation adapters. Do not share action-specific note/reply plumbing with too
 During integration, expose a separate opt-in tools augmentation (`<existing augmentation key>_tools`) and keep the
 existing action augmentation key for compatibility. Implement the SDK tools-service marker on the service and plan
 the tool instance independently. Selecting tools alone must not create an action instance or require ActionInference.
-During future migrations, users can select tools alone or legacy actions alone for comparison. Do not automatically select both, which
+During OpenWeather comparison and future migrations, users can select tools alone or legacy actions alone. Do not automatically select both, which
 could cause duplicate device commands. Spotify tools default enabled except device discovery and transfer, which require explicit opt-in; the
 augmentation itself remains opt-in. Other migrations should choose defaults explicitly and version the change.
 
@@ -293,7 +323,7 @@ Prefix tool names as described above.
 
 | Module | Operations to cover | Migration-specific behavior |
 | --- | --- | --- |
-| OpenWeather (5) | `get_weather`, `get_weather_forecast`, `get_air_pollution`, `get_air_pollution_forecast`, `get_weather_map` | Reuse `IOpenWeatherClient` and summarizers. Preserve configured location fallback, units, selected details, and cache path. Separate data/formatting from note feedback. Return maps as images plus descriptive text. All five are queries. |
+| OpenWeather (5, comparison phase) | `get_weather`, `get_weather_forecast`, `get_air_pollution`, `get_air_pollution_forecast`, `get_weather_map` | Native tools and legacy actions remain independently selectable, with tools taking precedence. Reuse `IOpenWeatherClient`, configured location/units/details/cache and forecast summarizers. All five tools are queries; maps return native images. |
 | Hue (6, completed) | `toggle_lights`, `change_color`, `show_emotion`, `change_brightness`, `activate_scene`, `show_hue_inventory` | Tools only; startup pairing, disconnected availability/status and conservative toggle-setting migration are described above. |
 | Spotify (16, completed) | `toggle_playback`, `search`, `play_random_music`, `play_special_playlist`, `play_music`, `queue_track`, `volume`, `seek_playback`, `skip`, `repeat_mode`, `shuffle_mode`, `add_to_favorites`, `get_playlists`, `add_to_playlist`, `list_devices`, `transfer_to_device` | Native tools use neutral manager operations. Search and playlist/device listing are Read; mutations are Act. Configured playlists, playback context, and speech ducking remain independent of tool dispatch. OAuth and passive monitoring remain session/setup concerns. |
 
@@ -340,6 +370,7 @@ Build all modules with locked packages:
 ```powershell
 dotnet build Voxta.Modules.slnx -c Release -p:RestoreLockedMode=true -m:1
 dotnet run --project tests/Tools.Tests -c Release -p:RestoreLockedMode=true
+dotnet run --project tests/OpenWeather.Tools.Tests -c Release -p:RestoreLockedMode=true
 dotnet run --project tests/Spotify.Tools.Tests -c Release -p:RestoreLockedMode=true
 ```
 

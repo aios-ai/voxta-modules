@@ -17,4 +17,4 @@ The shared workflows in `.github/workflows` remain the authority for build, pack
 
 ## Architecture
 
-- [Tools foundation and migration contract](docs/ARCHITECTURE.md): shared tool catalog, SDK boundaries, Spotify and Hue tools-only integrations, remaining legacy modules, and migration coverage.
+- [Tools foundation and migration contract](docs/ARCHITECTURE.md): shared tool catalog, SDK boundaries, Spotify and Hue tools-only integrations, OpenWeather tools/actions comparison, and migration coverage.

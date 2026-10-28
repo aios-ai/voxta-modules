@@ -19,7 +19,14 @@ network. Initial setup asks you to press the bridge link button.
 ### OpenWeather
 
 `Voxta.Modules.Aios.OpenWeather` adds current weather, forecasts, air quality, and generated weather maps to Voxta
-chats. It supports configurable locations, units, reported details, and action-inference matching.
+chats. It supports configurable locations, units and reported details. Select **OpenWeather Tools** for five
+native agent tools, or keep **OpenWeather** selected to compare the existing actions. If both are selected,
+tools take precedence. The tool option requires a model with tool-calling support and no action-inference service.
+
+All five tools default enabled in Assistant and Companion chats. The **OpenWeather Tools** cards let you disable
+individual tools and edit their descriptions. City queries use **My Location** when no location is supplied;
+without either, the agent can ask which city to use. Maps support countries, continents and global views and
+return images directly in tool results. The API key stays in Voxta's encrypted password-field configuration.
 
 The module itself is free. It requires Voxta `1.13.0` or newer and an OpenWeather API key; OpenWeather offers a
 rate-limited free plan.
