@@ -2,51 +2,56 @@
 
 ## Current boundary
 
-OpenWeather offers the opt-in `openweather_tools` augmentation alongside its existing
-`openweather` action-inference augmentation for comparison. Hue exposes only the opt-in
+OpenWeather exposes only the opt-in `openweather_tools` augmentation after user acceptance of its tools.
+Hue exposes only the opt-in
 `hue_tools` augmentation after user acceptance of its tools. Spotify exposes only the opt-in
 `spotify_tools` augmentation and uses the shared catalog and native agent loop. Its legacy actions, wake word,
 connection/playing flags, connect alias, automatic search ranking, and action feedback have been removed after
 user verification of tools. Existing chats configured only for the removed `spotify` augmentation must select
-**Spotify Tools**. Obsolete action settings are ignored; saved tool choices and styles remain compatible.
+**Spotify**. Obsolete action settings are ignored; saved tool choices and styles remain compatible.
 
 The shared foundation is compiled privately into all three modules, and all three register native tools.
 
 ## OpenWeather integration
 
-- `OpenWeatherToolCatalog` defines five prefixed read-only tools: current weather, weather forecast,
-  current air quality, air quality forecast and weather maps. `OpenWeatherToolHandler` calls the existing
-  `IOpenWeatherClient` directly and returns results through `ModuleToolsAugmentation`. It has no action
-  dispatch, filters, note feedback or reply triggers and requires no ActionInference service.
-- Both chat options remain opt-in. **OpenWeather Tools** (`openweather_tools`) is excluded from catch-all
-  activation. **OpenWeather** (`openweather`) retains all five legacy actions and their settings. Explicitly
-  selecting tools suppresses legacy activation if both are selected; select only OpenWeather to compare actions.
-- `OpenWeatherToolCards` provides independent per-tool disable switches and editable descriptions. All five
-  tools default enabled, with Assistant and Companion chat styles. Legacy action settings do not affect tools.
-- Tools share the configured My Location fallback, units, detail selections and expanded tile-cache path.
-  Explicit city arguments preserve punctuation for geocoding. Missing city/default location returns clarification
-  guidance. Maps accept global, continent or country targets; omitted map location means global, and an
-  unsupported target or layer is rejected instead of silently producing a different map. Map images return
-  in `ChatToolCallResult.Images` with descriptive text. All definitions mark provider content as external.
-- `WeatherReportFormatter` formats tool weather and pollution results without feedback side effects; forecasts
-  reuse the existing summarizers. Tool wind labels follow metric/imperial units and current precipitation honors
-  the Precipitation selector. The forecast summarizer's optional wind-unit parameter preserves existing action
-  defaults. The legacy action handler remains unchanged for comparison.
-- The manually entered API key remains a `FormPasswordField`, encrypted by Voxta's configuration sanitizer and
-  decrypted with `ILocalEncryptionProvider` when creating the client. No OAuth flow, token-store record or
-  additional credential copy is needed. Cancellation links each tool call with the session abort token.
+- **OpenWeather** (`openweather_tools`) is the only weather augmentation: opt-in, excluded from catch-all
+  activation and requiring no ActionInference service. The legacy `openweather` augmentation, action handler,
+  action definitions, filters and action settings have been removed after user acceptance. Existing chats using
+  only the removed key must select OpenWeather. The tools key is unchanged for existing tool-enabled chats.
+- `OpenWeatherToolCatalog` defines five read-only tools named `get_weather`, `get_weather_forecast`,
+  `get_air_pollution`, `get_air_pollution_forecast` and `get_weather_map`, as requested by the user.
+  `OpenWeatherToolHandler` calls `IOpenWeatherClient` directly through `ModuleToolsAugmentation`; it never
+  dispatches actions or triggers replies. All tools mark provider content as external.
+- `OpenWeatherToolCards` provides per-tool disable switches and editable descriptions. All five tools default
+  enabled in Assistant and Companion chats. Saved cards with beta.1's `openweather_` prefixes retain switches
+  and descriptions under the short names; an explicitly saved short-name card takes precedence. Obsolete
+  action settings are ignored. `MapTargetType` is a client-owned type independent of action code.
+- Tools use My Location when city arguments are omitted, preserve punctuation for geocoding and request
+  clarification when neither a city nor a default is present. Units, selected details and the expanded map-cache
+  path remain configurable. Maps accept a country, continent or global target; omitted location means global.
+  Invalid map targets/layers are rejected rather than silently producing a different map.
+- Map PNGs return through `ChatToolCallResult.Images` for the model AND `SendNoteAttachmentAsync` for the chat
+  display, following Voxta's built-in MCP image-tool path. Result images alone reach the model but are not
+  rendered as transcript attachments by the inspected host. The attachment is queued once, marked with
+  `ComputerVisionSource.Tool`, and does not trigger another reply. Attachment failures/cancellation do not
+  produce a successful tool result. No separate feedback note or follow-up generation is sent.
+- `WeatherReportFormatter` formats tool weather and pollution results; forecasts reuse the existing summarizers.
+  Wind labels follow configured units and current precipitation honors its detail selector. The manually entered
+  API key remains a host-encrypted password field, decrypted with `ILocalEncryptionProvider` when creating the
+  client. No OAuth or extra token-store record is needed. Calls link tool and session cancellation.
 
-Run `dotnet run --project tests/OpenWeather.Tools.Tests -c Release -p:RestoreLockedMode=true` for fake-client
-coverage of all five operations, settings, metadata, location/map validation, units/details, provider errors,
-empty responses, images and cancellation. Live provider requests, map display and tools-versus-actions
-comparison still require acceptance in Voxta with a tool-capable model.
+Run `dotnet run --project tests/OpenWeather.Tools.Tests -c Release -p:RestoreLockedMode=true` for all five
+operations, settings migration, input validation, metadata, provider failures, cancellation and attachment dispatch.
+Real map composition is checked using fake HTTP tiles: PNG decoding, grid dimensions, overlay pixels, composite
+cache, tile errors and cancellation. The user accepted weather tools; chat display of the corrected map attachment
+still requires live acceptance in Voxta.
 
 ## Philips Hue integration
 
 - `hue_tools` is the only Hue plan: opt-in, excluded from catch-all activation, using the SDK tools-service
   marker and shared catalog. Legacy `hue`, action definitions, filters, flags, note feedback and action-only
   matching have been removed after user verification. Existing chats selecting only `hue` must choose
-  **Philips Hue Tools**. Obsolete action and inventory-note settings are ignored.
+  **Philips Hue**. Obsolete action and inventory-note settings are ignored.
 - `Tools/HueToolCatalog.cs` defines six tools: `hue_toggle_lights`, color, brightness, scenes, inventory and
   emotion. Toggle requires `state` (`on` or `off`); it never guesses the desired state. A missing target means
   all lights, excluding smart plugs. Exact unique inventory names are required for explicit targets.
@@ -154,7 +159,7 @@ inventory and native storage in Voxta. Disconnected-only status behavior still n
   through the monitor. SDK pagination has no transport cancellation parameter; cancellation stops waiting for
   subsequent read-only playlist pages.
 
-In Voxta, review **Spotify Tools** cards and **Offer Tools In**, then select **Spotify Tools** for a new chat
+In Voxta, review **Spotify Tools** cards and **Offer Tools In**, then select **Spotify** for a new chat
 with a tool-capable model. Check playback/search, playlists, queue, seek/volume, library changes, transfer,
 multiple calls, cancellation, and speech ducking. Without an active player, verify no Spotify tools are offered
 and context provides manual-start guidance without requiring a tool call;
@@ -274,8 +279,9 @@ The test executable imports the same source.
 Construct one catalog per session with handlers bound to that session's clients and domain settings. Definitions
 are a snapshot; rebuild the instance when settings change. Disabled definitions stay discoverable for the host's
 settings UI but cannot execute. Names use ordinal matching. Every tool must have a nonempty source and description.
-Use module-prefixed names (`openweather_get_weather`, `spotify_play_music`, `hue_change_color`) so tools from
-multiple modules cannot shadow one another. Set `Source` to the module's `VoxtaModule.ServiceName` and set the
+Spotify and Hue use module-prefixed names (`spotify_play_music`, `hue_change_color`). OpenWeather uses
+the user-requested short names (`get_weather`, etc.); the host owns collision handling when other modules
+offer the same names. Set `Source` to the module's `VoxtaModule.ServiceName` and set the
 tool-specific `AugmentationKey` explicitly at integration time.
 
 The catalog checks only the JSON envelope, not arbitrary JSON Schema constraints. Each handler must validate
@@ -297,33 +303,30 @@ Tools/<Module>ToolHandler.cs       validation and execution, returning ChatToolC
 Tools/<Module>ToolsSettings.cs     tool-specific settings, independent of legacy action configuration
 ```
 
-For OpenWeather, keep action files and legacy registrations until user acceptance; suppress activation when tools take precedence. Tools must never call `TryHandleActionInference`,
-an action handler, or construct synthetic `ServerActionMessage` objects. Actions must never dispatch through
-the tool catalog. Both may call transport-neutral domain clients/services. If a useful operation currently lives
-inside an action handler, extract a domain operation returning data/results, then give actions and tools their own
-presentation adapters. Do not share action-specific note/reply plumbing with tools.
+All three modules now use native tools without legacy action registrations. Tools must never dispatch through
+an action handler or construct synthetic action messages. Keep transport and data operations independent of
+presentation. The augmentation labels are **OpenWeather**, **Philips Hue** and **Spotify**, while stable internal
+keys retain their `_tools` suffix. Tool cards remain labeled as tools because they configure individual tools.
 
-During integration, expose a separate opt-in tools augmentation (`<existing augmentation key>_tools`) and keep the
-existing action augmentation key for compatibility. Implement the SDK tools-service marker on the service and plan
-the tool instance independently. Selecting tools alone must not create an action instance or require ActionInference.
-During OpenWeather comparison and future migrations, users can select tools alone or legacy actions alone. Do not automatically select both, which
-could cause duplicate device commands. Spotify tools default enabled except device discovery and transfer, which require explicit opt-in; the
-augmentation itself remains opt-in. Other migrations should choose defaults explicitly and version the change.
+For future migrations, expose a separate opt-in tools augmentation during comparison and remove the old path
+after acceptance. Spotify tools default enabled except device discovery and transfer, which require explicit
+opt-in; the augmentation itself remains opt-in.
 
 Use `Read` for queries and `Act` for changes to playback, libraries, or lights. Do not force `AlwaysAllowed`.
 Mark results containing third-party text with the SDK's external-content metadata as appropriate. Describe results
 as facts/data for the model, without instructions to trigger another reply. Tool execution must not call action
-feedback helpers, `SendNoteAsync`, `SendNoteAttachmentAsync`, cancel a reply, or trigger another generation to report
-its result. Return map images through `ChatToolCallResult.Images` instead.
+feedback helpers, `SendNoteAsync`, cancel a reply, or trigger another generation to report its result.
+Weather maps are the explicit image-presentation exception: use `SendNoteAttachmentAsync` once for visible
+chat output as well as `ChatToolCallResult.Images` for the model; the attachment API does not trigger a reply.
 
 ## Migration coverage
 
-Spotify and Hue migrations are complete. Preserve OpenWeather legacy actions until its tools migration is accepted.
-Prefix tool names as described above.
+All three migrations are complete after user acceptance. OpenWeather map attachment display still needs live
+acceptance. Tool naming follows each module's contract above.
 
 | Module | Operations to cover | Migration-specific behavior |
 | --- | --- | --- |
-| OpenWeather (5, comparison phase) | `get_weather`, `get_weather_forecast`, `get_air_pollution`, `get_air_pollution_forecast`, `get_weather_map` | Native tools and legacy actions remain independently selectable, with tools taking precedence. Reuse `IOpenWeatherClient`, configured location/units/details/cache and forecast summarizers. All five tools are queries; maps return native images. |
+| OpenWeather (5, completed) | `get_weather`, `get_weather_forecast`, `get_air_pollution`, `get_air_pollution_forecast`, `get_weather_map` | Tools only, with short names and preserved saved tool cards. Reuse `IOpenWeatherClient`, configured location/units/details/cache and summarizers. Map images reach both the model and a visible chat attachment. |
 | Hue (6, completed) | `toggle_lights`, `change_color`, `show_emotion`, `change_brightness`, `activate_scene`, `show_hue_inventory` | Tools only; startup pairing, disconnected availability/status and conservative toggle-setting migration are described above. |
 | Spotify (16, completed) | `toggle_playback`, `search`, `play_random_music`, `play_special_playlist`, `play_music`, `queue_track`, `volume`, `seek_playback`, `skip`, `repeat_mode`, `shuffle_mode`, `add_to_favorites`, `get_playlists`, `add_to_playlist`, `list_devices`, `transfer_to_device` | Native tools use neutral manager operations. Search and playlist/device listing are Read; mutations are Act. Configured playlists, playback context, and speech ducking remain independent of tool dispatch. OAuth and passive monitoring remain session/setup concerns. |
 
@@ -396,7 +399,7 @@ For each migration, add handler checks with fake domain clients for all operatio
 and cancellation. Then test in Voxta with tools selected and legacy actions deselected: discovery/settings, host
 permissions, successful and failed calls, multiple calls in one reply, cancellation, and results in the same agent
 response. Verify no ActionInference requirement, duplicate notes, follow-up generation, or repeated side effects.
-For OpenWeather migration, repeat representative requests with only legacy actions selected. Test real maps, Hue devices and emotion control,
+Test real map attachment display, Hue devices and emotion control,
 Spotify playback and ducking against their providers before declaring behavioral parity.
 
 Each externally visible migration increments the affected module's manifest version (use a prerelease while testing),

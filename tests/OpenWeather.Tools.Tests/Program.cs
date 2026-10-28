@@ -9,6 +9,7 @@ using Voxta.Abstractions.Registration;
 using Voxta.Abstractions.Security;
 using Voxta.Abstractions.Services;
 using Voxta.Abstractions.Services.Agents;
+using Voxta.Abstractions.Services.VisionCapture;
 using Voxta.Abstractions.Services.ChatAugmentations;
 using Voxta.Model.Shared;
 using Voxta.Model.Shared.Forms;
@@ -26,29 +27,47 @@ foreach (var flag in new[] { "true", "\"true\"" })
     var saved = OpenWeatherToolsSettings.From(new StaticSettingsSource(new()
     {
         ["Actions"] = "invalid legacy JSON must not be read",
-        ["OpenWeatherToolCards"] = "[{\"name\":\"openweather_get_weather\",\"description\":\"Custom weather\",\"disabled\":" + flag + "}]",
+        ["OpenWeatherToolCards"] = "[{\"name\":\"get_weather\",\"description\":\"Custom weather\",\"disabled\":" + flag + "}]",
         ["ToolChatStyles"] = "Assistant",
     }));
-    Check(!saved.Selected.Contains("openweather_get_weather") && saved.Selected.Count == 4, "Disabled boolean/string switch");
-    Check(saved.Descriptions!["openweather_get_weather"] == "Custom weather" && saved.ChatStyles.SequenceEqual(new[] { ChatStyles.Assistant }), "Saved descriptions/styles");
+    Check(!saved.Selected.Contains("get_weather") && saved.Selected.Count == 4, "Disabled boolean/string switch");
+    Check(saved.Descriptions!["get_weather"] == "Custom weather" && saved.ChatStyles.SequenceEqual(new[] { ChatStyles.Assistant }), "Saved descriptions/styles");
     var field = (FormArrayOfObjectsField)OpenWeatherToolsSettings.ConfigurationField(new StaticSettingsSource(new()
-    { ["OpenWeatherToolCards"] = "[{\"Name\":\"openweather_get_weather\",\"Disabled\":true}]" }));
-    Check(JsonSerializer.Deserialize<OpenWeatherToolSettings[]>(field.DefaultValue!)!.Single(c => c.Name == "openweather_get_weather").Disabled == "true", "Card round trip");
+    { ["OpenWeatherToolCards"] = "[{\"Name\":\"get_weather\",\"Disabled\":true}]" }));
+    Check(JsonSerializer.Deserialize<OpenWeatherToolSettings[]>(field.DefaultValue!)!.Single(c => c.Name == "get_weather").Disabled == "true", "Card round trip");
 }
 var fields = await new ModuleConfigurationProvider().GetModuleConfigurationFieldsAsync(null!, new StaticSettingsSource(new()), default);
+var migrated = OpenWeatherToolsSettings.From(new StaticSettingsSource(new()
+{
+    ["OpenWeatherToolCards"] = "[{\"name\":\"openweather_get_weather\",\"description\":\"Saved weather description\",\"disabled\":true},{\"name\":\"openweather_get_weather_map\",\"disabled\":true},{\"name\":\"get_weather_map\",\"disabled\":false}]",
+}));
+Check(!migrated.Selected.Contains("get_weather") && migrated.Descriptions!["get_weather"] == "Saved weather description", "Prefixed tool card migration preserves switch/description");
+Check(migrated.Selected.Contains("get_weather_map") && migrated.Selected.All(n => !n.StartsWith("openweather_")), "Explicit current name takes precedence over old card");
+var migratedField = (FormArrayOfObjectsField)OpenWeatherToolsSettings.ConfigurationField(new StaticSettingsSource(new()
+{ ["OpenWeatherToolCards"] = "[{\"Name\":\"openweather_get_weather_map\",\"Disabled\":true}]" }));
+Check(JsonSerializer.Deserialize<OpenWeatherToolSettings[]>(migratedField.DefaultValue!)!.Single(c => c.Name == "get_weather_map").Disabled == "true", "Card editor saves migrated short names");
 Check(fields.OfType<FormPasswordField>().Single().Name == "ApiKey", "API key stays a host-encrypted password");
-Check(fields.Any(f => f.Name == "Actions") && fields.Any(f => f.Name == "OpenWeatherToolCards"), "Actions and tools settings coexist");
+Check(fields.All(f => f.Name != "Actions") && fields.Any(f => f.Name == "OpenWeatherToolCards"), "Legacy action configuration removed");
 Console.WriteLine("PASS tool cards, defaults, saved descriptions/styles and encrypted-key configuration");
 
 var settings = new OpenWeatherChatAugmentationsSettings
 {
-    Actions = ModuleConfigurationProvider.DefaultActions, MyLocation = "Berlin, DE", Units = "imperial",
+    MyLocation = "Berlin, DE", Units = "imperial",
     WeatherDetails = ["Temp", "Wind", "Precipitation"], PollutionDetails = ["AQI", "PM2.5"], TileCachePath = "test-map-cache",
 };
 var client = DispatchProxy.Create<IOpenWeatherClient, WeatherClientProxy>();
 var fake = (WeatherClientProxy)client;
+var attachments = new List<(string Description, IImage Image)>();
+Exception? attachmentFailure = null;
+Task Attach(string description, IImage image, CancellationToken token)
+{
+    token.ThrowIfCancellationRequested();
+    if (attachmentFailure != null) throw attachmentFailure;
+    attachments.Add((description, image));
+    return Task.CompletedTask;
+}
 ModuleToolCatalog Catalog(OpenWeatherChatAugmentationsSettings? config = null, OpenWeatherToolsSettings? tools = null, CancellationToken abort = default) =>
-    OpenWeatherToolCatalog.Create(new OpenWeatherToolHandler(client, config ?? settings, CultureInfo.InvariantCulture, abort), tools ?? defaults, NullLogger.Instance);
+    OpenWeatherToolCatalog.Create(new OpenWeatherToolHandler(client, config ?? settings, CultureInfo.InvariantCulture, Attach, abort), tools ?? defaults, NullLogger.Instance);
 var catalog = Catalog();
 var augmentation = new ModuleToolsAugmentation(catalog);
 Check(augmentation.GetRequiredServiceTypes().Length == 0, "Tools must not require action inference");
@@ -59,6 +78,7 @@ Check(definitions.Count == 5 && definitions.All(t => t.Permission == ToolPermiss
 foreach (var operation in new[] { "get_weather", "get_weather_forecast", "get_air_pollution", "get_air_pollution_forecast", "get_weather_map" })
 {
     fake.Calls.Clear();
+    attachments.Clear();
     var argumentsJson = operation == "get_weather_map" ? "{\"layer\":\"temp\",\"location\":\"Germany\"}" : "{\"location\":\"Frankfurt am Main, DE\"}";
     var result = await Call(catalog, operation, argumentsJson);
     Check(!result.IsError && fake.Calls.Count == 1, operation + " dispatches once");
@@ -72,11 +92,13 @@ foreach (var operation in new[] { "get_weather", "get_weather_forecast", "get_ai
     if (operation == "get_air_pollution") Check(result.Text.Contains("AQI 2") && result.Text.Contains("PM2.5") && !result.Text.Contains("CO:"), "Pollution detail selection");
     if (operation == "get_weather_map")
     {
+        Check(attachments.Count == 1 && ReferenceEquals(attachments[0].Image, result.Images![0]) && attachments[0].Description.Contains("DE"), "Same map attached once for the user and returned to the model");
         Check(result.Images is { Count: 1 } && fake.Layer == "temp_new" && fake.Cache == settings.TileCachePath, "Native image, normalized layer and cache path");
-        Check(fake.Target == (OpenWeatherChatAugmentationsServiceInstance.MapTargetType.Country, "DE"), "Country resolution");
+        Check(fake.Target == (MapTargetType.Country, "DE"), "Country resolution");
     }
     else Check(fake.Units == "imperial" || operation.StartsWith("get_air"), "Configured units passed to client");
 
+    var attachmentCount = attachments.Count;
     fake.Fail = true;
     result = await Call(catalog, operation, argumentsJson);
     Check(result.IsError && result.Text == "Provider unavailable", operation + " provider failure");
@@ -84,12 +106,13 @@ foreach (var operation in new[] { "get_weather", "get_weather_forecast", "get_ai
     fake.Cancel = true;
     await ExpectCancellation(() => Call(catalog, operation, argumentsJson));
     fake.Cancel = false;
+    Check(attachments.Count == attachmentCount, "No attachments on provider failure/cancellation");
 }
 Console.WriteLine("PASS all five operations, details, units, maps, provider failures and in-flight cancellation");
 
 await Call(catalog, "get_weather", "{}");
 Check(fake.Location == "Berlin, DE", "Configured location fallback");
-var missing = Catalog(new OpenWeatherChatAugmentationsSettings { Actions = [], TileCachePath = "cache" });
+var missing = Catalog(new OpenWeatherChatAugmentationsSettings { TileCachePath = "cache" });
 fake.Calls.Clear();
 Check((await Call(missing, "get_weather", "{}")).IsError && fake.Calls.Count == 0, "Missing location asks user before client call");
 foreach (var (operation, argumentsJson) in new[]
@@ -103,9 +126,9 @@ foreach (var (operation, argumentsJson) in new[]
     Check((await Call(catalog, operation, argumentsJson)).IsError && fake.Calls.Count == 0, "Invalid arguments rejected: " + argumentsJson);
 }
 await Call(catalog, "get_weather_map", "{\"layer\":\"clouds\"}");
-Check(fake.Target.Type == OpenWeatherChatAugmentationsServiceInstance.MapTargetType.Global, "Maps default global without My Location");
+Check(fake.Target.Type == MapTargetType.Global, "Maps default global without My Location");
 await Call(catalog, "get_weather_map", "{\"layer\":\"wind\",\"location\":\"Europe\"}");
-Check(fake.Target.Type == OpenWeatherChatAugmentationsServiceInstance.MapTargetType.Continent && fake.Target.Identifier == "EU", "Continent map");
+Check(fake.Target.Type == MapTargetType.Continent && fake.Target.Identifier == "EU", "Continent map");
 fake.Empty = true;
 foreach (var operation in new[] { "get_weather_forecast", "get_air_pollution", "get_air_pollution_forecast", "get_weather_map" })
     Check((await Call(catalog, operation, operation == "get_weather_map" ? "{\"layer\":\"temp\"}" : "{}")).IsError, "Empty provider data: " + operation);
@@ -125,12 +148,11 @@ var service = new OpenWeatherChatAugmentationsService(null!, null!, NullLoggerFa
 Check(service is IToolsChatAugmentationsService, "SDK tools service marker");
 var plans = await service.PlanAsync(null!, default);
 var toolsPlan = plans.Single(p => p.Key == VoxtaModule.ToolsAugmentationKey);
-var legacyPlan = plans.Single(p => p.Key == VoxtaModule.AugmentationKey);
-Check(plans.Length == 2 && toolsPlan.Activation == AugmentationActivation.OptIn && !toolsPlan.IncludeInCatchAll && toolsPlan.Tools.Count == 5, "Separate opt-in plans and declared tools");
-Check(legacyPlan.IncludeInCatchAll && legacyPlan.Tools.Count == 0, "Legacy plan retained");
+Check(plans.Length == 1 && toolsPlan.Key == "openweather_tools" && toolsPlan.Label == "OpenWeather"
+    && toolsPlan.Activation == AugmentationActivation.OptIn && !toolsPlan.IncludeInCatchAll && toolsPlan.Tools.Count == 5,
+    "One tools plan with simplified label, stable key and declared short tool names");
+Check(VoxtaModule.Augmentations.Length == 1, "Legacy augmentation removed");
 var session = DispatchProxy.Create<IChatSessionChatAugmentationApi, ToolsSelectedSession>();
-Check(await legacyPlan.ActivateAsync(session, default) == null, "Tools suppress legacy activation when both selected");
-Check(ModuleConfigurationProvider.DefaultActions.Length == 5, "All legacy actions retained");
 var factory = new WeatherFactory(client);
 var encryption = new TestEncryption();
 var configuredService = new OpenWeatherChatAugmentationsService(factory, encryption, NullLoggerFactory.Instance);
@@ -141,7 +163,7 @@ var instanceSettings = new NullServiceInstanceSettings
         ["ApiKey"] = "encrypted:test-key", ["MyLocation"] = "Berlin, DE", ["Units"] = "metric",
         ["Actions"] = "invalid legacy JSON must not be read by tools", ["TileCachePath"] = Path.GetTempPath(),
         ["WeatherDetails"] = "Temp\nWind", ["PollutionDetails"] = "AQI",
-        ["OpenWeatherToolCards"] = "[{\"Name\":\"openweather_get_weather_map\",\"Disabled\":true}]",
+        ["OpenWeatherToolCards"] = "[{\"Name\":\"get_weather_map\",\"Disabled\":true}]",
     },
 };
 await configuredService.InitializeAsync(NullAuthenticationContext.Instance, instanceSettings, default);
@@ -152,21 +174,26 @@ await using (var toolsInstance = await configuredPlans.Single(p => p.Key == Voxt
     var tools = (IToolsChatAugmentation)toolsInstance!;
     Check(tools.GetRequiredServiceTypes().Length == 0 && (await tools.GetToolsAsync(default)).Count(t => t.Enabled) == 4, "Runtime settings and no action-inference requirement");
     Check(factory.ApiKey == "test-key" && encryption.Reads == 1, "Decrypt host-managed key once for tools client");
-    Check(!(await tools.CallToolAsync("openweather_get_weather", JsonSerializer.Deserialize<JsonElement>("{}"), default)).IsError && fake.Units == "metric", "Activated tools dispatch with domain settings");
+    Check(!(await tools.CallToolAsync("get_weather", JsonSerializer.Deserialize<JsonElement>("{}"), default)).IsError && fake.Units == "metric", "Activated tools dispatch with domain settings");
 }
-((ToolsSelectedSession)session).ToolsSelected = false;
-instanceSettings.ModuleConfiguration["Actions"] = JsonSerializer.Serialize(ModuleConfigurationProvider.DefaultActions);
-await using (var legacyInstance = await configuredPlans.Single(p => p.Key == VoxtaModule.AugmentationKey).ActivateAsync(session, default))
+// Use a freshly enabled map to verify the service binds the actual SDK attachment API.
+instanceSettings.ModuleConfiguration["OpenWeatherToolCards"] = "[]";
+await using (var toolsInstance = await configuredPlans.Single().ActivateAsync(session, default))
 {
-    Check(legacyInstance is IActionInferenceAugmentation && legacyInstance is not IToolsChatAugmentation, "Legacy-only activation");
-    Check(((IActionInferenceAugmentation)legacyInstance!).GetRequiredServiceTypes().SequenceEqual(new[] { ServiceTypes.ActionInference }), "Legacy service requirement retained");
-    var context = ((OpenWeatherChatAugmentationsServiceInstance)legacyInstance!).RegisterChatContext().Single();
-    Check(context.Actions!.Length == 5, "Legacy actions still register");
+    var result = await ((IToolsChatAugmentation)toolsInstance!).CallToolAsync("get_weather_map", JsonSerializer.Deserialize<JsonElement>("{\"layer\":\"wind\"}"), default);
+    Check(!result.IsError && ((ToolsSelectedSession)session).AttachmentCalls == 1, "Service routes map to SendNoteAttachmentAsync without notes or reply triggers");
 }
-Console.WriteLine("PASS tools service registration, opt-in plans, legacy retention and duplicate-activation suppression");
+attachmentFailure = new InvalidOperationException("private attachment failure");
+Check((await Call(catalog, "get_weather_map", "{\"layer\":\"temp\"}")).IsError, "Attachment failure must not report map success");
+attachmentFailure = new OperationCanceledException();
+await ExpectCancellation(() => Call(catalog, "get_weather_map", "{\"layer\":\"temp\"}"));
+attachmentFailure = null;
+Console.WriteLine("PASS tools-only registration, stable key, short names, native chat attachment dispatch and attachment failure/cancellation");
+
+await WeatherMapChecks.RunAsync();
 
 static Task<ChatToolCallResult> Call(ModuleToolCatalog catalog, string operation, string json) =>
-    catalog.CallToolAsync("openweather_" + operation, JsonSerializer.SerializeToElement(JsonSerializer.Deserialize<JsonElement>(json)), default).AsTask();
+    catalog.CallToolAsync(operation, JsonSerializer.SerializeToElement(JsonSerializer.Deserialize<JsonElement>(json)), default).AsTask();
 static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
 static async Task ExpectCancellation(Func<Task<ChatToolCallResult>> call)
 {
@@ -176,16 +203,24 @@ static async Task ExpectCancellation(Func<Task<ChatToolCallResult>> call)
 
 public class ToolsSelectedSession : DispatchProxy
 {
-    public bool ToolsSelected = true;
+    public int AttachmentCalls;
     protected override object? Invoke(MethodInfo? method, object?[]? args) => method!.Name switch
     {
-        "IsAugmentationEnabled" => ToolsSelected && args![0]?.ToString() == VoxtaModule.ToolsAugmentationKey,
+        "IsAugmentationEnabled" => args![0]?.ToString() == VoxtaModule.ToolsAugmentationKey,
         "IsAugmentationSuppressed" => false,
         "get_MainCharacter" => DispatchProxy.Create<ICharacterInferenceData, CharacterProxy>(),
         "get_Abort" => CancellationToken.None,
         "get_SessionId" => Guid.Empty,
+        "SendNoteAttachmentAsync" => Attach(args!),
         _ => throw new Exception("Unexpected session call: " + method.Name),
     };
+    private Task Attach(object?[] args)
+    {
+        ((CancellationToken)args[2]!).ThrowIfCancellationRequested();
+        if (args[1] is not IImage image || image.Source != ComputerVisionSource.Tool) throw new Exception("Invalid attachment");
+        AttachmentCalls++;
+        return Task.CompletedTask;
+    }
 }
 
 public class CharacterProxy : DispatchProxy
@@ -217,7 +252,7 @@ public class WeatherClientProxy : DispatchProxy
     public List<string> Calls = [];
     public bool Fail, Cancel, Empty;
     public string? Location, Units, Layer, Cache;
-    public (OpenWeatherChatAugmentationsServiceInstance.MapTargetType Type, string Identifier) Target;
+    public (MapTargetType Type, string Identifier) Target;
     private const string Weather = "{\"main\":{\"temp\":62,\"feels_like\":60,\"temp_min\":58,\"temp_max\":65},\"sys\":{\"country\":\"DE\"},\"weather\":[{\"description\":\"clear\",\"icon\":\"01d\"}],\"clouds\":{\"all\":0},\"wind\":{\"speed\":5,\"deg\":90},\"rain\":{\"1h\":2}}";
     private static T Parse<T>(string json) => JsonSerializer.Deserialize<T>(json, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
     private OpenWeatherResult<T> Result<T>(T value) => Fail
@@ -231,7 +266,7 @@ public class WeatherClientProxy : DispatchProxy
         if (Cancel) throw new OperationCanceledException();
         if (name == "FetchWeatherMapAsync")
         {
-            Target = ((OpenWeatherChatAugmentationsServiceInstance.MapTargetType, string))args[0]!;
+            Target = ((MapTargetType, string))args[0]!;
             Layer = (string)args[1]!; Cache = (string)args[2]!;
             return Task.FromResult(Result(Empty ? Array.Empty<byte>() : new byte[] { 137, 80, 78, 71 }));
         }

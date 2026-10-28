@@ -58,8 +58,10 @@ internal sealed record OpenWeatherToolsSettings(IReadOnlySet<string> Selected, C
         var raw = settings.GetRawValue(Field.Name);
         var entries = string.IsNullOrWhiteSpace(raw) ? null : JsonSerializer.Deserialize<OpenWeatherToolSettings[]>(raw,
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        // Retain saved cards from beta.1's prefixed names. An explicitly saved short name takes precedence.
         var configured = (entries ?? []).Where(e => !string.IsNullOrEmpty(e.Name))
-            .GroupBy(e => e.Name, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Last(), StringComparer.Ordinal);
+            .GroupBy(e => CurrentName(e.Name), StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.LastOrDefault(e => e.Name == g.Key) ?? g.Last(), StringComparer.Ordinal);
         var selected = OpenWeatherToolCatalog.Choices.Where(choice => configured.TryGetValue(choice.Name, out var entry)
                 ? !bool.TryParse(entry.Disabled, out var disabled) || !disabled
                 : choice.EnabledByDefault)
@@ -68,6 +70,9 @@ internal sealed record OpenWeatherToolsSettings(IReadOnlySet<string> Selected, C
             .Where(e => !string.IsNullOrWhiteSpace(e.Value.Description))
             .ToDictionary(e => e.Key, e => e.Value.Description!.Trim(), StringComparer.Ordinal));
     }
+
+    private static string CurrentName(string name) => name.StartsWith("openweather_", StringComparison.Ordinal)
+        ? name["openweather_".Length..] : name;
 }
 
 internal sealed class OpenWeatherToolSettings

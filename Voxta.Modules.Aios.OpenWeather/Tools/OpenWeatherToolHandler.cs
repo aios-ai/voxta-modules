@@ -7,13 +7,12 @@ using Voxta.Modules.Aios.OpenWeather.ChatAugmentations;
 using Voxta.Modules.Aios.OpenWeather.Clients;
 using Voxta.Modules.Aios.OpenWeather.Helper;
 using Voxta.Modules.Aios.Tools;
-using MapTargetType = Voxta.Modules.Aios.OpenWeather.ChatAugmentations.OpenWeatherChatAugmentationsServiceInstance.MapTargetType;
 
 namespace Voxta.Modules.Aios.OpenWeather.Tools;
 
 internal sealed class OpenWeatherToolHandler(
     IOpenWeatherClient client, OpenWeatherChatAugmentationsSettings settings, CultureInfo culture,
-    CancellationToken sessionAbort = default)
+    Func<string, IImage, CancellationToken, Task> attachImage, CancellationToken sessionAbort = default)
 {
     private readonly HashSet<string> _weatherDetails = (settings.WeatherDetails ?? ["Temp"]).ToHashSet(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _pollutionDetails = (settings.PollutionDetails ?? ["AQI"]).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -34,11 +33,15 @@ internal sealed class OpenWeatherToolHandler(
             token.ThrowIfCancellationRequested();
             if (!result.Success) return Failure(result);
             if (result.Value is not { Length: > 0 }) return new("OpenWeather returned an empty map image.", IsError: true);
-            return new($"Weather map for {target.Identifier}: {WeatherMapHelper.ToDisplayName(normalizedLayer)}.")
-            {
-                Images = [new BytesImage("image/png", result.Value, ComputerVisionSource.Screen)
-                { FileName = $"weathermap_{normalizedLayer}_{target.Identifier}.png" }],
-            };
+            var description = $"Weather map for {target.Identifier}: {WeatherMapHelper.ToDisplayName(normalizedLayer)}.";
+            var image = new BytesImage("image/png", result.Value, ComputerVisionSource.Tool)
+            { FileName = $"weathermap_{normalizedLayer}_{target.Identifier}.png" };
+            // SDK result images reach the model. A chat attachment also makes the map visible to the user,
+            // matching Voxta's own MCP image-tool integration. This does not trigger another reply.
+            await attachImage(description, image, token);
+            token.ThrowIfCancellationRequested();
+            return new(description + " The map image was attached to the conversation.") { Images = [image] };
+
         }
 
         location = string.IsNullOrWhiteSpace(location) ? settings.MyLocation?.Trim() : location;

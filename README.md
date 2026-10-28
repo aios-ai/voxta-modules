@@ -19,14 +19,15 @@ network. Initial setup asks you to press the bridge link button.
 ### OpenWeather
 
 `Voxta.Modules.Aios.OpenWeather` adds current weather, forecasts, air quality, and generated weather maps to Voxta
-chats. It supports configurable locations, units and reported details. Select **OpenWeather Tools** for five
-native agent tools, or keep **OpenWeather** selected to compare the existing actions. If both are selected,
-tools take precedence. The tool option requires a model with tool-calling support and no action-inference service.
+chats. Select **OpenWeather** to use its five native tools with a tool-capable model. The augmentation supports
+configurable locations, units and reported details, without an action-inference service. Legacy actions and their
+settings have been removed after user acceptance. Existing chats using only the old action augmentation must
+select OpenWeather; existing tool-enabled chats keep their selection.
 
 All five tools default enabled in Assistant and Companion chats. The **OpenWeather Tools** cards let you disable
 individual tools and edit their descriptions. City queries use **My Location** when no location is supplied;
 without either, the agent can ask which city to use. Maps support countries, continents and global views and
-return images directly in tool results. The API key stays in Voxta's encrypted password-field configuration.
+attach images visibly to the chat and return them to the model. The API key stays in Voxta's encrypted password-field configuration.
 
 The module itself is free. It requires Voxta `1.13.0` or newer and an OpenWeather API key; OpenWeather offers a
 rate-limited free plan.
@@ -71,10 +72,10 @@ addresses require HTTPS; local HTTP requires an explicit loopback IP such as `12
 next provider request, an active client notices the removed token and clears its cached connection. The module
 logs `Spotify OAuth sign-out requested` when the request reaches it.
 
-Select **Spotify Tools** for native tool calling. All tools default on and **Offer Tools In** defaults to
+Select **Spotify** for native tool calling. All tools default on and **Offer Tools In** defaults to
 Assistant and Companion. The **Spotify Tools** cards provide individual switches and editable descriptions.
 Saved selections/styles are retained. Spotify's legacy actions, wake word, connect gate, and connection flags
-have been removed. Chats that used only **Spotify Actions (Legacy)** must select **Spotify Tools**.
+have been removed. Chats that used only **Spotify Actions (Legacy)** must select **Spotify**.
 
 All Spotify tools appear automatically when an active player is detected, including a paused player.
 Without one, all Spotify tools are hidden. Context guides the assistant to ask the user to open Spotify on

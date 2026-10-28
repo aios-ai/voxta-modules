@@ -1,6 +1,5 @@
 ﻿using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
-using Voxta.Modules.Aios.OpenWeather.ChatAugmentations;
 using Voxta.Modules.Aios.OpenWeather.Helper;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
@@ -54,7 +53,7 @@ public interface IOpenWeatherClient
     Task<OpenWeatherResult<OpenWeatherAirPollutionResponse>> FetchAirPollutionData(string location, CancellationToken cancellationToken);
     Task<OpenWeatherResult<OpenWeatherAirPollutionResponse>> FetchAirPollutionForecastData(string location, CancellationToken cancellationToken);
     Task<OpenWeatherResult<byte[]>> FetchWeatherMapAsync(
-        (OpenWeatherChatAugmentationsServiceInstance.MapTargetType Type, string Identifier) target,
+        (MapTargetType Type, string Identifier) target,
         string layer,
         string cacheDir,
         CancellationToken cancellationToken);
@@ -259,7 +258,7 @@ public class OpenWeatherClient(
     }
     
     public async Task<OpenWeatherResult<byte[]>> FetchWeatherMapAsync(
-        (OpenWeatherChatAugmentationsServiceInstance.MapTargetType Type, string Identifier) target,
+        (MapTargetType Type, string Identifier) target,
         string layer,
         string cacheDir,
         CancellationToken cancellationToken)
@@ -357,16 +356,16 @@ public class OpenWeatherClient(
     }
     
     private TilePlan? CreateWeatherMapPlan(
-        (OpenWeatherChatAugmentationsServiceInstance.MapTargetType Type, string Identifier) target)
+        (MapTargetType Type, string Identifier) target)
     {
         return target.Type switch
         {
-            OpenWeatherChatAugmentationsServiceInstance.MapTargetType.Global =>
+            MapTargetType.Global =>
                 new TilePlan(2, 0, 3, 0, 3),
-            OpenWeatherChatAugmentationsServiceInstance.MapTargetType.Continent
+            MapTargetType.Continent
                 when CountryCentroids.TryGetBounds(target.Identifier, out var bounds) =>
                     ChooseTilePlan(bounds, minZoom: 1, maxZoom: 5, maxTiles: 16, padding: 0),
-            OpenWeatherChatAugmentationsServiceInstance.MapTargetType.Country
+            MapTargetType.Country
                 when CountryCentroids.TryGetBounds(target.Identifier, out var bounds) =>
                     ChooseTilePlan(bounds, minZoom: 3, maxZoom: 7, maxTiles: 24, padding: 0),
             _ => null

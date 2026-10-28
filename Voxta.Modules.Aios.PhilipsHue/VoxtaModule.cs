@@ -13,7 +13,7 @@ public class VoxtaModule : IVoxtaModule
 
     public static readonly AugmentationKeyDescriptor[] Augmentations =
     [
-        new(ToolsAugmentationKey, "Philips Hue Tools", "Control Philips Hue lights, rooms, zones, scenes, color and brightness through tools."),
+        new(ToolsAugmentationKey, "Philips Hue", "Control Philips Hue lights, rooms, zones, scenes, color and brightness through tools."),
     ];
 
     public void Configure(IVoxtaModuleBuilder builder)

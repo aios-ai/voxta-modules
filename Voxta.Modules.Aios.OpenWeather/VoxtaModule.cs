@@ -11,17 +11,11 @@ namespace Voxta.Modules.Aios.OpenWeather;
 public class VoxtaModule : IVoxtaModule
 {
     public const string ServiceName = "Aios.OpenWeather";
-    public const string AugmentationKey = "openweather";
     public const string ToolsAugmentationKey = "openweather_tools";
 
     public static readonly AugmentationKeyDescriptor[] Augmentations =
     [
-        new(ToolsAugmentationKey, "OpenWeather Tools", "Query weather, forecasts, air quality and maps through native chat tools."),
-        new(
-            AugmentationKey,
-            "OpenWeather",
-            "Add current weather, forecasts, air quality, and weather maps to chats."
-        ),
+        new(ToolsAugmentationKey, "OpenWeather", "Query weather, forecasts, air quality and maps through native chat tools."),
     ];
 
     public void Configure(IVoxtaModuleBuilder builder)

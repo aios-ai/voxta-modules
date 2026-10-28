@@ -26,7 +26,7 @@ internal static class OpenWeatherToolCatalog
         ]),
     ];
 
-    public static readonly ChatToolChoice[] Choices = Definitions.Select(d => new ChatToolChoice("openweather_" + d.Name, d.Description, true)).ToArray();
+    public static readonly ChatToolChoice[] Choices = Definitions.Select(d => new ChatToolChoice(d.Name, d.Description, true)).ToArray();
 
     public static ModuleToolCatalog Create(OpenWeatherToolHandler handler, OpenWeatherToolsSettings settings, ILogger logger) => new(
         Definitions.Select((d, i) => new ModuleTool(new ChatTool(Choices[i].Name,
