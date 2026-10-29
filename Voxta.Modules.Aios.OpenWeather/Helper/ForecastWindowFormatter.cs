@@ -32,7 +32,7 @@ internal static class ForecastWindowFormatter
         var temperatureUnit = units == "imperial" ? "°F" : "°C";
         if (details.Contains("Temp")) sb.Append($"Temperature: {Number(item.Main.Temp)}{temperatureUnit}. ");
         if (details.Contains("FeelsLike")) sb.Append($"Feels like: {Number(item.Main.FeelsLike)}{temperatureUnit}. ");
-        if (details.Contains("TempMinMax")) sb.Append($"Temperature bounds at this valid time: {Number(item.Main.TempMin)} to {Number(item.Main.TempMax)}{temperatureUnit}. ");
+        if (details.Contains("TempMinMax")) sb.Append($"Temperature bounds at this valid time (not daily low/high): {Number(item.Main.TempMin)} to {Number(item.Main.TempMax)}{temperatureUnit}. ");
         if (details.Contains("Condition")) sb.Append($"Condition: {item.Weather.FirstOrDefault()?.Description ?? "unavailable"}. ");
         if (details.Contains("Wind")) sb.Append($"Wind: {Number(item.Wind.Speed)} {WeatherReportFormatter.WindUnit(units)} at {item.Wind.Deg}°. ");
         if (details.Contains("WindGust")) sb.Append($"Wind gust: {(item.Wind.Gust is { } gust ? Number(gust) + " " + WeatherReportFormatter.WindUnit(units) : "unavailable")}. ");

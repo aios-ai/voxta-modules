@@ -64,7 +64,7 @@ internal sealed class OpenWeatherToolHandler(
         var details = WeatherDetailSelection.Resolve(Text(arguments, "details"), pollution ? _pollutionDetails : _weatherDetails,
             pollution ? WeatherDetailSelection.Pollution : operation == "get_weather_forecast" ? WeatherDetailSelection.Forecast : WeatherDetailSelection.Weather);
         var windowRequest = operation is "get_weather_forecast" or "get_air_pollution_forecast"
-            ? ForecastWindowRequest.Parse(Text(arguments, "start"), Text(arguments, "end")) : null;
+            ? ForecastWindowRequest.Parse(Text(arguments, "start"), Text(arguments, "end"), Text(arguments, "date"), Text(arguments, "period")) : null;
 
         switch (operation)
         {

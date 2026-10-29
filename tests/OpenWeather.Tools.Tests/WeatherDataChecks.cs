@@ -25,6 +25,37 @@ internal static class WeatherDataChecks
             Check(!result.IsError, result.Text);
             return result.Text;
         }
+        foreach (var (tool, fields) in new[] { ("get_weather", WeatherDetailSelection.Weather), ("get_weather_forecast", WeatherDetailSelection.Forecast) })
+        {
+            foreach (var field in fields.Split(','))
+            {
+                var output = await Call(tool, new { details = field });
+                var expected = field switch
+                {
+                    "Temp" => tool == "get_weather" ? "current temperature" : "Temperature:",
+                    "FeelsLike" => tool == "get_weather" ? "feels like" : "Feels like:",
+                    "Condition" => "clear", "Precipitation" => "Rain:",
+                    "TempMinMax" => tool == "get_weather" ? "temperature ranges" : "Sample temperature bounds",
+                    "Wind" => "Wind:", "WindGust" => "wind gust:", "CloudCover" => "Cloud cover:",
+                    "Visibility" => "Visibility:", "Humidity" => "Humidity:", "Pressure" => "Pressure:",
+                    "SeaLevelPressure" => "Sea-level pressure:", "GroundPressure" => "Ground-level pressure:",
+                    "Sunrise" => tool == "get_weather" ? "Sunrise:" : "get_sun_times",
+                    "Sunset" => tool == "get_weather" ? "Sunset:" : "get_sun_times",
+                    "ObservationTime" => tool == "get_weather" ? "Data time:" : "Forecast valid times",
+                    "PrecipitationProbability" => "precipitation probability:",
+                    _ => throw new Exception("Missing verification for " + field),
+                };
+                Check(output.Contains(expected, StringComparison.OrdinalIgnoreCase), "Selected detail rendered: " + tool + "." + field + ": " + output);
+            }
+        }
+        foreach (var tool in new[] { "get_air_pollution", "get_air_pollution_forecast", "get_air_pollution_history" })
+            foreach (var field in WeatherDetailSelection.Pollution.Split(','))
+            {
+                var output = await Call(tool, new { details = field, start = tool.EndsWith("history") ? "2020-11-28T00:00:00Z" : (string?)null, end = tool.EndsWith("history") ? "2020-11-29T00:00:00Z" : null });
+                Check(output.Contains(field == "AQI" ? "AQI" : "\u00b5g/m\u00b3"), "Selected pollutant rendered: " + tool + "." + field);
+            }
+        var combined = await Call("get_weather_forecast", new { details = "Temp,TempMinMax" });
+        Check(combined.Contains("Temperature:") && combined.Contains("Sample temperature bounds"), "Selecting bounds does not hide requested average temperature");
         var report = await Call("get_weather", new { details = "humidity,Sunrise,Sunset,Pressure,WindGust,ObservationTime" });
         Check(report.Contains("Humidity: 64%") && report.Contains("Pressure: 1015 hPa") && report.Contains("Wind gust: 7 m/s"), "Explicit weather fields");
         Check(report.Contains("2020-11-28 08:00 +02:00") && report.Contains("2020-11-28 18:00 +02:00"), "Sun times use destination offset");
@@ -32,13 +63,13 @@ internal static class WeatherDataChecks
         report = await Call("get_weather", new { });
         Check(report.Contains("current temperature") && !report.Contains("Humidity:"), "Override does not mutate defaults");
         report = await Call("get_air_pollution", new { details = "NH3" });
-        Check(report.Contains("NH₃: " + 3.5.ToString("0.#")) && !report.Contains("AQI"), "Unchecked NH3 available on request: " + report);
+        Check((report.Contains("NH₃: 3.5") || report.Contains("NH₃: 3,5")) && !report.Contains("AQI"), "Unchecked NH3 available on request: " + report);
         report = await Call("get_air_pollution_forecast", new { details = "NH3" });
-        Check(report.Contains("NH₃: " + 3.5.ToString("0.#")) && !report.Contains("AQI"), "Forecast override");
+        Check((report.Contains("NH₃: 3.5") || report.Contains("NH₃: 3,5")) && !report.Contains("AQI"), "Forecast override");
         report = await Call("get_weather_forecast", new { details = "Humidity,PrecipitationProbability,Sunrise" });
         Check(report.Contains("Humidity: 64%") && report.Contains("80%") && report.Contains("Use get_sun_times") && !report.Contains("Rain:"), "Forecast fields respect selection");
         report = await Call("get_air_pollution_history", new { start = "2020-11-28T00:00:00Z", end = "2020-11-29T00:00:00Z", details = "NH3" });
-        Check(report.Contains("2020-11-28") && report.Contains("NH₃: " + 3.5.ToString("0.#")) && transport.Urls.Any(u => u.AbsolutePath.EndsWith("/history") && u.Query.Contains("start=1606521600") && u.Query.Contains("end=1606608000")), "History range, dates and override");
+        Check(report.Contains("2020-11-28") && (report.Contains("NH₃: 3.5") || report.Contains("NH₃: 3,5")) && transport.Urls.Any(u => u.AbsolutePath.EndsWith("/history") && u.Query.Contains("start=1606521600") && u.Query.Contains("end=1606608000")), "History range, dates and override");
         var count = transport.Urls.Count;
         foreach (var args in new object[] {
             new { start = "2020-11-26T00:00:00Z", end = "2020-11-29T00:00:00Z" },

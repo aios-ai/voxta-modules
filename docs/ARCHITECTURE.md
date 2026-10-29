@@ -55,6 +55,9 @@ The shared foundation is compiled privately into all three modules, and all thre
   claims such as clear skies from a precipitation map. The user-facing attachment retains a short caption.
 - Configured weather/pollution selections are defaults, not restrictions. Optional comma-separated `details`
   replaces defaults per call, including unchecked fields; unknown fields fail before provider requests. Weather
+  settings expose every supported detail, including Condition for current and forecast weather. Generated
+  per-tool argument documentation lists the same accepted selections. New settings default to Condition, Temp,
+  CloudCover, PrecipitationProbability, Precipitation and Wind; existing saved choices remain unchanged. Weather
   models include humidity, sea/ground pressure, gusts and UTC timestamps. Current sun times apply only to their
   displayed date; forecast results omit today's city sun metadata and redirect to `get_sun_times`. Weather summaries
   group destination-local periods and respect selected fields; pollution summaries explicitly use UTC.
@@ -62,8 +65,12 @@ The shared foundation is compiled privately into all three modules, and all thre
   `/geo/1.0/reverse` for `latitude,longitude`. Reverse lookup retains the exact requested weather coordinates.
   All data/geocoding calls use HTTPS and invariant decimal coordinates. Postal countries and coordinate ranges
   are validated before requesting geocoding. These formats also work in My Location; maps retain their own targets.
-- Weather/pollution forecast tools retain their default summaries when both optional `start`/`end` arguments
-  are omitted. Supplying both enables targeted output: `ForecastWindowRequest` validates strict date/time formats,
+- Weather/pollution forecast tools retain their default summaries when all time arguments are omitted.
+  Preferred `date` (`today`, `tomorrow`, `YYYY-MM-DD`) and optional `period` select a destination-local civil
+  day or morning (06-12), afternoon (12-18), evening (18-22), night (22-06 next day). The module advances
+  civil dates across DST, with no extra provider calls. `date` alone means midnight to next midnight.
+  Custom `start`/`end` ranges remain supported; mixing the two forms or a period without a date fails
+  before provider requests. Supplying a date or both custom bounds enables targeted output: `ForecastWindowRequest` validates strict date/time formats,
   resolves `today`/`tomorrow` in the destination zone, and requires clarification for ambiguous/skipped local clock
   times without an explicit offset. The end is exclusive. A request wholly outside the returned timestamps fails
   with the available range; partial bounds and missing entries are stated explicitly. Horizons are approximately

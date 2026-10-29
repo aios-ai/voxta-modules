@@ -63,7 +63,7 @@ public static class WeatherForecastSummariser
         var maxTemp = block.Max(x => x.Main.TempMax);
 
         var commonCondition = block
-            .GroupBy(x => x.Weather[0].Description)
+            .GroupBy(x => x.Weather.FirstOrDefault()?.Description ?? "unavailable")
             .OrderByDescending(g => g.Count())
             .First().Key;
 
@@ -72,8 +72,8 @@ public static class WeatherForecastSummariser
 
         var text = $"{date.ToString("yyyy-MM-dd dddd", culture)} {label}: ";
         if (weatherDetails.Contains("Condition")) text += culture.TextInfo.ToTitleCase(commonCondition) + ". ";
-        if (weatherDetails.Contains("TempMinMax")) text += $"{FormatWholeNumber(minTemp)}-{FormatWholeNumber(maxTemp)}{unitSuffix}. ";
-        else if (weatherDetails.Contains("Temp")) text += $"Temperature: {FormatWholeNumber(block.Average(x => x.Main.Temp))}{unitSuffix}. ";
+        if (weatherDetails.Contains("TempMinMax")) text += $"Sample temperature bounds (not full-day low/high): {FormatWholeNumber(minTemp)}-{FormatWholeNumber(maxTemp)}{unitSuffix}. ";
+        if (weatherDetails.Contains("Temp")) text += $"Temperature: {FormatWholeNumber(block.Average(x => x.Main.Temp))}{unitSuffix}. ";
         if (weatherDetails.Contains("FeelsLike")) text += $"Feels like: {FormatWholeNumber(block.Average(x => x.Main.FeelsLike))}{unitSuffix}. ";
         if (weatherDetails.Contains("Precipitation")) text += $"Rain: {totalRain:0.#} mm; snow: {totalSnow:0.#} mm. ";
         var extras = new StringBuilder();
@@ -99,7 +99,7 @@ public static class WeatherForecastSummariser
         if (weatherDetails.Contains("CloudCover"))
         {
             var avgClouds = block.Average(x => x.Clouds.All);
-            text += $", Cloud cover: {FormatWholeNumber(avgClouds)}%";
+            text += $"Cloud cover: {FormatWholeNumber(avgClouds)}%. ";
         }
 
         if (weatherDetails.Contains("Visibility"))
@@ -111,8 +111,9 @@ public static class WeatherForecastSummariser
             if (visibilityValues.Count > 0)
             {
                 var avgVisibility = visibilityValues.Average() / 1000.0;
-                text += $", Visibility: {FormatWholeNumber(avgVisibility)} km";
+                text += $"Visibility: {FormatWholeNumber(avgVisibility)} km. ";
             }
+            else text += "Visibility: unavailable. ";
         }
 
         return text.TrimEnd(' ', '.') + ".";

@@ -28,6 +28,18 @@ internal static class ForecastWindowChecks
             Check(transport.Requests == count + 2, "One geocoding plus one data call; no additional requests for time-zone lookup");
             return result.Text;
         }
+        foreach (var op in new[] { "get_weather_forecast", "get_air_pollution_forecast" })
+        {
+            var morning = await Call(op, new { date = "2026-10-29", period = "morning" });
+            Check(morning.Contains("Requested window: 2026-10-29 06:00 +01:00 to 2026-10-29 12:00 +01:00"), "Date/period resolve automatically in destination time");
+            var fullDay = await Call(op, new { date = "2026-10-29" });
+            Check(fullDay.Contains("to 2026-10-30 00:00 +01:00"), "Date alone selects full civil day");
+            var calls = transport.Requests;
+            foreach (var invalid in new object[] { new { period = "morning" }, new { date = "2026-02-30" },
+                new { date = "2026-10-29", period = "lunchtime" }, new { date = "tomorrow", start = "tomorrow", end = "2026-10-31" } })
+                Check((await catalog.CallToolAsync(op, JsonSerializer.SerializeToElement(invalid), default)).IsError, "Invalid/mixed date selection rejected");
+            Check(calls == transport.Requests, "Invalid date/period adds no provider requests");
+        }
         var text = await Call("get_weather_forecast", new { start = "2026-10-29T10:00", end = "2026-10-29T13:00", details = "Humidity,WindGust,PrecipitationProbability,Precipitation" });
         var rows = text.Split('\n').Where(line => line.StartsWith("2026-", StringComparison.Ordinal)).ToArray();
         Check(rows.Length == 3 && rows[0].Contains("07:00 +01:00 [surrounding context]") && rows[1].Contains("10:00 +01:00:")
@@ -78,6 +90,14 @@ internal static class ForecastWindowChecks
         {
             try { ForecastWindowRequest.Parse(ambiguous, "2026-10-26")!.Resolve(geo, now); throw new Exception("DST input accepted silently"); }
             catch (ModuleToolInputException ex) { Check(ex.Message.Contains("explicit UTC offset"), "Ambiguous/skipped local times need clarification"); }
+        }
+        var civilDay = ForecastWindowRequest.Parse(null, null, "2026-10-25")!.Resolve(geo, now);
+        var night = ForecastWindowRequest.Parse(null, null, "2026-10-24", "night")!.Resolve(geo, now);
+        Check((civilDay.End - civilDay.Start).TotalHours == 25 && (night.End - night.Start).TotalHours == 9, "Date/period advances civil date across DST");
+        foreach (var (period, startHour, endHour) in new[] { ("day", 0, 0), ("morning", 6, 12), ("afternoon", 12, 18), ("evening", 18, 22), ("night", 22, 6) })
+        {
+            var window = ForecastWindowRequest.Parse(null, null, "tomorrow", period)!.Resolve(geo, now);
+            Check(window.Start.Hour == startHour && window.End.Hour == endHour && window.Start.Day == 30, "Named period: " + period);
         }
         var repeated = ForecastWindowRequest.Parse("2026-10-25T02:00+02:00", "2026-10-25T03:00+01:00")!.Resolve(geo, now);
         var points = new[] { repeated.Start.ToUnixTimeSeconds(), repeated.Start.AddHours(1).ToUnixTimeSeconds() };

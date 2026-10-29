@@ -24,7 +24,7 @@ internal static class WeatherReportFormatter
         if (details.Contains("FeelsLike"))
             sb.Append($"(feels like {FormatWholeNumber(data.Main.FeelsLike)}{unitSuffix}) ");
         if (details.Contains("Condition"))
-            sb.Append($"with {data.Weather[0].Description}. ");
+            sb.Append($"with {data.Weather.FirstOrDefault()?.Description ?? "unavailable"}. ");
         if (details.Contains("Precipitation"))
             sb.Append($"Rain: {rain:0.#} mm/h; snow: {snow:0.#} mm/h. ");
         if (details.Contains("TempMinMax"))
@@ -33,8 +33,8 @@ internal static class WeatherReportFormatter
             sb.Append($"Wind: {data.Wind.Speed:0.#} {WindUnit(units)} at {FormatWholeNumber(data.Wind.Deg)}°. ");
         if (details.Contains("CloudCover"))
             sb.Append($"Cloud cover: {data.Clouds.All}%. ");
-        if (details.Contains("Visibility") && data.Visibility is { } visibility)
-            sb.Append($"Visibility: {FormatWholeNumber(visibility / 1000.0)} km. ");
+        if (details.Contains("Visibility"))
+            sb.Append($"Visibility: {(data.Visibility is { } visibility ? FormatWholeNumber(visibility / 1000.0) + " km" : "unavailable")}. ");
 
         AppendWeatherExtras(sb, data.Main, details);
         if (details.Contains("WindGust")) sb.Append($"Wind gust: {(data.Wind.Gust is { } gust ? gust.ToString("0.#", CultureInfo.InvariantCulture) + " " + WindUnit(units) : "unavailable")}. ");

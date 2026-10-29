@@ -51,8 +51,9 @@ public class ModuleConfigurationProvider : ModuleConfigurationProviderBase, IMod
         [
             new() { Label = "Temp", Value = "Temp", Metadata = new FormChoiceMetadata { Subtitle = "Current temperature." } },
             new() { Label = "FeelsLike", Value = "FeelsLike", Metadata = new FormChoiceMetadata { Subtitle = "Feels-like temperature." } },
+            new() { Label = "Condition", Value = "Condition", Metadata = new FormChoiceMetadata { Subtitle = "Weather description, such as clear sky or broken clouds; current weather and forecast." } },
             new() { Label = "Precipitation", Value = "Precipitation", Metadata = new FormChoiceMetadata { Subtitle = "Rain and snow precipitation." } },
-            new() { Label = "TempMinMax", Value = "TempMinMax", Metadata = new FormChoiceMetadata { Subtitle = "Minimum and maximum temperature." } },
+            new() { Label = "TempMinMax", Value = "TempMinMax", Metadata = new FormChoiceMetadata { Subtitle = "Provider temperature bounds at each valid time; forecast summaries aggregate these, not a full-day low/high." } },
             new() { Label = "Wind", Value = "Wind", Metadata = new FormChoiceMetadata { Subtitle = "Wind speed and direction." } },
             new() { Label = "CloudCover", Value = "CloudCover", Metadata = new FormChoiceMetadata { Subtitle = "Cloud coverage percentage." } },
             new() { Label = "Visibility", Value = "Visibility", Metadata = new FormChoiceMetadata { Subtitle = "Visibility in kilometers." } },
@@ -61,12 +62,12 @@ public class ModuleConfigurationProvider : ModuleConfigurationProviderBase, IMod
             new() { Label = "SeaLevelPressure", Value = "SeaLevelPressure", Metadata = new FormChoiceMetadata { Subtitle = "Explicit sea-level pressure where supplied (hPa)." } },
             new() { Label = "GroundPressure", Value = "GroundPressure", Metadata = new FormChoiceMetadata { Subtitle = "Ground-level pressure (hPa)." } },
             new() { Label = "WindGust", Value = "WindGust", Metadata = new FormChoiceMetadata { Subtitle = "Wind gust speed." } },
-            new() { Label = "Sunrise", Value = "Sunrise", Metadata = new FormChoiceMetadata { Subtitle = "Sunrise in the destination local time." } },
-            new() { Label = "Sunset", Value = "Sunset", Metadata = new FormChoiceMetadata { Subtitle = "Sunset in the destination local time." } },
+            new() { Label = "Sunrise", Value = "Sunrise", Metadata = new FormChoiceMetadata { Subtitle = "Current weather metadata only; use get_sun_times for a requested date, including forecast dates." } },
+            new() { Label = "Sunset", Value = "Sunset", Metadata = new FormChoiceMetadata { Subtitle = "Current weather metadata only; use get_sun_times for a requested date, including forecast dates." } },
             new() { Label = "ObservationTime", Value = "ObservationTime", Metadata = new FormChoiceMetadata { Subtitle = "Time of the weather data." } },
             new() { Label = "PrecipitationProbability", Value = "PrecipitationProbability", Metadata = new FormChoiceMetadata { Subtitle = "Forecast precipitation probability (%); unavailable for current weather." } },
         ],
-        StartValue = ["Temp", "TempMinMax", "Precipitation"],
+        StartValue = ["Condition", "Temp", "CloudCover", "PrecipitationProbability", "Precipitation", "Wind"],
     };
 
     public static readonly FormMultipleChoicesField PollutionDetails = new()

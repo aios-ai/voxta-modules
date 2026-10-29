@@ -48,6 +48,14 @@ var migratedField = (FormArrayOfObjectsField)OpenWeatherToolsSettings.Configurat
 Check(JsonSerializer.Deserialize<OpenWeatherToolSettings[]>(migratedField.DefaultValue!)!.Single(c => c.Name == "get_weather_map").Disabled == "true", "Card editor saves migrated short names");
 Check(fields.OfType<FormPasswordField>().Single().Name == "ApiKey", "API key stays a host-encrypted password");
 Check(fields.All(f => f.Name != "Actions") && fields.Any(f => f.Name == OpenWeatherToolsSettings.CardsFieldName), "Legacy action configuration removed");
+var weatherChoices = ModuleConfigurationProvider.WeatherDetails.Choices.Select(c => c.Value).ToHashSet();
+Check(weatherChoices.SetEquals(WeatherDetailSelection.Forecast.Split(',')), "Every weather detail is selectable in settings, including Condition");
+Check(ModuleConfigurationProvider.PollutionDetails.Choices.Select(c => c.Value).ToHashSet().SetEquals(WeatherDetailSelection.Pollution.Split(',')), "Every pollutant is selectable");
+foreach (var (tool, supported) in new[] {
+    ("get_weather", WeatherDetailSelection.Weather), ("get_weather_forecast", WeatherDetailSelection.Forecast),
+    ("get_air_pollution", WeatherDetailSelection.Pollution), ("get_air_pollution_forecast", WeatherDetailSelection.Pollution),
+    ("get_air_pollution_history", WeatherDetailSelection.Pollution) })
+    Check(OpenWeatherToolCatalog.DescribeArguments(tool).Contains("Comma-separated fields: " + supported + "."), "Complete per-tool detail documentation: " + tool);
 Console.WriteLine("PASS tool cards, defaults, saved descriptions/styles and encrypted-key configuration");
 
 var settings = new OpenWeatherChatAugmentationsSettings
