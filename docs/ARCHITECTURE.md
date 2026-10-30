@@ -342,10 +342,10 @@ which is already the manifest compatibility floor. The foundation compiles again
   permission class, display mode, speech synchronization, and external-content metadata.
 - `ChatToolSchema.FromArguments` builds schemas from SDK `FunctionArgumentDefinition` objects. Tool argument
   definitions must live in tool files; do not obtain them by calling the old action builders.
-- `ChatToolSettingsContributions` supplies standard tool selection and chat-style settings. Spotify uses the
-  SDK choices and settings compatibility but presents per-tool configuration in the SDK's object card editor,
-  as requested by the user. Its module-local style field does not mutate SDK static defaults. Tool settings must
-  not read legacy `Actions` settings.
+- `ChatToolSettingsContributions` supplies legacy tool-selection compatibility. Per-tool configuration uses
+  the SDK's object card editor. `ModuleToolChatStyles` owns the chat-style form definition, retaining the
+  `ToolChatStyles` key and Assistant/Companion defaults without referencing the SDK's static form field,
+  which may be absent in newer hosts. Tool settings must not read legacy `Actions` settings.
 - `ChatToolCallResult` returns text, errors, images, and other SDK result metadata directly to the agent loop.
 
 The SDK and host own tool permissions, grants, model visibility, and the agent loop. The catalog does not

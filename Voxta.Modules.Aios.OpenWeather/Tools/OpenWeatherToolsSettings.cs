@@ -11,14 +11,7 @@ namespace Voxta.Modules.Aios.OpenWeather.Tools;
 internal sealed record OpenWeatherToolsSettings(IReadOnlySet<string> Selected, ChatStyles[] ChatStyles,
     IReadOnlyDictionary<string, string>? Descriptions = null)
 {
-    public static readonly FormMultipleEnumField<ChatStyles> Styles = new()
-    {
-        Name = ChatToolSettingsContributions.ToolChatStyles.Name,
-        Label = ChatToolSettingsContributions.ToolChatStyles.Label,
-        Choices = ChatToolSettingsContributions.ToolChatStyles.Choices,
-        StartValues = [Voxta.Model.Shared.ChatStyles.Assistant, Voxta.Model.Shared.ChatStyles.Companion],
-        Text = "Offer OpenWeather tools in these chat styles. Defaults to Assistant and Companion.",
-    };
+    public static readonly FormMultipleEnumField<ChatStyles> Styles = ModuleToolChatStyles.Create("OpenWeather");
 
     public const string CardsFieldName = "OpenWeatherToolCardsWithArguments";
 

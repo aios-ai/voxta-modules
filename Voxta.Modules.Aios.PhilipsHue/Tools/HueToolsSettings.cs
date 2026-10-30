@@ -11,14 +11,7 @@ namespace Voxta.Modules.Aios.PhilipsHue.Tools;
 internal sealed record HueToolsSettings(IReadOnlySet<string> Selected, ChatStyles[] ChatStyles,
     IReadOnlyDictionary<string, string>? Descriptions = null)
 {
-    public static readonly FormMultipleEnumField<ChatStyles> Styles = new()
-    {
-        Name = ChatToolSettingsContributions.ToolChatStyles.Name,
-        Label = ChatToolSettingsContributions.ToolChatStyles.Label,
-        Choices = ChatToolSettingsContributions.ToolChatStyles.Choices,
-        StartValues = [Voxta.Model.Shared.ChatStyles.Assistant, Voxta.Model.Shared.ChatStyles.Companion],
-        Text = "Offer Hue tools in these chat styles. Defaults to Assistant and Companion.",
-    };
+    public static readonly FormMultipleEnumField<ChatStyles> Styles = ModuleToolChatStyles.Create("Hue");
 
     public const string CardsFieldName = "HueToolCardsWithArguments";
 

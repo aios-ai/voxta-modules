@@ -11,14 +11,7 @@ namespace Voxta.Modules.Aios.Spotify.Tools;
 internal sealed record SpotifyToolsSettings(IReadOnlySet<string> Selected, ChatStyles[] ChatStyles,
     IReadOnlyDictionary<string, string>? Descriptions = null)
 {
-    public static readonly FormMultipleEnumField<ChatStyles> Styles = new()
-    {
-        Name = ChatToolSettingsContributions.ToolChatStyles.Name,
-        Label = ChatToolSettingsContributions.ToolChatStyles.Label,
-        Choices = ChatToolSettingsContributions.ToolChatStyles.Choices,
-        StartValues = [Voxta.Model.Shared.ChatStyles.Assistant, Voxta.Model.Shared.ChatStyles.Companion],
-        Text = "Offer Spotify tools in these chat styles. Defaults to Assistant and Companion.",
-    };
+    public static readonly FormMultipleEnumField<ChatStyles> Styles = ModuleToolChatStyles.Create("Spotify");
 
     public const string CardsFieldName = "SpotifyToolsWithArgumentsV2";
 

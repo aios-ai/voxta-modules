@@ -7,6 +7,16 @@ using Voxta.Modules.Aios.Tools;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Module chat styles preserve saved settings without SDK static fields", () =>
+    {
+        var field = ModuleToolChatStyles.Create("Test");
+        Check(field.Name == "ToolChatStyles", "Saved setting key changed");
+        Check(field.Choices.Select(c => c.Value).ToHashSet().SetEquals(Enum.GetValues<ChatStyles>()), "Missing chat styles");
+        Check(field.StartValues.SequenceEqual([ChatStyles.Assistant, ChatStyles.Companion]), "Default styles changed");
+        var settings = new Voxta.Abstractions.Registration.StaticSettingsSource(new() { [field.Name] = "Roleplay\nAssistant" });
+        Check(settings.GetRequired(field).SequenceEqual([ChatStyles.Roleplay, ChatStyles.Assistant]), "Saved styles lost");
+        return Task.CompletedTask;
+    }),
     ("SDK adapter dispatches arguments, cancellation, and native results", async () =>
     {
         using var cts = new CancellationTokenSource();

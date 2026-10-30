@@ -11,6 +11,7 @@ internal static class SpotifyConfigurationChecks
     public static async Task RunAsync()
     {
         var empty = new StaticSettingsSource(new());
+        Check(ModuleConfigurationProvider.FieldsRequiringReload.Contains("ToolChatStyles"), "Style changes must reload the module");
         Check(empty.GetRequired(ModuleConfigurationProvider.SpeechDuckingMode) == "fixed", "Existing ducking mode changed");
         Check(empty.GetRequired(ModuleConfigurationProvider.SpeechDuckingVolumePercent) == 60, "Existing ducking limit changed");
         Check(empty.GetRequired(ModuleConfigurationProvider.SpeechDuckingReductionPercent) == 25, "Relative ducking default incorrect");

@@ -30,7 +30,7 @@ public class ModuleConfigurationProvider(IUnitOfWorkFactory unitOfWorkFactory, S
         flows.Cancel(auth.UserId, moduleId);
         return new() { Text = "Spotify authorization cleared. Reopen these settings, then click **Sign in** under **Spotify Account** to authorize again. Restart active chats after signing in." };
     }
-    public static string[] FieldsRequiringReload => [ClientId.Name, ClientSecret.Name, SpotifyAccount.Name, "Tools", "SpotifyTools", "SpotifyToolsWithArguments", SpotifyToolsSettings.CardsFieldName, ChatToolSettingsContributions.ToolChatStyles.Name, SpeechDuckingMode.Name, SpeechDuckingVolumePercent.Name, SpeechDuckingReductionPercent.Name, SpecialPlaylists.Name];
+    public static string[] FieldsRequiringReload => [ClientId.Name, ClientSecret.Name, SpotifyAccount.Name, "Tools", "SpotifyTools", "SpotifyToolsWithArguments", SpotifyToolsSettings.CardsFieldName, ModuleToolChatStyles.FieldName, SpeechDuckingMode.Name, SpeechDuckingVolumePercent.Name, SpeechDuckingReductionPercent.Name, SpecialPlaylists.Name];
     public static readonly FormDocumentationField SpotifySetup = FormDocumentationField.Create("""
         Create or open your application in the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard/).
         Add **both** redirect URIs to its settings:

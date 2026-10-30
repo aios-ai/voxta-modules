@@ -7,6 +7,6 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Voxta.Abstractions" Version="1.13.0-alpha.10" />
+    <PackageReference Include="Voxta.Abstractions" Version="1.13.0-alpha.14" />
   </ItemGroup>
 </Project>

@@ -7,6 +7,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../Voxta.Modules.Aios.Spotify/Voxta.Modules.Aios.Spotify.csproj" />
-    <PackageReference Include="Voxta.Abstractions" Version="1.13.0-alpha.10" />
+    <PackageReference Include="Voxta.Abstractions" Version="1.13.0-alpha.14" />
   </ItemGroup>
 </Project>
