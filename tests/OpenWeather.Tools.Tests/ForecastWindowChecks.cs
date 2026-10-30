@@ -18,7 +18,8 @@ internal static class ForecastWindowChecks
         var client = new OpenWeatherClient(http, "test-key", NullLogger<OpenWeatherClient>.Instance);
         var settings = new OpenWeatherChatAugmentationsSettings
         { MyLocation = "Berlin, DE", Units = "imperial", WeatherDetails = ["Temp"], PollutionDetails = ["AQI"], TileCachePath = "unused" };
-        var catalog = OpenWeatherToolCatalog.Create(new(client, settings, CultureInfo.InvariantCulture, (_, _, _) => Task.CompletedTask),
+        var clock = new FixedClock(DateTimeOffset.Parse("2026-10-28T23:30:00Z", CultureInfo.InvariantCulture));
+        var catalog = OpenWeatherToolCatalog.Create(new(client, settings, CultureInfo.InvariantCulture, (_, _, _) => Task.CompletedTask, timeProvider: clock),
             OpenWeatherToolsSettings.From(new StaticSettingsSource(new())), NullLogger.Instance);
         async Task<string> Call(string operation, object arguments)
         {
@@ -35,7 +36,7 @@ internal static class ForecastWindowChecks
             var fullDay = await Call(op, new { date = "2026-10-29" });
             Check(fullDay.Contains("to 2026-10-30 00:00 +01:00"), "Date alone selects full civil day");
             var calls = transport.Requests;
-            foreach (var invalid in new object[] { new { period = "morning" }, new { date = "2026-02-30" },
+            foreach (var invalid in new object[] { new { range = "hours", count = 3, period = "morning" }, new { date = "2026-02-30" },
                 new { date = "2026-10-29", period = "lunchtime" }, new { date = "tomorrow", start = "tomorrow", end = "2026-10-31" } })
                 Check((await catalog.CallToolAsync(op, JsonSerializer.SerializeToElement(invalid), default)).IsError, "Invalid/mixed date selection rejected");
             Check(calls == transport.Requests, "Invalid date/period adds no provider requests");
@@ -79,6 +80,55 @@ internal static class ForecastWindowChecks
         text = await Call("get_air_pollution_forecast", new { });
         Check(text.Contains("UTC day/night averages") && text.Contains("AQI") && !text.Contains("NH₃:"), "Omitted range retains default pollution summary");
 
+        // A Monday request must not turn a future weekend into Monday-Friday data.
+        clock.Now = DateTimeOffset.Parse("2026-10-26T00:00Z", CultureInfo.InvariantCulture);
+        transport.First = clock.Now;
+        transport.WeatherCount = 40; // Five days of 3-hour samples, ending Friday evening.
+        transport.PollutionCount = 96; // Four days of hourly samples.
+        foreach (var op in new[] { "get_weather_forecast", "get_air_pollution_forecast" })
+        {
+            var calls = transport.Requests;
+            var noWeekend = await catalog.CallToolAsync(op, JsonSerializer.SerializeToElement(new { range = "weekend" }), default);
+            Check(noWeekend.IsError && noWeekend.Text.Contains("2026-10-31") && noWeekend.Text.Contains("2026-11-01")
+                && noWeekend.Text.Contains("Available forecast timestamps:") && noWeekend.Text.Contains("No forecast coverage")
+                && noWeekend.Text.Contains("Do not extrapolate") && !noWeekend.Text.Contains("Temperature:"), "Monday weekend beyond horizon returns dates/limits, never unrelated weather");
+            Check(transport.Requests == calls + 2, "No retry or alternate forecast request for unavailable weekend");
+            var nextWeekend = await catalog.CallToolAsync(op, JsonSerializer.SerializeToElement(new { range = "next_weekend" }), default);
+            Check(nextWeekend.IsError && nextWeekend.Text.Contains("2026-11-07") && nextWeekend.Text.Contains("2026-11-08"), "Next weekend is not moved into available dates");
+            text = await Call(op, new { range = "this_week" });
+            Check(text.Contains("Partial forecast coverage") && text.Contains("No forecast coverage for this period") && text.Contains("2026-11-01"), "Partly available week identifies missing requested dates");
+            text = await Call(op, new { range = "days", count = 3, period = "afternoon" });
+            Check(text.Split('\n').Count(line => line.StartsWith("Requested window:")) == 3
+                && text.Contains("Periods are separate"), "Multi-day periods stay separate in real tool output");
+            foreach (var line in text.Split('\n').Where(line => line.StartsWith("2026-") && !line.Contains("[surrounding context]")))
+            {
+                var hour = int.Parse(line.Substring(11, 2), CultureInfo.InvariantCulture);
+                Check(hour >= 12 && hour < 18, "Intervening nights are never inside selected afternoons");
+            }
+            text = await Call(op, new { range = "hours", count = 5 });
+            Check(text.Contains("2026-10-26 01:00 +01:00 to 2026-10-26 06:00 +01:00"), "Next five hours start at now");
+            text = await Call(op, new { date = "today" });
+            Check(text.Contains("2026-10-26 01:00 +01:00 to 2026-10-27 00:00 +01:00"), "Today means remaining local day");
+        }
+        // Saturday alone is available: Sunday must be explicitly unavailable, not averaged into Saturday.
+        transport.First = DateTimeOffset.Parse("2026-10-30T00:00Z", CultureInfo.InvariantCulture);
+        transport.WeatherCount = 16;
+        text = await Call("get_weather_forecast", new { range = "weekend" });
+        Check(text.Contains("Partial forecast coverage") && text.Contains("2026-11-01 00:00")
+            && text.Contains("No forecast coverage for this period"), "Partial weekend preserves the missing Sunday");
+        // Runtime validation also rejects malformed JSON counts and incompatible selections before networking.
+        foreach (var op in new[] { "get_weather_forecast", "get_air_pollution_forecast" })
+        {
+            var calls = transport.Requests;
+            foreach (var json in new[] { "{\"range\":\"days\"}", "{\"count\":2}", "{\"range\":\"hours\",\"count\":0}",
+                "{\"range\":\"days\",\"count\":1.5}", "{\"range\":\"days\",\"count\":\"3\"}",
+                "{\"range\":\"days\",\"count\":true}", "{\"range\":\"days\",\"count\":32}",
+                "{\"date\":\"today\",\"range\":\"weekend\"}", "{\"period\":\"10:00-10:00\"}",
+                "{\"start\":\"today\",\"end\":\"tomorrow\",\"range\":\"days\",\"count\":2}" })
+                Check((await catalog.CallToolAsync(op, JsonSerializer.Deserialize<JsonElement>(json), default)).IsError, "Invalid selector: " + json);
+            Check(calls == transport.Requests, "Invalid combinations fail before provider calls");
+        }
+
         var geo = new GeoResult { Name = "Berlin", Country = "DE", Lat = 52.52, Lon = 13.405 };
         var now = DateTimeOffset.Parse("2026-10-28T23:30:00Z", CultureInfo.InvariantCulture);
         var relative = ForecastWindowRequest.Parse("tomorrowT06:00", "tomorrowT12:00")!.Resolve(geo, now);
@@ -91,12 +141,12 @@ internal static class ForecastWindowChecks
             try { ForecastWindowRequest.Parse(ambiguous, "2026-10-26")!.Resolve(geo, now); throw new Exception("DST input accepted silently"); }
             catch (ModuleToolInputException ex) { Check(ex.Message.Contains("explicit UTC offset"), "Ambiguous/skipped local times need clarification"); }
         }
-        var civilDay = ForecastWindowRequest.Parse(null, null, "2026-10-25")!.Resolve(geo, now);
-        var night = ForecastWindowRequest.Parse(null, null, "2026-10-24", "night")!.Resolve(geo, now);
+        var civilDay = ForecastSelectionRequest.Parse(null, null, "2026-10-25")!.Resolve(geo, now.AddDays(-5)).Windows.Single();
+        var night = ForecastSelectionRequest.Parse(null, null, "2026-10-24", "night")!.Resolve(geo, now.AddDays(-5)).Windows.Single();
         Check((civilDay.End - civilDay.Start).TotalHours == 25 && (night.End - night.Start).TotalHours == 9, "Date/period advances civil date across DST");
         foreach (var (period, startHour, endHour) in new[] { ("day", 0, 0), ("morning", 6, 12), ("afternoon", 12, 18), ("evening", 18, 22), ("night", 22, 6) })
         {
-            var window = ForecastWindowRequest.Parse(null, null, "tomorrow", period)!.Resolve(geo, now);
+            var window = ForecastSelectionRequest.Parse(null, null, "tomorrow", period)!.Resolve(geo, now).Windows.Single();
             Check(window.Start.Hour == startHour && window.End.Hour == endHour && window.Start.Day == 30, "Named period: " + period);
         }
         var repeated = ForecastWindowRequest.Parse("2026-10-25T02:00+02:00", "2026-10-25T03:00+01:00")!.Resolve(geo, now);
@@ -110,28 +160,36 @@ internal static class ForecastWindowChecks
 
     private static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
 
+    private sealed class FixedClock(DateTimeOffset now) : TimeProvider
+    {
+        public DateTimeOffset Now = now;
+        public override DateTimeOffset GetUtcNow() => Now;
+    }
+
     private sealed class Transport : HttpMessageHandler
     {
         public int Requests;
+        public DateTimeOffset First = DateTimeOffset.Parse("2026-10-29T00:00Z", CultureInfo.InvariantCulture);
+        public int WeatherCount = 9, PollutionCount = 25;
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             Requests++;
-            var first = DateTimeOffset.Parse("2026-10-29T00:00:00Z", CultureInfo.InvariantCulture);
+            var first = First;
             var geo = new GeoResult { Name = "Berlin", Country = "DE", Lat = 52.52, Lon = 13.405 };
             object data;
             if (request.RequestUri!.AbsolutePath.Contains("/geo/")) data = new[] { geo };
             else if (request.RequestUri.AbsolutePath.Contains("air_pollution"))
-                data = new OpenWeatherAirPollutionResponse { List = Enumerable.Range(0, 25).Select(i => new AirPollutionData
+                data = new OpenWeatherAirPollutionResponse { List = Enumerable.Range(0, PollutionCount).Select(i => new AirPollutionData
                 { Dt = first.AddHours(i).ToUnixTimeSeconds(), Main = new() { Aqi = 2 }, Components = new() { Nh3 = i } }).ToList() };
             else data = new OpenWeatherForecastResponse
             {
                 City = new() { Coord = new() { Lat = 52.52, Lon = 13.405 }, Country = "DE", Timezone = 0 }, // Deliberately not Berlin's offset.
-                List = Enumerable.Range(0, 9).Select(i => new ForecastItem
+                List = Enumerable.Range(0, WeatherCount).Select(i => new ForecastItem
                 {
                     Dt = first.AddHours(i * 3).ToUnixTimeSeconds(), Main = new() { Temp = 50 + i, FeelsLike = 49 + i, TempMin = 48 + i, TempMax = 52 + i, Humidity = 10 + i },
                     Weather = [new() { Description = "clear", Icon = "01d" }], Wind = new() { Speed = 2 + i, Gust = 3 + i },
-                    Clouds = new() { All = 10 }, Sys = new(), Pop = i / 10.0, Rain = new() { ThreeHours = i },
+                    Clouds = new() { All = 10 }, Sys = new(), Pop = (i % 10) / 10.0, Rain = new() { ThreeHours = i },
                 }).ToList(),
             };
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)

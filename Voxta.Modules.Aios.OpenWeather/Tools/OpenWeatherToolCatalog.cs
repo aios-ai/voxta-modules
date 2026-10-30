@@ -36,30 +36,41 @@ internal static class OpenWeatherToolCatalog
     private static FunctionArgumentDefinition ForecastDate() => new()
     {
         Name = "date", Type = FunctionArgumentType.String, Required = false,
-        Description = "Preferred for a single date: today, tomorrow or YYYY-MM-DD at the destination. Omit period for the whole local day. The tool resolves the destination date, time zone and daylight saving. Do not combine with start/end.",
+        Description = "Destination-local date: today, tomorrow, day_after_tomorrow, monday..sunday, next_<weekday>, or YYYY-MM-DD (1901-2099). A weekday means its first occurrence on/after today; next_ adds seven days. Default today when using period or range=days. Past hours are excluded. The module calculates dates and DST; do not calculate UTC offsets. Omit with calendar ranges, range=hours or start/end.",
     };
     private static FunctionArgumentDefinition ForecastPeriod() => new()
     {
         Name = "period", Type = FunctionArgumentType.String, Required = false,
-        Description = "Use with date: day (00:00-next midnight), morning (06:00-12:00), afternoon (12:00-18:00), evening (18:00-22:00), night (22:00-06:00 next day). Local destination times; end exclusive. Use start/end if the user specifies different hours.",
+        Description = "Local hours: all_day (default), morning (06-12), afternoon (12-18), evening (18-22), night (22-06 next day), or HH:mm-HH:mm. An earlier end clock time means next day; equal times are invalid. Filters EACH selected day separately. Alone means today. Elapsed periods are omitted, never moved to tomorrow. Omit with range=hours or start/end.",
+    };
+    private static FunctionArgumentDefinition ForecastRange(string horizon) => new()
+    {
+        Name = "range", Type = FunctionArgumentType.String, Required = false,
+        Description = "hours: next count elapsed hours from now (no date/period); days: count calendar days from date or today; weekend: upcoming Sat/Sun or remaining current weekend; next_weekend: seven days after that weekend; this_week: remaining days through Sunday; next_week: following Mon-Sun. Calendar ranges forbid date; period can filter them. Omit all time arguments for available day/night summaries. " + horizon +
+            " Actual returned timestamps determine coverage. Weekend/week selections do not extend this limit; report partial/no coverage, never substitute another period or extrapolate.",
+    };
+    private static FunctionArgumentDefinition ForecastCount() => new()
+    {
+        Name = "count", Type = FunctionArgumentType.Integer, Required = false,
+        Description = "Required only with range=hours (1-744) or range=days (1-31); positive integer. Days are calendar days, not 24-hour intervals. These input bounds do not extend forecast availability.",
     };
     private static FunctionArgumentDefinition ForecastTime(string name) => new()
     {
         Name = name, Type = FunctionArgumentType.String, Required = false,
-        Description = (name == "start" ? "Custom range inclusive start. " : "Custom range exclusive end, later than start. ") +
-            "Supply both start/end; omit date/period. Use today/tomorrow or YYYY-MM-DD, optionally followed by THH:mm[:ss] and Z/UTC offset. Without offset, destination local time is resolved automatically. Example: tomorrowT06:00 through tomorrowT21:00. For ambiguous/skipped DST times, supply an explicit offset.",
+        Description = (name == "start" ? "Advanced continuous interval: inclusive start. " : "Advanced continuous interval: exclusive end, later than start. ") +
+            "Supply both; omit date/period/range/count. Use today/tomorrow or YYYY-MM-DD, optionally with THH:mm[:ss] and Z/UTC offset. Without offset, destination local time. For repeated/skipped DST times supply an explicit offset. Prefer simplified selections.",
     };
     private static readonly Definition[] Definitions =
     [
         new("get_weather", "Get current weather for a requested city or the configured My Location, using configured units. Use details for explicitly requested fields. Returned sunrise/sunset is ONLY for the supplied date; use get_sun_times for tomorrow or another date. Never extrapolate today's sun times.", [Location(), Details(WeatherDetailSelection.Weather)]),
-        new("get_weather_forecast", "Get weather forecasts up to approximately five days ahead in three-hour steps. For a single date or part of day, prefer date/period; use start/end only for custom hours or multiple dates. Omit all time arguments for day/night summaries. Targeted results include actual samples and clearly marked surrounding context, never interpolation. Do not treat context as inside the requested period or claim exact-hour precision between samples. Use the requested city or configured My Location and configured units. Use details for explicit questions. This endpoint cannot supply future sunrise/sunset: use get_sun_times with the requested date.", [Location(), Details(WeatherDetailSelection.Forecast), ForecastDate(), ForecastPeriod(), ForecastTime("start"), ForecastTime("end")]),
+        new("get_weather_forecast", "Weather forecast: approximately five days ahead, three-hour samples; actual returned dates are authoritative. Prefer date/period/range/count; the module calculates local dates and DST. Weekend or week requests can exceed availability: tell the user which requested dates are unavailable, never invent or substitute forecasts. Omit time arguments for available day/night summaries. Context samples are outside the selected periods, not exact-hour predictions. Uses requested location or My Location and configured units/details. For date-specific sunrise/sunset use get_sun_times.", [Location(), Details(WeatherDetailSelection.Forecast), ForecastDate(), ForecastPeriod(), ForecastRange("Weather is available approximately five days ahead in three-hour steps."), ForecastCount(), ForecastTime("start"), ForecastTime("end")]),
         new("get_sun_times", "Get calculated sunrise and sunset for a specific local date, including tomorrow, at a requested location or My Location. Uses coordinates and destination time-zone rules (including daylight saving). These are astronomical estimates, not weather observations. Use this for date-specific sun questions; do not extrapolate today's weather metadata.",
         [
             Location(),
             new() { Name = "date", Type = FunctionArgumentType.String, Required = true, Description = "Requested date at the destination: today, tomorrow, or YYYY-MM-DD (1901-2099). Pass tomorrow directly for tomorrow's sunrise/sunset; the tool resolves the destination's current date itself." },
         ]),
         new("get_air_pollution", "Get current air quality and selected pollutant concentrations for a requested city or configured My Location. AQI uses OpenWeather's 1 (good) to 5 (very poor) scale. Use details for explicit pollutant questions.", [Location(), Details(WeatherDetailSelection.Pollution)]),
-        new("get_air_pollution_forecast", "Get air quality forecasts up to approximately four days ahead in hourly steps, using default or explicitly requested pollutant details. Prefer date/period for a single date or part of day; use start/end for custom ranges. Omit all time arguments for day/night summaries. Targeted results include actual samples and marked surrounding context, never interpolation; context is outside the requested period. Use the requested city or configured My Location. AQI uses OpenWeather's 1 to 5 scale. Use details for explicit pollutant questions.", [Location(), Details(WeatherDetailSelection.Pollution), ForecastDate(), ForecastPeriod(), ForecastTime("start"), ForecastTime("end")]),
+        new("get_air_pollution_forecast", "Air quality forecast: approximately four days ahead, hourly samples; actual returned dates are authoritative. Prefer date/period/range/count; the module calculates local dates and DST. Weekend/week requests may exceed availability: report missing requested dates, never invent or substitute forecasts. Omit time arguments for available UTC day/night summaries. Context samples are outside selected periods, not interpolated predictions. Uses requested location or My Location and selected pollutant details. AQI is OpenWeather's 1 (good) to 5 (very poor) scale.", [Location(), Details(WeatherDetailSelection.Pollution), ForecastDate(), ForecastPeriod(), ForecastRange("Air quality is available approximately four days ahead in hourly steps."), ForecastCount(), ForecastTime("start"), ForecastTime("end")]),
         new("get_air_pollution_history", "Get historical air quality and pollutants from 27 November 2020 onward. Request up to 31 days per call; results summarize UTC day/night periods. AQI uses OpenWeather's 1 to 5 scale. Use details for explicit pollutant questions.",
             [Location(), Date("start", "Inclusive start."), Date("end", "Exclusive end; later than start and no later than now."), Details(WeatherDetailSelection.Pollution)]),
         new("get_weather_map", "Get a weather map image for the world, a continent or a country. Omit location for a global map. City maps are unsupported: ask for a country or continent instead. The result includes the image, geographic bounds, layer units and a color reference. When vision is available, briefly describe the visible regional pattern using the supplied legend; do not invent a summary if you cannot inspect the image.",

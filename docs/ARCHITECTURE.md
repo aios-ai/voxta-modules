@@ -66,22 +66,37 @@ The shared foundation is compiled privately into all three modules, and all thre
   All data/geocoding calls use HTTPS and invariant decimal coordinates. Postal countries and coordinate ranges
   are validated before requesting geocoding. These formats also work in My Location; maps retain their own targets.
 - Weather/pollution forecast tools retain their default summaries when all time arguments are omitted.
-  Preferred `date` (`today`, `tomorrow`, `YYYY-MM-DD`) and optional `period` select a destination-local civil
-  day or morning (06-12), afternoon (12-18), evening (18-22), night (22-06 next day). The module advances
-  civil dates across DST, with no extra provider calls. `date` alone means midnight to next midnight.
-  Custom `start`/`end` ranges remain supported; mixing the two forms or a period without a date fails
-  before provider requests. Supplying a date or both custom bounds enables targeted output: `ForecastWindowRequest` validates strict date/time formats,
-  resolves `today`/`tomorrow` in the destination zone, and requires clarification for ambiguous/skipped local clock
-  times without an explicit offset. The end is exclusive. A request wholly outside the returned timestamps fails
-  with the available range; partial bounds and missing entries are stated explicitly. Horizons are approximately
-  five days at three-hour steps for weather and four days at hourly steps for pollution; actual responses are
-  authoritative. `ForecastWindow` selects individual entries plus one real context entry on either side, labelled
-  outside the window, without interpolating or extrapolating. `ForecastWindowFormatter` preserves selected details
-  and units and identifies precipitation as three-hour accumulations ending at each valid time, not window totals.
-  The client retains the already-resolved geolocation in JSON-ignored response metadata, so targeted output adds
-  no provider calls. Shared `LocationTimeZone` owns offline coordinate-to-zone lookup for forecasts and sun times.
-  `ForecastWindowChecks` covers local/UTC and relative dates, exclusive bounds, DST days/repeated hours, context
-  around narrow windows, partial/missing coverage, detail overrides, default summaries and request counts.
+  `ForecastSelectionRequest` owns deterministic destination-local calendar selection: `date` accepts today,
+  tomorrow, day_after_tomorrow, a weekday on/after today, next_<weekday> (seven days later), or YYYY-MM-DD.
+  `period` accepts all_day (default; beta.7's day remains an alias), morning (06-12), afternoon (12-18),
+  evening (18-22), night (22-06 next day), or HH:mm-HH:mm. Earlier end clock times advance the civil date;
+  equal times require all_day. A period without a date means today. Explicit dates support 1901-2099.
+  `range=days` requires count (1-31) and selects calendar dates starting at date or today. `range=hours`
+  requires count (1-744) and selects elapsed hours from a single captured current instant, forbidding date/period.
+  Count is forbidden elsewhere. Weekend means upcoming Sat/Sun, or the remaining current weekend; next_weekend
+  advances that weekend seven days. This_week means remaining days through Sunday; next_week means following
+  Mon-Sun. These calendar ranges forbid date and accept period. Periods filter each date separately, never
+  including intervening nights. Simplified selections clip elapsed time without advancing the chosen dates;
+  all-elapsed selections return a clear error, not tomorrow's forecast. Local civil boundaries follow DST,
+  whereas range=hours always measures elapsed hours. Custom start/end remains an advanced continuous-interval
+  fallback through `ForecastWindowRequest`; mixing it with simplified arguments fails before provider requests.
+  Both paths reject ambiguous/skipped local boundaries and request offset-qualified start/end instead.
+  All ends are exclusive. The client retains resolved coordinates in JSON-ignored metadata, so destination
+  time-zone resolution through shared `LocationTimeZone` and additional selected periods add no provider calls.
+- Forecast horizons are approximately [five days at three-hour steps for weather](https://openweathermap.org/api/forecast5)
+  and [four days at hourly steps for pollution](https://openweathermap.org/api/air-pollution); actual returned
+  timestamps are authoritative. Both generated argument help and default tool descriptions state these limits,
+  independently of saved description overrides. Selecting a weekend/week does not extend provider coverage.
+  `ForecastWindowFormatter` reports actual available timestamps and each resolved requested period. A wholly
+  unavailable selection fails with the requested and available dates, without substitute weather or retries.
+  Partial selections retain available periods and explicitly identify unavailable ones; partial boundaries,
+  missing entries and context-only narrow windows are identified. The agent is instructed to report missing
+  dates and never extrapolate or change dates to work around the horizon. Each `ForecastWindow` selects real
+  entries plus one context sample per side, labelled outside its period. Values are never interpolated.
+  Weather output preserves selected fields/units and labels precipitation as three-hour accumulations ending
+  at each valid time, not window totals. `ForecastSelectionChecks` covers calendar/weekday semantics, clipping,
+  custom/overnight periods and DST; `ForecastWindowChecks` covers actual tool dispatch, input validation,
+  context, no extra requests, Monday weekends beyond the horizon, partial weeks/weekends and defaults.
 - `get_sun_times` resolves locations through the existing free geocoder and calculates events locally using pinned
   Astronomy Engine and GeoTimeZone packages. `SunTimes` owns date validation,
   and a half-open destination civil-day search (23/24/25 hours), using system time-zone rules at each event.

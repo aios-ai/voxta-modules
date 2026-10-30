@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using Voxta.Modules.Aios.OpenWeather.Clients;
+using Voxta.Modules.Aios.Tools;
 
 namespace Voxta.Modules.Aios.OpenWeather.Helper;
 
@@ -10,20 +11,12 @@ internal static class ForecastWindowFormatter
         new DateTimeOffset(DateTime.SpecifyKind(DateTime.Parse(item.DtTxt!, CultureInfo.InvariantCulture), DateTimeKind.Utc)).ToUnixTimeSeconds();
 
     public static string Weather(OpenWeatherForecastResponse data, ForecastWindow window, string location, string? units, HashSet<string> details)
-    {
-        var selected = window.Select(data.List, Timestamp);
-        var sb = new StringBuilder($"Weather forecast for {location}:\n");
-        sb.AppendLine(window.Describe(data.List, selected, Timestamp, 3));
-        if (details.Contains("Precipitation")) sb.AppendLine("Rain/snow volumes are the provider's three-hour accumulations ending at each labelled valid time, not totals for the requested window.");
-        foreach (var item in selected)
-        {
-            sb.Append(window.Format(DateTimeOffset.FromUnixTimeSeconds(Timestamp(item))));
-            if (!window.Contains(Timestamp(item))) sb.Append(" [surrounding context]");
-            sb.Append(": ");
-            sb.AppendLine(WeatherValues(item, units, details));
-        }
-        return sb.ToString().Trim();
-    }
+        => Weather(data, new ForecastSelection([window]), location, units, details);
+
+    public static string Weather(OpenWeatherForecastResponse data, ForecastSelection selection, string location, string? units, HashSet<string> details)
+        => Format(data.List, Timestamp, selection, $"Weather forecast for {location}", 3,
+            details.Contains("Precipitation") ? "Rain/snow volumes are the provider's three-hour accumulations ending at each labelled valid time, not totals for the requested window." : null,
+            item => WeatherValues(item, units, details));
 
     private static string Number(double value) => value.ToString("0.#", CultureInfo.InvariantCulture);
     private static string WeatherValues(ForecastItem item, string? units, HashSet<string> details)
@@ -46,16 +39,52 @@ internal static class ForecastWindowFormatter
     }
 
     public static string Pollution(OpenWeatherAirPollutionResponse data, ForecastWindow window, string location, HashSet<string> details)
+        => Pollution(data, new ForecastSelection([window]), location, details);
+
+    public static string Pollution(OpenWeatherAirPollutionResponse data, ForecastSelection selection, string location, HashSet<string> details)
+        => Format(data.List, item => item.Dt, selection, $"Air pollution forecast for {location}", 1, null,
+            item => WeatherReportFormatter.Pollution(new() { List = [item] }, location, details, includeHeading: false));
+
+    private static string Format<T>(IReadOnlyList<T> all, Func<T, long> timestamp, ForecastSelection selection,
+        string heading, int stepHours, string? note, Func<T, string> values)
     {
-        var selected = window.Select(data.List, x => x.Dt);
-        var sb = new StringBuilder($"Air pollution forecast for {location}:\n");
-        sb.AppendLine(window.Describe(data.List, selected, x => x.Dt, 1));
-        foreach (var item in selected)
+        if (all.Count == 0) throw new ModuleToolInputException("No forecast entries were returned.");
+        var first = DateTimeOffset.FromUnixTimeSeconds(all.Min(timestamp));
+        var last = DateTimeOffset.FromUnixTimeSeconds(all.Max(timestamp));
+        var reference = selection.Windows[0];
+        bool Overlaps(ForecastWindow window) => window.End > first && window.Start <= last;
+        var availability = $"Available forecast timestamps: {reference.Format(first)} through {reference.Format(last)} ({reference.Zone.Id}). Resolution: {stepHours}-hour steps.";
+        if (!selection.Windows.Any(Overlaps))
         {
-            sb.Append(window.Format(DateTimeOffset.FromUnixTimeSeconds(item.Dt)));
-            if (!window.Contains(item.Dt)) sb.Append(" [surrounding context]");
-            sb.Append(": ");
-            sb.AppendLine(WeatherReportFormatter.Pollution(new() { List = [item] }, location, details, includeHeading: false));
+            var requested = string.Join("; ", selection.Windows.Select(w => $"{w.Format(w.Start)} to {w.Format(w.End)}"));
+            throw new ModuleToolInputException($"No forecast coverage for the requested period(s): {requested} (end exclusive). {availability} The request has no overlap with the available forecast timestamps. This endpoint cannot supply the requested dates; tell the user the limit. Do not extrapolate, substitute other dates, or retry different arguments to extend the horizon.");
+        }
+        var sb = new StringBuilder(heading + ":\n");
+        sb.AppendLine(availability);
+        if (selection.Windows.Any(w => !Overlaps(w) || w.Start < first || w.End > last))
+            sb.AppendLine("Partial forecast coverage: the requested selection is not fully covered by the available timestamps. Report the missing periods; do not describe the whole selection as available or extrapolate beyond the returned data.");
+        sb.AppendLine("Individual provider entries follow. Surrounding context is outside each requested window; values are not interpolated or day/night averages.");
+        if (selection.Windows.Count > 1) sb.AppendLine("Periods are separate; intervening hours are not part of the selection.");
+        if (selection.ElapsedPeriods > 0) sb.AppendLine($"Elapsed selected periods omitted: {selection.ElapsedPeriods}; forecasts describe remaining time only.");
+        if (note != null) sb.AppendLine(note);
+        foreach (var window in selection.Windows)
+        {
+            if (!Overlaps(window))
+            {
+                sb.AppendLine($"Requested window: {window.Format(window.Start)} to {window.Format(window.End)} (end exclusive; {window.Zone.Id}). No forecast coverage for this period; no substitute samples supplied.");
+                continue;
+            }
+            var selected = window.Select(all, timestamp);
+            sb.AppendLine(window.Describe(all, selected, timestamp, stepHours, includeAvailability: false));
+            foreach (var item in selected)
+            {
+                var value = values(item);
+                if (value.Length == 0) continue;
+                sb.Append(window.Format(DateTimeOffset.FromUnixTimeSeconds(timestamp(item))));
+                if (!window.Contains(timestamp(item))) sb.Append(" [surrounding context]");
+                sb.Append(": ");
+                sb.AppendLine(value);
+            }
         }
         return sb.ToString().Trim();
     }

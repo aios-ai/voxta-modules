@@ -5,32 +5,14 @@ using Voxta.Modules.Aios.Tools;
 
 namespace Voxta.Modules.Aios.OpenWeather.Helper;
 
-internal sealed record ForecastWindowRequest(string Start, string End, bool NextDayEnd = false)
+internal sealed record ForecastWindowRequest(string Start, string End)
 {
     private static readonly Regex Endpoint = new(
         @"^(?:today|tomorrow|\d{4}-\d{2}-\d{2})(?:T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:\d{2})?)?$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
-    public static ForecastWindowRequest? Parse(string? start, string? end, string? date = null, string? period = null)
+    public static ForecastWindowRequest? Parse(string? start, string? end)
     {
-        if (date != null || period != null)
-        {
-            if (start != null || end != null)
-                throw new ModuleToolInputException("Use date/period OR start/end, not both.");
-            if (date == null || !Regex.IsMatch(date, @"^(today|tomorrow|\d{4}-\d{2}-\d{2})$", RegexOptions.IgnoreCase))
-                throw new ModuleToolInputException("date must be today, tomorrow or YYYY-MM-DD. Supply date when using period.");
-            Validate(date);
-            var hours = period?.ToLowerInvariant() switch
-            {
-                null or "day" => ("00:00", "00:00", true),
-                "morning" => ("06:00", "12:00", false),
-                "afternoon" => ("12:00", "18:00", false),
-                "evening" => ("18:00", "22:00", false),
-                "night" => ("22:00", "06:00", true),
-                _ => throw new ModuleToolInputException("period must be day, morning, afternoon, evening or night."),
-            };
-            return new(date + "T" + hours.Item1, date + "T" + hours.Item2, hours.Item3);
-        }
         if (start == null && end == null) return null;
         if (start == null || end == null)
             throw new ModuleToolInputException("Supply both start and end for a forecast window, or omit both for the usual summary. The end is exclusive.");
@@ -53,13 +35,11 @@ internal sealed record ForecastWindowRequest(string Start, string End, bool Next
     {
         var zone = LocationTimeZone.Resolve(location);
         var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(utcNow, zone).DateTime);
-        DateTimeOffset ResolveEndpoint(string text, bool nextDay = false)
+        DateTimeOffset ResolveEndpoint(string text)
         {
             var normalized = Regex.Replace(text, "^(today|tomorrow)", m =>
                 (m.Value.Equals("tomorrow", StringComparison.OrdinalIgnoreCase) ? today.AddDays(1) : today)
                 .ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), RegexOptions.IgnoreCase);
-            if (nextDay)
-                normalized = DateTime.Parse(normalized, CultureInfo.InvariantCulture).AddDays(1).ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture);
             if (Regex.IsMatch(normalized, @"T.*(?:Z|[+-]\d{2}:\d{2})$", RegexOptions.IgnoreCase))
                 return DateTimeOffset.Parse(normalized, CultureInfo.InvariantCulture);
             var local = DateTime.SpecifyKind(DateTime.Parse(normalized, CultureInfo.InvariantCulture), DateTimeKind.Unspecified);
@@ -68,7 +48,7 @@ internal sealed record ForecastWindowRequest(string Start, string End, bool Next
             return new(local, zone.GetUtcOffset(local));
         }
         var start = ResolveEndpoint(Start);
-        var end = ResolveEndpoint(End, NextDayEnd);
+        var end = ResolveEndpoint(End);
         if (end <= start) throw new ModuleToolInputException("Forecast end must be later than start. For a single hour, request that hour through the next hour.");
         return new(start, end, zone);
     }
@@ -96,15 +76,16 @@ internal sealed record ForecastWindow(DateTimeOffset Start, DateTimeOffset End, 
         return inside;
     }
 
-    public string Describe<T>(IReadOnlyList<T> all, IReadOnlyList<T> selected, Func<T, long> timestamp, int stepHours)
+    public string Describe<T>(IReadOnlyList<T> all, IReadOnlyList<T> selected, Func<T, long> timestamp, int stepHours, bool includeAvailability = true)
     {
         var first = DateTimeOffset.FromUnixTimeSeconds(all.Min(timestamp));
         var last = DateTimeOffset.FromUnixTimeSeconds(all.Max(timestamp));
-        var text = $"Requested window: {Format(Start)} to {Format(End)} (end exclusive; {Zone.Id}). " +
-            $"Available forecast timestamps: {Format(first)} through {Format(last)}. Resolution: {stepHours}-hour steps. " +
-            "Individual provider entries follow; surrounding context is outside the requested window. Values are not interpolated or day/night averages. ";
+        var text = $"Requested window: {Format(Start)} to {Format(End)} (end exclusive; {Zone.Id}). ";
+        if (includeAvailability)
+            text += $"Available forecast timestamps: {Format(first)} through {Format(last)}. Resolution: {stepHours}-hour steps. " +
+                "Individual provider entries follow; surrounding context is outside the requested window. Values are not interpolated or day/night averages. ";
         if (Start < first || End > last)
-            text += "Requested bounds extend beyond the returned timestamps; only the listed times are available. ";
+            text += "Partial forecast coverage: requested bounds extend beyond the returned timestamps; only the listed times are available. Do not claim coverage of the whole requested period. ";
         if (!selected.Any(x => Contains(timestamp(x))))
             text += "There is no forecast timestamp inside this narrow window; only the surrounding entries are available. ";
         if (selected.Zip(selected.Skip(1)).Any(pair => timestamp(pair.Second) - timestamp(pair.First) > stepHours * 3600L))

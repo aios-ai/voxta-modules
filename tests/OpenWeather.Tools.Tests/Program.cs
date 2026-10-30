@@ -77,6 +77,22 @@ Task Attach(string description, IImage image, CancellationToken token)
 ModuleToolCatalog Catalog(OpenWeatherChatAugmentationsSettings? config = null, OpenWeatherToolsSettings? tools = null, CancellationToken abort = default) =>
     OpenWeatherToolCatalog.Create(new OpenWeatherToolHandler(client, config ?? settings, CultureInfo.InvariantCulture, Attach, abort), tools ?? defaults, NullLogger.Instance);
 var catalog = Catalog();
+var customForecastCatalog = Catalog(tools: defaults with
+{
+    Descriptions = new Dictionary<string, string>
+    {
+        ["get_weather_forecast"] = "Custom weather forecast",
+        ["get_air_pollution_forecast"] = "Custom pollution forecast",
+    },
+});
+foreach (var (name, horizon) in new[] { ("get_weather_forecast", "five days"), ("get_air_pollution_forecast", "four days") })
+{
+    var schema = customForecastCatalog.GetTools().Single(t => t.Name == name).InputSchema.GetProperty("properties");
+    var rangeHelp = schema.GetProperty("range").GetProperty("description").GetString()!;
+    Check(rangeHelp.Contains(horizon) && rangeHelp.Contains("never substitute") && rangeHelp.Contains("Actual returned timestamps"),
+        "Forecast horizon remains in argument guidance with saved descriptions: " + name);
+    Check(schema.GetProperty("count").GetProperty("type").GetString() == "integer", "Forecast count uses an integer schema");
+}
 
 // Each card must show only its own schema, including when upgrading saved cards.
 var argumentField = (FormArrayOfObjectsField)OpenWeatherToolsSettings.ConfigurationField(new StaticSettingsSource(new()));
@@ -261,6 +277,7 @@ await WeatherMapChecks.RunAsync();
 await WeatherDataChecks.RunAsync();
 await SunTimesChecks.RunAsync();
 await ForecastWindowChecks.RunAsync();
+ForecastSelectionChecks.Run();
 
 static Task<ChatToolCallResult> Call(ModuleToolCatalog catalog, string operation, string json) =>
     catalog.CallToolAsync(operation, JsonSerializer.SerializeToElement(JsonSerializer.Deserialize<JsonElement>(json)), default).AsTask();

@@ -12,7 +12,8 @@ namespace Voxta.Modules.Aios.OpenWeather.Tools;
 
 internal sealed class OpenWeatherToolHandler(
     IOpenWeatherClient client, OpenWeatherChatAugmentationsSettings settings, CultureInfo culture,
-    Func<string, IImage, CancellationToken, Task> attachImage, CancellationToken sessionAbort = default)
+    Func<string, IImage, CancellationToken, Task> attachImage, CancellationToken sessionAbort = default,
+    TimeProvider? timeProvider = null)
 {
     private readonly HashSet<string> _weatherDetails = (settings.WeatherDetails ?? ["Temp"]).ToHashSet(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _pollutionDetails = (settings.PollutionDetails ?? ["AQI"]).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -64,7 +65,9 @@ internal sealed class OpenWeatherToolHandler(
         var details = WeatherDetailSelection.Resolve(Text(arguments, "details"), pollution ? _pollutionDetails : _weatherDetails,
             pollution ? WeatherDetailSelection.Pollution : operation == "get_weather_forecast" ? WeatherDetailSelection.Forecast : WeatherDetailSelection.Weather);
         var windowRequest = operation is "get_weather_forecast" or "get_air_pollution_forecast"
-            ? ForecastWindowRequest.Parse(Text(arguments, "start"), Text(arguments, "end"), Text(arguments, "date"), Text(arguments, "period")) : null;
+            ? ForecastSelectionRequest.Parse(Text(arguments, "start"), Text(arguments, "end"), Text(arguments, "date"),
+                Text(arguments, "period"), Text(arguments, "range"), Count(arguments)) : null;
+        var forecastNow = (timeProvider ?? TimeProvider.System).GetUtcNow();
 
         switch (operation)
         {
@@ -84,8 +87,8 @@ internal sealed class OpenWeatherToolHandler(
                 var forecastDetails = details.Except(["Sunrise", "Sunset"], StringComparer.OrdinalIgnoreCase).ToHashSet(StringComparer.OrdinalIgnoreCase);
                 if (windowRequest != null)
                 {
-                    var window = windowRequest.Resolve(data.ResolvedLocation, DateTimeOffset.UtcNow);
-                    var text = forecastDetails.Count == 0 ? "" : ForecastWindowFormatter.Weather(data, window, location, settings.Units, forecastDetails);
+                    var selection = windowRequest.Resolve(data.ResolvedLocation, forecastNow);
+                    var text = ForecastWindowFormatter.Weather(data, selection, location, settings.Units, forecastDetails);
                     if (details.Contains("Sunrise") || details.Contains("Sunset"))
                         text += "\nUse get_sun_times for sunrise/sunset on the requested date; these fields are unavailable from this forecast endpoint.";
                     return new(text.Trim());
@@ -113,8 +116,8 @@ internal sealed class OpenWeatherToolHandler(
                 if (windowRequest != null)
                 {
                     var data = result.Value;
-                    var window = windowRequest.Resolve(data.ResolvedLocation, DateTimeOffset.UtcNow);
-                    return new(ForecastWindowFormatter.Pollution(data, window, location, details));
+                    var selection = windowRequest.Resolve(data.ResolvedLocation, forecastNow);
+                    return new(ForecastWindowFormatter.Pollution(data, selection, location, details));
                 }
                 return new($"Air pollution forecast for {location} (UTC day/night averages):\n{AirPollutionForecastSummariser.Summarise(result.Value.List, culture, details, days: 5)}");
             }
@@ -146,6 +149,14 @@ internal sealed class OpenWeatherToolHandler(
 
     private static ChatToolCallResult Failure<T>(OpenWeatherResult<T> result) => new(
         string.IsNullOrWhiteSpace(result.UserVisibleError) ? "OpenWeather could not complete the request." : result.UserVisibleError, IsError: true);
+
+    private static int? Count(JsonElement? arguments)
+    {
+        if (arguments is not { } args || !args.TryGetProperty("count", out var value) || value.ValueKind == JsonValueKind.Null) return null;
+        if (value.ValueKind != JsonValueKind.Number || !value.TryGetInt32(out var count))
+            throw new ModuleToolInputException("count must be a positive integer, used only with range=hours or range=days.");
+        return count;
+    }
 
     private static string? Text(JsonElement? arguments, string name)
     {
