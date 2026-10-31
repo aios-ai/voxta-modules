@@ -25,36 +25,36 @@ internal static class WeatherDataChecks
             Check(!result.IsError, result.Text);
             return result.Text;
         }
-        foreach (var (tool, fields) in new[] { ("get_weather", WeatherDetailSelection.Weather), ("get_weather_forecast", WeatherDetailSelection.Forecast) })
+        foreach (var (forecast, fields) in new[] { (false, WeatherDetailSelection.Forecast), (true, WeatherDetailSelection.Forecast) })
         {
             foreach (var field in fields.Split(','))
             {
-                var output = await Call(tool, new { details = field });
+                var output = await Call("get_weather", new { when = forecast ? "forecast" : (string?)null, details = field });
                 var expected = field switch
                 {
-                    "Temp" => tool == "get_weather" ? "current temperature" : "Temperature:",
-                    "FeelsLike" => tool == "get_weather" ? "feels like" : "Feels like:",
+                    "Temp" => !forecast ? "current temperature" : "Temperature:",
+                    "FeelsLike" => !forecast ? "feels like" : "Feels like:",
                     "Condition" => "clear", "Precipitation" => "Rain:",
-                    "TempMinMax" => tool == "get_weather" ? "temperature ranges" : "Sample temperature bounds",
+                    "TempMinMax" => !forecast ? "temperature ranges" : "Sample temperature bounds",
                     "Wind" => "Wind:", "WindGust" => "wind gust:", "CloudCover" => "Cloud cover:",
                     "Visibility" => "Visibility:", "Humidity" => "Humidity:", "Pressure" => "Pressure:",
                     "SeaLevelPressure" => "Sea-level pressure:", "GroundPressure" => "Ground-level pressure:",
-                    "Sunrise" => tool == "get_weather" ? "Sunrise:" : "get_sun_times",
-                    "Sunset" => tool == "get_weather" ? "Sunset:" : "get_sun_times",
-                    "ObservationTime" => tool == "get_weather" ? "Data time:" : "Forecast valid times",
-                    "PrecipitationProbability" => "precipitation probability:",
+                    "Sunrise" => !forecast ? "Sunrise:" : "get_sun_times",
+                    "Sunset" => !forecast ? "Sunset:" : "get_sun_times",
+                    "ObservationTime" => !forecast ? "Data time:" : "Forecast valid times",
+                    "PrecipitationProbability" => forecast ? "precipitation probability:" : "Substitution:",
                     _ => throw new Exception("Missing verification for " + field),
                 };
-                Check(output.Contains(expected, StringComparison.OrdinalIgnoreCase), "Selected detail rendered: " + tool + "." + field + ": " + output);
+                Check(output.Contains(expected, StringComparison.OrdinalIgnoreCase), "Selected detail rendered: " + "get_weather (forecast=" + forecast + ")." + field + ": " + output);
             }
         }
-        foreach (var tool in new[] { "get_air_pollution", "get_air_pollution_forecast", "get_air_pollution_history" })
+        foreach (var (tool, forecast) in new[] { ("get_air_pollution", false), ("get_air_pollution", true), ("get_air_pollution_history", false) })
             foreach (var field in WeatherDetailSelection.Pollution.Split(','))
             {
-                var output = await Call(tool, new { details = field, start = tool.EndsWith("history") ? "2020-11-28T00:00:00Z" : (string?)null, end = tool.EndsWith("history") ? "2020-11-29T00:00:00Z" : null });
+                var output = await Call(tool, (object)(tool.EndsWith("history") ? new { details = field, start = "2020-11-28T00:00:00Z", end = "2020-11-29T00:00:00Z" } : (object)new { details = field, when = forecast ? "forecast" : (string?)null }));
                 Check(output.Contains(field == "AQI" ? "AQI" : "\u00b5g/m\u00b3"), "Selected pollutant rendered: " + tool + "." + field);
             }
-        var combined = await Call("get_weather_forecast", new { details = "Temp,TempMinMax" });
+        var combined = await Call("get_weather", new { when = "forecast", details = "Temp,TempMinMax" });
         Check(combined.Contains("Temperature:") && combined.Contains("Sample temperature bounds"), "Selecting bounds does not hide requested average temperature");
         var report = await Call("get_weather", new { details = "humidity,Sunrise,Sunset,Pressure,WindGust,ObservationTime" });
         Check(report.Contains("Humidity: 64%") && report.Contains("Pressure: 1015 hPa") && report.Contains("Wind gust: 7 m/s"), "Explicit weather fields");
@@ -64,9 +64,9 @@ internal static class WeatherDataChecks
         Check(report.Contains("current temperature") && !report.Contains("Humidity:"), "Override does not mutate defaults");
         report = await Call("get_air_pollution", new { details = "NH3" });
         Check((report.Contains("NH₃: 3.5") || report.Contains("NH₃: 3,5")) && !report.Contains("AQI"), "Unchecked NH3 available on request: " + report);
-        report = await Call("get_air_pollution_forecast", new { details = "NH3" });
+        report = await Call("get_air_pollution", new { when = "forecast", details = "NH3" });
         Check((report.Contains("NH₃: 3.5") || report.Contains("NH₃: 3,5")) && !report.Contains("AQI"), "Forecast override");
-        report = await Call("get_weather_forecast", new { details = "Humidity,PrecipitationProbability,Sunrise" });
+        report = await Call("get_weather", new { when = "forecast", details = "Humidity,PrecipitationProbability,Sunrise" });
         Check(report.Contains("Humidity: 64%") && report.Contains("80%") && report.Contains("Use get_sun_times") && !report.Contains("Rain:"), "Forecast fields respect selection");
         report = await Call("get_air_pollution_history", new { start = "2020-11-28T00:00:00Z", end = "2020-11-29T00:00:00Z", details = "NH3" });
         Check(report.Contains("2020-11-28") && (report.Contains("NH₃: 3.5") || report.Contains("NH₃: 3,5")) && transport.Urls.Any(u => u.AbsolutePath.EndsWith("/history") && u.Query.Contains("start=1606521600") && u.Query.Contains("end=1606608000")), "History range, dates and override");

@@ -5,15 +5,16 @@ using Voxta.Modules.Aios.OpenWeather.Clients;
 
 public static class WeatherForecastSummariser
 {
-    public static string Summarise(List<ForecastItem> forecastItems, CultureInfo culture, HashSet<string> weatherDetails, int days = 5, string unitSuffix = "", string windUnit = "m/s", int utcOffset = 0)
+    public static string Summarise(List<ForecastItem> forecastItems, CultureInfo culture, HashSet<string> weatherDetails, int days = 5, string unitSuffix = "", string windUnit = "m/s", int utcOffset = 0, TimeZoneInfo? timeZone = null)
     {
         if (forecastItems == null || forecastItems.Count == 0)
             return "No forecast data available.";
 
-        // dt_txt is UTC; shift by the destination offset before day/night grouping.
-        DateTime Local(ForecastItem x) => DateTimeOffset.FromUnixTimeSeconds(x.Dt != 0 ? x.Dt :
-            new DateTimeOffset(DateTime.SpecifyKind(DateTime.Parse(x.DtTxt!, CultureInfo.InvariantCulture), DateTimeKind.Utc)).ToUnixTimeSeconds())
-            .UtcDateTime.AddSeconds(utcOffset);
+        DateTime Local(ForecastItem item)
+        {
+            var time = DateTimeOffset.FromUnixTimeSeconds(ForecastWindowFormatter.Timestamp(item));
+            return timeZone == null ? time.UtcDateTime.AddSeconds(utcOffset) : TimeZoneInfo.ConvertTime(time, timeZone).DateTime;
+        }
         var sb = new StringBuilder();
         
         var groupedByDate = forecastItems

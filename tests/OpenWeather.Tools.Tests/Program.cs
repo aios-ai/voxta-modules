@@ -21,7 +21,7 @@ using Voxta.Modules.Aios.OpenWeather.Tools;
 using Voxta.Modules.Aios.Tools;
 
 var defaults = OpenWeatherToolsSettings.From(new StaticSettingsSource(new()));
-Check(defaults.Selected.Count == 7 && defaults.ChatStyles.SequenceEqual(new[] { ChatStyles.Assistant, ChatStyles.Companion }), "Tool defaults");
+Check(defaults.Selected.Count == 5 && defaults.ChatStyles.SequenceEqual(new[] { ChatStyles.Assistant, ChatStyles.Companion }), "Tool defaults");
 foreach (var flag in new[] { "true", "\"true\"" })
 {
     var saved = OpenWeatherToolsSettings.From(new StaticSettingsSource(new()
@@ -30,7 +30,7 @@ foreach (var flag in new[] { "true", "\"true\"" })
         ["OpenWeatherToolCards"] = "[{\"name\":\"get_weather\",\"description\":\"Custom weather\",\"disabled\":" + flag + "}]",
         ["ToolChatStyles"] = "Assistant",
     }));
-    Check(!saved.Selected.Contains("get_weather") && saved.Selected.Count == 6, "Disabled boolean/string switch");
+    Check(!saved.Selected.Contains("get_weather") && saved.Selected.Count == 4, "Disabled boolean/string switch");
     Check(saved.Descriptions!["get_weather"] == "Custom weather" && saved.ChatStyles.SequenceEqual(new[] { ChatStyles.Assistant }), "Saved descriptions/styles");
     var field = (FormArrayOfObjectsField)OpenWeatherToolsSettings.ConfigurationField(new StaticSettingsSource(new()
     { ["OpenWeatherToolCards"] = "[{\"Name\":\"get_weather\",\"Disabled\":true}]" }));
@@ -52,11 +52,40 @@ var weatherChoices = ModuleConfigurationProvider.WeatherDetails.Choices.Select(c
 Check(weatherChoices.SetEquals(WeatherDetailSelection.Forecast.Split(',')), "Every weather detail is selectable in settings, including Condition");
 Check(ModuleConfigurationProvider.PollutionDetails.Choices.Select(c => c.Value).ToHashSet().SetEquals(WeatherDetailSelection.Pollution.Split(',')), "Every pollutant is selectable");
 foreach (var (tool, supported) in new[] {
-    ("get_weather", WeatherDetailSelection.Weather), ("get_weather_forecast", WeatherDetailSelection.Forecast),
-    ("get_air_pollution", WeatherDetailSelection.Pollution), ("get_air_pollution_forecast", WeatherDetailSelection.Pollution),
+    ("get_weather", WeatherDetailSelection.Forecast),
+    ("get_air_pollution", WeatherDetailSelection.Pollution),
     ("get_air_pollution_history", WeatherDetailSelection.Pollution) })
     Check(OpenWeatherToolCatalog.DescribeArguments(tool).Contains("Comma-separated fields: " + supported + "."), "Complete per-tool detail documentation: " + tool);
 Console.WriteLine("PASS tool cards, defaults, saved descriptions/styles and encrypted-key configuration");
+
+foreach (var name in new[] { "get_weather", "get_air_pollution" })
+{
+    foreach (var oldDisabledName in new[] { name, name + "_forecast", "openweather_" + name + "_forecast" })
+    {
+        var source = new StaticSettingsSource(new()
+        {
+            ["OpenWeatherToolCards"] = JsonSerializer.Serialize(new[]
+            {
+                new OpenWeatherToolSettings { Name = oldDisabledName, Disabled = "true", Description = "Retain this custom description" },
+            }),
+        });
+        var saved = OpenWeatherToolsSettings.From(source);
+        Check(!saved.Selected.Contains(name) && saved.Descriptions![name] == "Retain this custom description",
+            "Either old disable switch and its custom description migrate to the combined tool");
+        var migratedCards = JsonSerializer.Deserialize<OpenWeatherToolSettings[]>(((FormArrayOfObjectsField)OpenWeatherToolsSettings.ConfigurationField(source)).DefaultValue!)!;
+        Check(migratedCards.Length == 5 && migratedCards.Single(c => c.Name == name).Disabled == "true"
+            && migratedCards.All(c => !c.Name.EndsWith("_forecast")), "Editor saves only the five combined tools");
+        var roundTrip = OpenWeatherToolsSettings.From(new StaticSettingsSource(new()
+        { [OpenWeatherToolsSettings.CardsFieldName] = JsonSerializer.Serialize(migratedCards) }));
+        Check(!roundTrip.Selected.Contains(name), "Merged disable survives a save/reload");
+    }
+}
+var oldDefault = "Get current weather for a requested city or the configured My Location, using configured units. Use details for explicitly requested fields. Returned sunrise/sunset is ONLY for the supplied date; use get_sun_times for tomorrow or another date. Never extrapolate today's sun times.";
+Check(!OpenWeatherToolsSettings.From(new StaticSettingsSource(new()
+{
+    ["OpenWeatherToolCards"] = JsonSerializer.Serialize(new[] { new OpenWeatherToolSettings { Name = "get_weather", Description = oldDefault } }),
+})).Descriptions!.ContainsKey("get_weather"), "Known old default descriptions upgrade to the short combined description");
+Console.WriteLine("PASS merged tool settings preserve disable switches/custom text and upgrade old defaults");
 
 var settings = new OpenWeatherChatAugmentationsSettings
 {
@@ -81,17 +110,17 @@ var customForecastCatalog = Catalog(tools: defaults with
 {
     Descriptions = new Dictionary<string, string>
     {
-        ["get_weather_forecast"] = "Custom weather forecast",
-        ["get_air_pollution_forecast"] = "Custom pollution forecast",
+        ["get_weather"] = "Custom weather forecast",
+        ["get_air_pollution"] = "Custom pollution forecast",
     },
 });
-foreach (var (name, horizon) in new[] { ("get_weather_forecast", "five days"), ("get_air_pollution_forecast", "four days") })
+foreach (var (name, horizon) in new[] { ("get_weather", "five days"), ("get_air_pollution", "four days") })
 {
     var schema = customForecastCatalog.GetTools().Single(t => t.Name == name).InputSchema.GetProperty("properties");
-    var rangeHelp = schema.GetProperty("range").GetProperty("description").GetString()!;
-    Check(rangeHelp.Contains(horizon) && rangeHelp.Contains("never substitute") && rangeHelp.Contains("Actual returned timestamps"),
+    var rangeHelp = schema.GetProperty("when").GetProperty("description").GetString()!;
+    Check(rangeHelp.Contains(horizon) && rangeHelp.Contains("actual returned dates"),
         "Forecast horizon remains in argument guidance with saved descriptions: " + name);
-    Check(schema.GetProperty("count").GetProperty("type").GetString() == "integer", "Forecast count uses an integer schema");
+    Check(schema.EnumerateObject().Select(p => p.Name).ToHashSet().SetEquals(new[] { "location", "when", "details" }), "Combined tools expose only three arguments");
 }
 
 // Each card must show only its own schema, including when upgrading saved cards.
@@ -132,23 +161,24 @@ foreach (var tool in catalog.GetTools())
 var augmentation = new ModuleToolsAugmentation(catalog);
 Check(augmentation.GetRequiredServiceTypes().Length == 0, "Tools must not require action inference");
 var definitions = await augmentation.GetToolsAsync(default);
-Check(definitions.Count == 7 && definitions.All(t => t.Permission == ToolPermissionClass.Read && t.ExternalContent
+Check(definitions.Count == 5 && definitions.All(t => t.Permission == ToolPermissionClass.Read && t.ExternalContent
     && t.Source == VoxtaModule.ServiceName && t.AugmentationKey == VoxtaModule.ToolsAugmentationKey && t.Enabled), "Tool metadata and read permissions");
 
-foreach (var operation in new[] { "get_weather", "get_weather_forecast", "get_air_pollution", "get_air_pollution_forecast", "get_air_pollution_history", "get_sun_times", "get_weather_map" })
+foreach (var (operation, forecast) in new[] { ("get_weather", false), ("get_weather", true), ("get_air_pollution", false), ("get_air_pollution", true), ("get_air_pollution_history", false), ("get_sun_times", false), ("get_weather_map", false) })
 {
     fake.Calls.Clear();
     attachments.Clear();
     var argumentsJson = operation == "get_sun_times" ? "{\"date\":\"tomorrow\",\"location\":\"Frankfurt am Main, DE\"}" : operation == "get_weather_map" ? "{\"layer\":\"temp\",\"location\":\"Germany\"}" : operation == "get_air_pollution_history" ? "{\"location\":\"Frankfurt am Main, DE\",\"start\":\"2020-11-28T00:00:00Z\",\"end\":\"2020-11-29T00:00:00Z\"}" : "{\"location\":\"Frankfurt am Main, DE\"}";
+    if (forecast) argumentsJson = argumentsJson[..^1] + ",\"when\":\"forecast\"}";
     var result = await Call(catalog, operation, argumentsJson);
     Check(!result.IsError && fake.Calls.Count == 1, operation + " dispatches once");
     Check(result.Text.Contains(operation == "get_weather_map" ? "DE" : "Frankfurt am Main, DE"), operation + " preserves location");
-    if (operation == "get_weather")
+    if (operation == "get_weather" && !forecast)
     {
         Check(result.Text.Contains("°F") && result.Text.Contains("mph") && result.Text.Contains("Rain: 2"), "Current units and precipitation selection: " + result.Text);
         Check(!result.Text.Contains("Cloud cover"), "Unselected details omitted");
     }
-    if (operation == "get_weather_forecast") Check(result.Text.Contains("°F") && result.Text.Contains("mph"), "Forecast units");
+    if (operation == "get_weather" && forecast) Check(result.Text.Contains("°F") && result.Text.Contains("mph"), "Forecast units");
     if (operation == "get_air_pollution") Check(result.Text.Contains("AQI 2") && result.Text.Contains("PM2.5") && !result.Text.Contains("CO:"), "Pollution detail selection");
     if (operation == "get_weather_map")
     {
@@ -168,7 +198,7 @@ foreach (var operation in new[] { "get_weather", "get_weather_forecast", "get_ai
     fake.Cancel = false;
     Check(attachments.Count == attachmentCount, "No attachments on provider failure/cancellation");
 }
-Console.WriteLine("PASS all seven operations, details, units, maps, provider failures and in-flight cancellation");
+Console.WriteLine("PASS all five tools and both current/forecast routes, details, units, maps, provider failures and cancellation");
 
 await Call(catalog, "get_weather", "{}");
 Check(fake.Location == "Berlin, DE", "Configured location fallback");
@@ -213,8 +243,8 @@ try
 finally { CultureInfo.CurrentCulture = originalCulture; }
 Console.WriteLine("PASS all five map legends, fixed units, geography, vision limitations and no extra requests");
 fake.Empty = true;
-foreach (var operation in new[] { "get_weather_forecast", "get_air_pollution", "get_air_pollution_forecast", "get_air_pollution_history", "get_weather_map" })
-    Check((await Call(catalog, operation, operation == "get_weather_map" ? "{\"layer\":\"temp\"}" : "{}")).IsError, "Empty provider data: " + operation);
+foreach (var operation in new[] { "get_weather", "get_air_pollution", "get_air_pollution_history", "get_weather_map" })
+    Check((await Call(catalog, operation, operation == "get_weather_map" ? "{\"layer\":\"temp\"}" : operation == "get_weather" ? "{\"when\":\"forecast\"}" : "{}")).IsError, "Empty provider data: " + operation);
 fake.Empty = false;
 fake.Calls.Clear();
 var disabled = Catalog(tools: defaults with { Selected = new HashSet<string>() });
@@ -232,7 +262,7 @@ Check(service is IToolsChatAugmentationsService, "SDK tools service marker");
 var plans = await service.PlanAsync(null!, default);
 var toolsPlan = plans.Single(p => p.Key == VoxtaModule.ToolsAugmentationKey);
 Check(plans.Length == 1 && toolsPlan.Key == "openweather_tools" && toolsPlan.Label == "OpenWeather"
-    && toolsPlan.Activation == AugmentationActivation.OptIn && !toolsPlan.IncludeInCatchAll && toolsPlan.Tools.Count == 7,
+    && toolsPlan.Activation == AugmentationActivation.OptIn && !toolsPlan.IncludeInCatchAll && toolsPlan.Tools.Count == 5,
     "One tools plan with simplified label, stable key and declared short tool names");
 Check(VoxtaModule.Augmentations.Length == 1, "Legacy augmentation removed");
 var session = DispatchProxy.Create<IChatSessionChatAugmentationApi, ToolsSelectedSession>();
@@ -255,7 +285,7 @@ await using (var toolsInstance = await configuredPlans.Single(p => p.Key == Voxt
 {
     Check(toolsInstance is IToolsChatAugmentation && toolsInstance is not IActionInferenceAugmentation, "Tools-only activation");
     var tools = (IToolsChatAugmentation)toolsInstance!;
-    Check(tools.GetRequiredServiceTypes().Length == 0 && (await tools.GetToolsAsync(default)).Count(t => t.Enabled) == 6, "Runtime settings and no action-inference requirement");
+    Check(tools.GetRequiredServiceTypes().Length == 0 && (await tools.GetToolsAsync(default)).Count(t => t.Enabled) == 4, "Runtime settings and no action-inference requirement");
     Check(factory.ApiKey == "test-key" && encryption.Reads == 1, "Decrypt host-managed key once for tools client");
     Check(!(await tools.CallToolAsync("get_weather", JsonSerializer.Deserialize<JsonElement>("{}"), default)).IsError && fake.Units == "metric", "Activated tools dispatch with domain settings");
 }
@@ -278,6 +308,7 @@ await WeatherDataChecks.RunAsync();
 await SunTimesChecks.RunAsync();
 await ForecastWindowChecks.RunAsync();
 ForecastSelectionChecks.Run();
+await WeatherWhenChecks.RunAsync();
 
 static Task<ChatToolCallResult> Call(ModuleToolCatalog catalog, string operation, string json) =>
     catalog.CallToolAsync(operation, JsonSerializer.SerializeToElement(JsonSerializer.Deserialize<JsonElement>(json)), default).AsTask();

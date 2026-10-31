@@ -133,7 +133,7 @@ internal sealed record ForecastSelectionRequest(
     private static DateTimeOffset Local(DateTime local, TimeZoneInfo zone)
     {
         if (zone.IsInvalidTime(local) || zone.IsAmbiguousTime(local))
-            throw new ModuleToolInputException($"{local:yyyy-MM-ddTHH:mm} is a skipped or ambiguous local time in {zone.Id}. Use start/end with an explicit UTC offset to identify a real instant.");
+            throw new ModuleToolInputException($"{local:yyyy-MM-ddTHH:mm} is a skipped or ambiguous local time in {zone.Id}. Use an explicit UTC offset in a when ISO interval to identify a real instant.");
         return new(local, zone.GetUtcOffset(local));
     }
 }

@@ -10,6 +10,13 @@ internal static class ForecastWindowFormatter
     internal static long Timestamp(ForecastItem item) => item.Dt != 0 ? item.Dt :
         new DateTimeOffset(DateTime.SpecifyKind(DateTime.Parse(item.DtTxt!, CultureInfo.InvariantCulture), DateTimeKind.Utc)).ToUnixTimeSeconds();
 
+    internal static string Availability<T>(IReadOnlyList<T> all, Func<T, long> timestamp, TimeZoneInfo zone, int stepHours)
+    {
+        string Local(long value) => TimeZoneInfo.ConvertTime(DateTimeOffset.FromUnixTimeSeconds(value), zone)
+            .ToString("yyyy-MM-dd HH:mm zzz", CultureInfo.InvariantCulture);
+        return $"Available forecast timestamps: {Local(all.Min(timestamp))} through {Local(all.Max(timestamp))} ({zone.Id}). Resolution: {stepHours}-hour steps.";
+    }
+
     public static string Weather(OpenWeatherForecastResponse data, ForecastWindow window, string location, string? units, HashSet<string> details)
         => Weather(data, new ForecastSelection([window]), location, units, details);
 
@@ -53,7 +60,7 @@ internal static class ForecastWindowFormatter
         var last = DateTimeOffset.FromUnixTimeSeconds(all.Max(timestamp));
         var reference = selection.Windows[0];
         bool Overlaps(ForecastWindow window) => window.End > first && window.Start <= last;
-        var availability = $"Available forecast timestamps: {reference.Format(first)} through {reference.Format(last)} ({reference.Zone.Id}). Resolution: {stepHours}-hour steps.";
+        var availability = Availability(all, timestamp, reference.Zone, stepHours);
         if (!selection.Windows.Any(Overlaps))
         {
             var requested = string.Join("; ", selection.Windows.Select(w => $"{w.Format(w.Start)} to {w.Format(w.End)}"));

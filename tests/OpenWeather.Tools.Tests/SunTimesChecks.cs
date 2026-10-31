@@ -44,14 +44,16 @@ internal static class SunTimesChecks
             await tools.CallToolAsync(tool, System.Text.Json.JsonSerializer.SerializeToElement(args), default);
         foreach (var date in new[] { "2026-02-30", "next week", "2100-01-01", "" })
             Check((await Call("get_sun_times", new { date })).IsError, "Invalid date");
-        Check((await Call("get_sun_times", new { })).IsError, "Missing date requires clarification");
-        Check(proxy.Calls.Count == 0, "Invalid dates rejected before lookup");
-        var response = await Call("get_sun_times", new { date = "2026-10-29" });
+                Check(proxy.Calls.Count == 0, "Invalid dates rejected before lookup");
+        var response = await Call("get_sun_times", new { });
+        Check(!response.IsError, "Omitted sun date defaults to today");
+        proxy.Calls.Clear();
+        response = await Call("get_sun_times", new { date = "2026-10-29" });
         Check(!response.IsError && response.Text.Contains("2026-10-29 06:5") && response.Text.Contains("Astronomical estimates")
             && proxy.Calls.SequenceEqual(new[] { "ResolveLocationAsync" }), "One geocoding request, local calculation, honest provenance");
-        response = await Call("get_weather_forecast", new { details = "Wind,Sunrise" });
+        response = await Call("get_weather", new { when = "forecast", details = "Wind,Sunrise" });
         Check(!response.IsError && response.Text.Contains("Use get_sun_times") && !response.Text.Contains("City sunrise:") && !response.Text.Contains(": . Wind"), "Forecast routes future sun queries without today's misleading metadata or broken punctuation");
-        response = await Call("get_weather_forecast", new { details = "Sunrise" });
+        response = await Call("get_weather", new { when = "forecast", details = "Sunrise" });
         Check(!response.IsError && response.Text.Contains("Use get_sun_times") && !response.Text.Contains(" Day:") && !response.Text.Contains(" Night:"), "Sun-only forecast does not print empty weather periods");
         response = await Call("get_weather", new { details = "Sunrise" });
         Check(response.Text.Contains("only to their displayed date") && response.Text.Contains("get_sun_times"), "Current result explains date boundary");

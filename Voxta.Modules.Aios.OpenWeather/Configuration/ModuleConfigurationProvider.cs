@@ -65,7 +65,7 @@ public class ModuleConfigurationProvider : ModuleConfigurationProviderBase, IMod
             new() { Label = "Sunrise", Value = "Sunrise", Metadata = new FormChoiceMetadata { Subtitle = "Current weather metadata only; use get_sun_times for a requested date, including forecast dates." } },
             new() { Label = "Sunset", Value = "Sunset", Metadata = new FormChoiceMetadata { Subtitle = "Current weather metadata only; use get_sun_times for a requested date, including forecast dates." } },
             new() { Label = "ObservationTime", Value = "ObservationTime", Metadata = new FormChoiceMetadata { Subtitle = "Time of the weather data." } },
-            new() { Label = "PrecipitationProbability", Value = "PrecipitationProbability", Metadata = new FormChoiceMetadata { Subtitle = "Forecast precipitation probability (%); unavailable for current weather." } },
+            new() { Label = "PrecipitationProbability", Value = "PrecipitationProbability", Metadata = new FormChoiceMetadata { Subtitle = "Forecast precipitation probability (%). Current requests return rain/snow amounts instead, with an explicit substitution note." } },
         ],
         StartValue = ["Condition", "Temp", "CloudCover", "PrecipitationProbability", "Precipitation", "Wind"],
     };

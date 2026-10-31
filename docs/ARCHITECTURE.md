@@ -18,14 +18,20 @@ The shared foundation is compiled privately into all three modules, and all thre
   activation and requiring no ActionInference service. The legacy `openweather` augmentation, action handler,
   action definitions, filters and action settings have been removed after user acceptance. Existing chats using
   only the removed key must select OpenWeather. The tools key is unchanged for existing tool-enabled chats.
-- `OpenWeatherToolCatalog` defines seven read-only tools named `get_weather`, `get_weather_forecast`,
-  `get_air_pollution`, `get_air_pollution_forecast`, `get_air_pollution_history`, `get_sun_times` and `get_weather_map`, as requested by the user.
+- `OpenWeatherToolCatalog` defines five read-only tools: `get_weather`, `get_air_pollution`,
+  `get_air_pollution_history`, `get_sun_times` and `get_weather_map`. Weather and air quality combine current
+  observations and forecasts; omitted `when` or `now` selects current data, any accepted period selects forecasts.
+  Both combined tools expose only location, when and details. Old forecast tools are no longer registered.
   `OpenWeatherToolHandler` calls `IOpenWeatherClient` directly through `ModuleToolsAugmentation`; it never
   dispatches actions or triggers replies. All tools mark provider content as external.
-- `OpenWeatherToolCards` provides per-tool disable switches and editable descriptions. All seven tools default
+- `OpenWeatherToolCards` provides per-tool disable switches and editable descriptions. All five tools default
   enabled in Assistant and Companion chats. Saved cards with beta.1's `openweather_` prefixes retain switches
   and descriptions under the short names; an explicitly saved short-name card takes precedence. Obsolete
-  action settings are ignored. `MapTargetType` is a client-owned type independent of action code.
+  action settings are ignored. On merging old current/forecast cards, either disabled switch disables the
+  combined tool; the settings UI explains how to re-enable it. Current custom descriptions take precedence,
+  otherwise forecast custom descriptions migrate. Known unchanged beta.9 descriptions upgrade to the short
+  defaults; user-written descriptions remain. Saving cards emits only the five current names.
+  `MapTargetType` is a client-owned type independent of action code.
 - Tools use My Location when city arguments are omitted, preserve punctuation for geocoding and request
   clarification when neither a city nor a default is present. Units, selected details and the expanded map-cache
   path remain configurable. Maps accept a country, continent or global target; omitted location means global.
@@ -54,7 +60,12 @@ The shared foundation is compiled privately into all three modules, and all thre
   visible pattern only when the model can inspect the image; it prohibits invented exact values and cross-layer
   claims such as clear skies from a precipitation map. The user-facing attachment retains a short caption.
 - Configured weather/pollution selections are defaults, not restrictions. Optional comma-separated `details`
-  replaces defaults per call, including unchecked fields; unknown fields fail before provider requests. Weather
+  replaces defaults per call, including unchecked fields; unknown fields fail before provider requests.
+  Both weather modes accept the complete weather/forecast field list. For current requests only,
+  PrecipitationProbability deterministically substitutes Precipitation (rain/snow amounts), with an explicit
+  result note that the amounts are not a probability or a future forecast. No forecast fetch, time change,
+  inferred percentage or settings mutation occurs. Forecast probabilities retain their original meaning.
+  Current results identify observations and data timestamps, independently of selected details. Weather
   settings expose every supported detail, including Condition for current and forecast weather. Generated
   per-tool argument documentation lists the same accepted selections. New settings default to Condition, Temp,
   CloudCover, PrecipitationProbability, Precipitation and Wind; existing saved choices remain unchanged. Weather
@@ -65,24 +76,29 @@ The shared foundation is compiled privately into all three modules, and all thre
   `/geo/1.0/reverse` for `latitude,longitude`. Reverse lookup retains the exact requested weather coordinates.
   All data/geocoding calls use HTTPS and invariant decimal coordinates. Postal countries and coordinate ranges
   are validated before requesting geocoding. These formats also work in My Location; maps retain their own targets.
-- Weather/pollution forecast tools retain their default summaries when all time arguments are omitted.
-  `ForecastSelectionRequest` owns deterministic destination-local calendar selection: `date` accepts today,
-  tomorrow, day_after_tomorrow, a weekday on/after today, next_<weekday> (seven days later), or YYYY-MM-DD.
-  `period` accepts all_day (default; beta.7's day remains an alias), morning (06-12), afternoon (12-18),
-  evening (18-22), night (22-06 next day), or HH:mm-HH:mm. Earlier end clock times advance the civil date;
-  equal times require all_day. A period without a date means today. Explicit dates support 1901-2099.
-  `range=days` requires count (1-31) and selects calendar dates starting at date or today. `range=hours`
-  requires count (1-744) and selects elapsed hours from a single captured current instant, forbidding date/period.
-  Count is forbidden elsewhere. Weekend means upcoming Sat/Sun, or the remaining current weekend; next_weekend
-  advances that weekend seven days. This_week means remaining days through Sunday; next_week means following
-  Mon-Sun. These calendar ranges forbid date and accept period. Periods filter each date separately, never
-  including intervening nights. Simplified selections clip elapsed time without advancing the chosen dates;
-  all-elapsed selections return a clear error, not tomorrow's forecast. Local civil boundaries follow DST,
-  whereas range=hours always measures elapsed hours. Custom start/end remains an advanced continuous-interval
-  fallback through `ForecastWindowRequest`; mixing it with simplified arguments fails before provider requests.
-  Both paths reject ambiguous/skipped local boundaries and request offset-qualified start/end instead.
-  All ends are exclusive. The client retains resolved coordinates in JSON-ignored metadata, so destination
-  time-zone resolution through shared `LocationTimeZone` and additional selected periods add no provider calls.
+- `WeatherWhen` parses a bounded, case-insensitive English notation; it never invokes another model.
+  Spaces/underscores and extra whitespace normalize before parsing. Supported forecast forms include today,
+  tomorrow, day after tomorrow, weekdays, this/next weekend or week, next N hours/days, next N afternoons
+  (also mornings/evenings/nights), N days from a named day, exact YYYY-MM-DD, and inclusive calendar-date
+  ranges written YYYY-MM-DD to YYYY-MM-DD. Day/calendar selections accept morning (06-12), afternoon
+  (12-18), evening (18-22), night (22-06 next day), all day or HH:mm-HH:mm. Period alone means today;
+  an earlier end clock advances to the next civil day. Explicit ISO-start/ISO-end intervals remain an
+  advanced continuous-range notation within when. Omitted when/now means current conditions; forecast or
+  next few days means summaries of all returned forecast dates. Unsupported expressions and removed
+  date/period/range/count/start/end arguments fail before provider calls rather than silently selecting current data.
+- Parsed expressions compile to `ForecastSelectionRequest`, which owns deterministic destination-local
+  calendar selection. A weekday means its first occurrence on/after today; next weekday adds seven days.
+  Weekends mean upcoming Sat/Sun or the remaining current weekend; next weekend advances that chosen
+  weekend seven days. This week means remaining days through Sunday; next week is following Mon-Sun.
+  Calendar days are not 24-hour intervals. Periods filter each selected date separately, never including
+  intervening nights. Elapsed time is clipped without advancing the chosen dates; all-elapsed selections
+  return a clear error. Local civil boundaries follow DST; next N hours measures elapsed hours. Counts are
+  bounded to 1-31 calendar days or 1-744 hours, independently of the shorter provider horizon. Calendar dates
+  support 1901-2099. Ambiguous/skipped local boundaries require offset-qualified ISO intervals in when.
+  Internal ends remain exclusive, including after inclusive calendar end dates are expanded by one day.
+  The client retains resolved coordinates in JSON-ignored metadata, so time-zone resolution and multiple
+  selected periods add no provider requests. Broad weather summaries also group each timestamp using the
+  destination's actual time-zone rules, including future DST changes; pollution summaries explicitly use UTC.
 - Forecast horizons are approximately [five days at three-hour steps for weather](https://openweathermap.org/api/forecast5)
   and [four days at hourly steps for pollution](https://openweathermap.org/api/air-pollution); actual returned
   timestamps are authoritative. Both generated argument help and default tool descriptions state these limits,
@@ -100,7 +116,7 @@ The shared foundation is compiled privately into all three modules, and all thre
 - `get_sun_times` resolves locations through the existing free geocoder and calculates events locally using pinned
   Astronomy Engine and GeoTimeZone packages. `SunTimes` owns date validation,
   and a half-open destination civil-day search (23/24/25 hours), using system time-zone rules at each event.
-  `today`/`tomorrow` use the destination's current date, never the host date or today's fixed API offset.
+  Omitted date defaults to today. `today`/`tomorrow` use the destination's current date, never the host date or today's fixed API offset.
   Explicit dates support 1901-2099. Missing system zones, skipped civil dates and invalid coordinates return clear
   errors; absent rise/set events return an explicit no-event result. Results identify astronomical sea-level,
   unobstructed-horizon estimates, not provider observations. License notices ship under `Licenses/`.
@@ -115,8 +131,8 @@ The shared foundation is compiled privately into all three modules, and all thre
   API key remains a host-encrypted password field, decrypted with `ILocalEncryptionProvider` when creating the
   client. No OAuth or extra token-store record is needed. Calls link tool and session cancellation.
 
-Run `dotnet run --project tests/OpenWeather.Tools.Tests -c Release -p:RestoreLockedMode=true` for all seven
-operations, settings migration, input validation, metadata, provider failures, cancellation and attachment dispatch.
+Run `dotnet run --project tests/OpenWeather.Tools.Tests -c Release -p:RestoreLockedMode=true` for all five
+tools and both current/forecast routes, settings migration, input validation, metadata, provider failures, cancellation and attachment dispatch.
 Real map composition is checked using fake HTTP tiles: PNG decoding, grid dimensions, overlay pixels, composite
 cache, actual global/country/date-line viewport metadata, all five legends, no additional requests, tile errors
 and cancellation. The user verified map display and visual descriptions; delayed attachment delivery is the
@@ -430,7 +446,7 @@ acceptance. Tool naming follows each module's contract above.
 
 | Module | Operations to cover | Migration-specific behavior |
 | --- | --- | --- |
-| OpenWeather (7, completed) | `get_weather`, `get_weather_forecast`, `get_air_pollution`, `get_air_pollution_forecast`, `get_air_pollution_history`, `get_sun_times`, `get_weather_map` | Tools only, with short names and preserved saved tool cards. Reuse `IOpenWeatherClient`, configured location/units/details/cache and summarizers. Map images reach both the model and a visible chat attachment. |
+| OpenWeather (5, completed) | `get_weather`, `get_air_pollution`, `get_air_pollution_history`, `get_sun_times`, `get_weather_map` | Tools only, with short names and preserved saved tool cards. Reuse `IOpenWeatherClient`, configured location/units/details/cache and summarizers. Map images reach both the model and a visible chat attachment. |
 | Hue (6, completed) | `toggle_lights`, `change_color`, `show_emotion`, `change_brightness`, `activate_scene`, `show_hue_inventory` | Tools only; startup pairing, disconnected availability/status and conservative toggle-setting migration are described above. |
 | Spotify (16, completed) | `toggle_playback`, `search`, `play_random_music`, `play_special_playlist`, `play_music`, `queue_track`, `volume`, `seek_playback`, `skip`, `repeat_mode`, `shuffle_mode`, `add_to_favorites`, `get_playlists`, `add_to_playlist`, `list_devices`, `transfer_to_device` | Native tools use neutral manager operations. Search and playlist/device listing are Read; mutations are Act. Configured playlists, playback context, and speech ducking remain independent of tool dispatch. OAuth and passive monitoring remain session/setup concerns. |
 

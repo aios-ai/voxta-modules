@@ -23,6 +23,7 @@ internal sealed class OpenWeatherToolHandler(
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, sessionAbort);
         var token = linked.Token;
         token.ThrowIfCancellationRequested();
+        ValidateArguments(operation, arguments);
         var location = Text(arguments, "location");
         if (operation == "get_weather_map")
         {
@@ -51,7 +52,7 @@ internal sealed class OpenWeatherToolHandler(
 
         if (operation == "get_sun_times")
         {
-            var date = Text(arguments, "date")?.ToLowerInvariant();
+            var date = Text(arguments, "date")?.ToLowerInvariant() ?? "today";
             SunTimes.ValidateDate(date);
             var result = await client.ResolveLocationAsync(location, token);
             token.ThrowIfCancellationRequested();
@@ -61,13 +62,14 @@ internal sealed class OpenWeatherToolHandler(
             return new(times.Describe(location));
         }
 
+        var forecastNow = (timeProvider ?? TimeProvider.System).GetUtcNow();
+        var when = operation is "get_weather" or "get_air_pollution" ? WeatherWhen.Parse(Text(arguments, "when")) : null;
         var pollution = operation.StartsWith("get_air_pollution", StringComparison.Ordinal);
         var details = WeatherDetailSelection.Resolve(Text(arguments, "details"), pollution ? _pollutionDetails : _weatherDetails,
-            pollution ? WeatherDetailSelection.Pollution : operation == "get_weather_forecast" ? WeatherDetailSelection.Forecast : WeatherDetailSelection.Weather);
-        var windowRequest = operation is "get_weather_forecast" or "get_air_pollution_forecast"
-            ? ForecastSelectionRequest.Parse(Text(arguments, "start"), Text(arguments, "end"), Text(arguments, "date"),
-                Text(arguments, "period"), Text(arguments, "range"), Count(arguments)) : null;
-        var forecastNow = (timeProvider ?? TimeProvider.System).GetUtcNow();
+            pollution ? WeatherDetailSelection.Pollution : WeatherDetailSelection.Forecast);
+        var windowRequest = when?.Selection;
+        // The public catalog has only combined tools. Internal routing never changes the requested time.
+        if (when is { Current: false }) operation += "_forecast";
 
         switch (operation)
         {
@@ -75,7 +77,13 @@ internal sealed class OpenWeatherToolHandler(
             {
                 var result = await client.FetchWeatherData(location, settings.Units, token);
                 token.ThrowIfCancellationRequested();
-                return result.Success ? new(WeatherReportFormatter.Weather(result.Value!, location, settings.Units, details)) : Failure(result);
+                if (!result.Success) return Failure(result);
+                var currentDetails = new HashSet<string>(details, StringComparer.OrdinalIgnoreCase);
+                var replacement = currentDetails.Remove("PrecipitationProbability");
+                if (replacement) currentDetails.Add("Precipitation");
+                var report = WeatherReportFormatter.Weather(result.Value!, location, settings.Units, currentDetails);
+                if (replacement) report += "\nSubstitution: PrecipitationProbability is unavailable for current conditions. Precipitation (current rain/snow amount) was returned instead; it is not a probability or a forecast of future rain.";
+                return new($"Current weather observation. Data time: {WeatherReportFormatter.LocalTime(result.Value!.Dt, result.Value.Timezone)}.\n{report}");
             }
             case "get_weather_forecast":
             {
@@ -94,10 +102,13 @@ internal sealed class OpenWeatherToolHandler(
                     return new(text.Trim());
                 }
                 var summary = forecastDetails.Count == 0 ? "" : WeatherForecastSummariser.Summarise(data.List, culture, forecastDetails,
-                    days: 5, unitSuffix: settings.Units == "imperial" ? "°F" : "°C", windUnit: WeatherReportFormatter.WindUnit(settings.Units), utcOffset: data.City.Timezone ?? 0);
+                    days: int.MaxValue, unitSuffix: settings.Units == "imperial" ? "°F" : "°C", windUnit: WeatherReportFormatter.WindUnit(settings.Units), utcOffset: data.City.Timezone ?? 0,
+                    timeZone: data.ResolvedLocation == null ? null : LocationTimeZone.Resolve(data.ResolvedLocation));
                 if (details.Contains("Sunrise") || details.Contains("Sunset"))
                     summary += "\nDate-specific sunrise/sunset is unavailable from this forecast endpoint. Use get_sun_times with the requested date (e.g. tomorrow). Today's city metadata does not answer future dates.";
-                return new($"Weather forecast for {location} ({data.City.Country}):\n{summary}");
+                var availability = ForecastWindowFormatter.Availability(data.List, ForecastWindowFormatter.Timestamp,
+                    data.ResolvedLocation == null ? TimeZoneInfo.Utc : LocationTimeZone.Resolve(data.ResolvedLocation), 3);
+                return new($"Weather forecast for {location} ({data.City.Country}):\n{availability}\n{summary}");
             }
             case "get_air_pollution":
             {
@@ -105,7 +116,7 @@ internal sealed class OpenWeatherToolHandler(
                 token.ThrowIfCancellationRequested();
                 if (!result.Success) return Failure(result);
                 if (result.Value!.List.Count == 0) return new("OpenWeather returned no air quality data.", IsError: true);
-                return new(WeatherReportFormatter.Pollution(result.Value, location, details));
+                return new($"Current air quality observation. Data time (UTC): {WeatherReportFormatter.LocalTime(result.Value.List[0].Dt, 0)}.\n{WeatherReportFormatter.Pollution(result.Value, location, details)}");
             }
             case "get_air_pollution_forecast":
             {
@@ -119,7 +130,8 @@ internal sealed class OpenWeatherToolHandler(
                     var selection = windowRequest.Resolve(data.ResolvedLocation, forecastNow);
                     return new(ForecastWindowFormatter.Pollution(data, selection, location, details));
                 }
-                return new($"Air pollution forecast for {location} (UTC day/night averages):\n{AirPollutionForecastSummariser.Summarise(result.Value.List, culture, details, days: 5)}");
+                var availability = ForecastWindowFormatter.Availability(result.Value.List, item => item.Dt, TimeZoneInfo.Utc, 1);
+                return new($"Air pollution forecast for {location} (UTC day/night averages):\n{availability}\n{AirPollutionForecastSummariser.Summarise(result.Value.List, culture, details, days: int.MaxValue)}");
             }
             case "get_air_pollution_history":
             {
@@ -150,12 +162,20 @@ internal sealed class OpenWeatherToolHandler(
     private static ChatToolCallResult Failure<T>(OpenWeatherResult<T> result) => new(
         string.IsNullOrWhiteSpace(result.UserVisibleError) ? "OpenWeather could not complete the request." : result.UserVisibleError, IsError: true);
 
-    private static int? Count(JsonElement? arguments)
+    private static void ValidateArguments(string operation, JsonElement? arguments)
     {
-        if (arguments is not { } args || !args.TryGetProperty("count", out var value) || value.ValueKind == JsonValueKind.Null) return null;
-        if (value.ValueKind != JsonValueKind.Number || !value.TryGetInt32(out var count))
-            throw new ModuleToolInputException("count must be a positive integer, used only with range=hours or range=days.");
-        return count;
+        string[] allowed = operation switch
+        {
+            "get_weather" or "get_air_pollution" => ["location", "when", "details"],
+            "get_sun_times" => ["location", "date"],
+            "get_air_pollution_history" => ["location", "start", "end", "details"],
+            "get_weather_map" => ["location", "layer"],
+            _ => throw new ModuleToolInputException("Unknown OpenWeather tool."),
+        };
+        if (arguments is { } args)
+            foreach (var property in args.EnumerateObject())
+                if (!allowed.Contains(property.Name, StringComparer.Ordinal))
+                    throw new ModuleToolInputException($"Unsupported argument '{property.Name}'. Accepted arguments: {string.Join(", ", allowed)}.");
     }
 
     private static string? Text(JsonElement? arguments, string name)
