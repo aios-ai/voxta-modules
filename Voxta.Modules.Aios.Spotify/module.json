@@ -1,6 +1,6 @@
 {
   "id": "Voxta.Modules.Aios.Spotify",
-  "version": "0.1.9-beta.4",
+  "version": "0.1.9-beta.5",
   "voxta": ">=1.13.0-alpha.14",
   "label": "Spotify Control",
   "author": "aios",

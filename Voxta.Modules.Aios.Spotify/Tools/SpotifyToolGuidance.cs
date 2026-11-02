@@ -5,9 +5,13 @@ internal static class SpotifyToolGuidance
 {
     public static string Build(IReadOnlySet<string> selected)
     {
+        if (!SpotifyToolCatalog.Choices.Any(c => selected.Contains(c.Name))) return "";
         bool Has(string operation) => selected.Contains("spotify_" + operation);
-        var rules = new List<string>();
-        if (Has("toggle_playback")) rules.Add("A paused Spotify player can be resumed.");
+        var rules = new List<string>
+        {
+            "Use Spotify tools only as needed to fulfill a user request or an established user instruction, not merely because the chat has started or a player is available.",
+        };
+        if (Has("toggle_playback")) rules.Add("When the user requests playback, a paused Spotify player can be resumed.");
         var selectionTools = new[] { "play_music", "queue_track" }.Where(Has).Select(o => "spotify_" + o).ToArray();
         if (selectionTools.Length > 0)
             rules.Add("For " + string.Join(" or ", selectionTools) + ", pass the exact Selection returned by spotify_search. Use a raw Spotify URI only when provided directly by the user."

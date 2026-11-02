@@ -119,7 +119,8 @@ internal static class SpotifyConfigurationChecks
         var enabledDevices = SpotifyToolsSettings.From(new StaticSettingsSource(new() { ["SpotifyTools"] = "[{\"Name\":\"spotify_list_devices\",\"Disabled\":\"false\"},{\"Name\":\"spotify_transfer_to_device\",\"Disabled\":\"false\"}]" }));
         Check(enabledDevices.Selected.Count == 16, "Explicit device opt-in lost");
         Check(SpotifyToolGuidance.Build(new HashSet<string>()).Length == 0, "Guidance for no tools");
-        Check(SpotifyToolGuidance.Build(new HashSet<string> { "spotify_search" }).Length == 0, "Mutation guidance for search-only selection");
+        var searchOnly = SpotifyToolGuidance.Build(new HashSet<string> { "spotify_search" });
+        Check(searchOnly.Contains("fulfill a user request") && !searchOnly.Contains("state-changing"), "Search-only selection needs request guidance without mutation guidance");
         var playOnly = SpotifyToolGuidance.Build(new HashSet<string> { "spotify_play_music" });
         Check(playOnly.Contains("Search is disabled") && !playOnly.Contains("spotify_queue_track") && !playOnly.Contains("device discovery"), "Guidance references disabled capabilities");
         var listOnly = SpotifyToolGuidance.Build(new HashSet<string> { "spotify_list_devices" });

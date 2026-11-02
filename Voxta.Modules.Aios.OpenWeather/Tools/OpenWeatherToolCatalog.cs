@@ -55,7 +55,8 @@ internal static class OpenWeatherToolCatalog
 
     public static ModuleToolCatalog Create(OpenWeatherToolHandler handler, OpenWeatherToolsSettings settings, ILogger logger) => new(
         Definitions.Select((d, i) => new ModuleTool(new ChatTool(Choices[i].Name,
-            settings.Descriptions?.GetValueOrDefault(Choices[i].Name) ?? d.Description,
+            (settings.Descriptions?.GetValueOrDefault(Choices[i].Name) ?? d.Description)
+                + " Use only as needed to fulfill a user request or an established user instruction, not merely because the chat has started or a location is configured.",
             ChatToolSchema.FromArguments(d.Arguments), VoxtaModule.ServiceName)
         {
             AugmentationKey = VoxtaModule.ToolsAugmentationKey,

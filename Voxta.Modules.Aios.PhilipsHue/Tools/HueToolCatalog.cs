@@ -13,11 +13,11 @@ internal static class HueToolCatalog
     private static readonly Definition[] Definitions =
     [
         new("toggle_lights", "Set a Hue target on or off. Omit target only when all lights are intended; all lights excludes smart plugs.", [Text("state", "on or off."), Text("target", "Exact inventory name of a light, smart plug, room, zone or group.", false)]),
-        new("change_color", "Change a Hue target's color and turn it on.", [Text("target", "Exact inventory target name."), Text("color", "Named color, such as LightYellow or Red.")]),
+        new("change_color", "Change a Hue target's color and turn it on. Smart plugs support only on/off control.", [Text("target", "Exact inventory target name."), Text("color", "Named color, such as LightYellow or Red.")]),
         new("show_emotion", "Express a character emotion through the configured character-controlled target. Runs during the tool loop.", [Text("color", "Named color appropriate for the emotion.")]),
-        new("change_brightness", "Set Hue brightness and turn the target on.", [Text("target", "Exact inventory target name."), new() { Name = "brightness", Description = "Brightness from 1 to 100 percent.", Type = FunctionArgumentType.Integer, Required = true }]),
+        new("change_brightness", "Set Hue brightness and turn the target on. Smart plugs support only on/off control.", [Text("target", "Exact inventory target name."), new() { Name = "brightness", Description = "Brightness from 1 to 100 percent.", Type = FunctionArgumentType.Integer, Required = true }]),
         new("activate_scene", "Activate a named scene in a room, zone or group.", [Text("target", "Exact inventory room, zone or group name."), Text("scene", "Exact scene name for that target.")]),
-        new("show_hue_inventory", "List available Hue lights, smart plugs, rooms, zones, groups and scenes with their target. Ask the user to resolve ambiguous names before controlling devices.", []),
+        new("show_hue_inventory", "When needed for a user request, list available Hue lights, smart plugs, rooms, zones, groups and scenes with their target. Ask the user to resolve ambiguous names before controlling devices.", []),
     ];
     public static readonly ChatToolChoice[] Choices = Definitions.Select(d => new ChatToolChoice("hue_" + d.Name, d.Description, d.Name != "show_emotion")).ToArray();
     public static string DescribeArguments(string name) =>

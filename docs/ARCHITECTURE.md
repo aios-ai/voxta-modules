@@ -393,6 +393,11 @@ the user-requested short names (`get_weather`, etc.); the host owns collision ha
 offer the same names. Set `Source` to the module's `VoxtaModule.ServiceName` and set the
 tool-specific `AugmentationKey` explicitly at integration time.
 
+Model guidance limits Hue, Spotify and OpenWeather tool use to fulfilling a user request or an established
+user instruction; startup inventory, a player or a configured location alone is not a reason to call tools.
+Hue's dedicated character emotion tool remains available for spontaneous expression when enabled.
+Hue and Spotify publish this guidance in session context; OpenWeather appends it to each effective tool description.
+
 The catalog checks only the JSON envelope, not arbitrary JSON Schema constraints. Each handler must validate
 required fields, types, enum values, and ranges before invoking a client. Return expected provider/domain failures
 as `ChatToolCallResult(IsError: true)`; throw `ModuleToolInputException` for safe input guidance. Pass cancellation
