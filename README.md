@@ -58,6 +58,16 @@ The API key stays in Voxta's encrypted password-field configuration.
 The module itself is free. It requires Voxta `1.13.0` or newer and an OpenWeather API key; OpenWeather offers a
 rate-limited free plan.
 
+### Translator
+
+`Voxta.Modules.Translator` translates user messages into the character's configured language and translates
+assistant replies into a selected reply language. It runs locally with Bergamot; supported Mozilla translation
+models are downloaded into Voxta's module data folder on first use and reused afterward. Direct translation models
+are preferred, with an English pivot when a released direct model is unavailable.
+
+The first beta supports 64-bit Windows. The module itself is free. It requires Voxta `1.13.0-alpha.14` or newer and
+an internet connection for the initial model registry and selected model downloads. Message text is translated
+locally and is not sent to a translation service.
 ### Spotify Control
 
 `Voxta.Modules.Aios.Spotify` adds Spotify playback control to Voxta chats. It connects through Spotify OAuth and
@@ -77,8 +87,8 @@ HTTP server is started by the module.
 
 1. Create or open your application in the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard/).
 2. Add **both** redirect URIs to your Spotify application's settings:
-   - `http://127.0.0.1:5384/oauth-native-bounce.html` — desktop app
-   - `http://127.0.0.1:5384/auth/modules/callback` — web browser
+   - `http://127.0.0.1:5384/oauth-native-bounce.html` â€” desktop app
+   - `http://127.0.0.1:5384/auth/modules/callback` â€” web browser
 3. Enter the application's **Client ID** and **Client Secret** in the module, save, and click **Sign in** in
    **Spotify Account**. Voxta supplies the correct callback automatically for the client that starts sign-in.
 4. Complete Spotify authorization. For desktop sign-in, allow the browser to return to Voxta when prompted.

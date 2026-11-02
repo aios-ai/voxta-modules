@@ -1,0 +1,10 @@
+{
+  "id": "Voxta.Modules.Translator",
+  "version": "0.1.0-beta.1",
+  "voxta": ">=1.13.0-alpha.14",
+  "label": "Translator",
+  "author": "aios",
+  "category": "Augmentations",
+  "platforms": ["win-x64"],
+  "description": "Translate chat messages locally with Mozilla Bergamot models downloaded on demand."
+}
