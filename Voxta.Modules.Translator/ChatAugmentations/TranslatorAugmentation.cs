@@ -64,13 +64,25 @@ public sealed class TranslatorAugmentation(
     {
         var stopwatch = Stopwatch.StartNew();
         var translated = await engine.TranslateAsync(text, fromLanguage, toLanguage, cancellationToken);
-        logger.LogDebug(
-            "Translator {Stage} completed {FromLanguage}->{ToLanguage} in {ElapsedMilliseconds} ms",
+        stopwatch.Stop();
+
+        var result = string.IsNullOrWhiteSpace(translated) ? text : translated;
+        var elapsedMilliseconds = stopwatch.Elapsed.TotalMilliseconds;
+        var charactersPerSecond = elapsedMilliseconds > 0
+            ? text.Length / stopwatch.Elapsed.TotalSeconds
+            : 0;
+
+        logger.LogInformation(
+            "Translator {Stage} {FromLanguage}->{ToLanguage} completed in {ElapsedMilliseconds:F1} ms " +
+            "({CharactersPerSecond:F1} source chars/s). Original: {OriginalText} Translated: {TranslatedText}",
             stage,
             fromLanguage,
             toLanguage,
-            stopwatch.ElapsedMilliseconds);
-        return string.IsNullOrWhiteSpace(translated) ? text : translated;
+            elapsedMilliseconds,
+            charactersPerSecond,
+            text,
+            result);
+        return result;
     }
 
     private static string NormalizeLanguage(string language) => language.Trim().ToLowerInvariant();

@@ -1,6 +1,6 @@
 {
   "id": "Voxta.Modules.Translator",
-  "version": "0.1.0-beta.1",
+  "version": "0.1.0-beta.2",
   "voxta": ">=1.13.0-alpha.14",
   "label": "Translator",
   "author": "aios",
