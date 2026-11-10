@@ -3,7 +3,13 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Reflection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Voxta.Abstractions.Chats.Sessions;
+using Voxta.Abstractions.Registration;
+using Voxta.Abstractions.Services.ChatAugmentations;
+using Voxta.Model.Shared;
+using Voxta.Modules.Translator.ChatAugmentations;
 using Voxta.Model.Shared.Forms;
 using Voxta.Modules.Translator.Configuration;
 using Voxta.Modules.Translator.Translation;
@@ -51,7 +57,41 @@ try
     }
     engine.Dispose();
 
-    Console.WriteLine("PASS Translator language catalog, pivot models, cache reuse, and configuration choices");
+    var speechOnlyField = fields.OfType<FormBooleanField>()
+        .Single(field => field.Name == ModuleConfigurationProvider.TranslateSpeechOnlyName);
+    var oldSettings = new StaticSettingsSource(new());
+    Check(!oldSettings.GetRequired(speechOnlyField), "Existing configurations default to normal reply translation");
+    var enabledSettings = new StaticSettingsSource(new() { [speechOnlyField.Name] = "true" });
+    Check(enabledSettings.GetRequired(speechOnlyField), "Experimental option can be enabled");
+
+    var session = DispatchProxy.Create<IChatSessionChatAugmentationApi, TranslatorSessionProxy>();
+    var fakeEngine = new RecordingTranslationEngine();
+    var normal = new TranslatorAugmentation(session, fakeEngine, "de", "fr", NullLogger.Instance);
+    Check(await normal.PostProcessTextAsync(ChatMessageRole.Assistant, "Hello", default) == "fr:Hello",
+        "Default mode still translates the assistant response");
+    var beforeSpeech = fakeEngine.Calls;
+    Check(normal.SpeechProcessText("fr:Hello") == "fr:Hello" && fakeEngine.Calls == beforeSpeech,
+        "Default mode does not translate speech a second time");
+
+    var experimental = new TranslatorAugmentation(session, fakeEngine, "de", "fr", NullLogger.Instance, true);
+    Check(await experimental.PostProcessTextAsync(ChatMessageRole.Assistant, "Hello", default) == "Hello",
+        "Experimental mode preserves the original response for chat/history");
+    Check(fakeEngine.Calls == beforeSpeech, "Preserving chat text does not invoke translation");
+    Check(experimental.SpeechProcessText("Hello") == "fr:Hello", "Speech is translated into the existing reply language");
+    Check(fakeEngine.LastRoute == "en-fr", "Speech translation uses the character language");
+    Check(await experimental.ProcessInboundTextAsync(new(InboundTextKind.Message, "User"), "Hallo", default) == "en:Hallo",
+        "Experimental mode retains the existing inbound translation");
+    Check(fakeEngine.LastRoute == "de-en", "Inbound translation uses the existing user language");
+    var sameLanguage = new TranslatorAugmentation(session, fakeEngine, "de", "en", NullLogger.Instance, true);
+    var beforeNoOp = fakeEngine.Calls;
+    Check(sameLanguage.SpeechProcessText("Hello") == "Hello" && experimental.SpeechProcessText(" ") == " ",
+        "Matching languages and empty speech are unchanged");
+    Check(await normal.PostProcessTextAsync(ChatMessageRole.User, "Hallo", default) == "Hallo" && fakeEngine.Calls == beforeNoOp,
+        "No-op paths do not translate");
+    fakeEngine.EmptyResult = true;
+    Check(experimental.SpeechProcessText("Hello") == "Hello", "Empty translation falls back to original speech");
+
+    Console.WriteLine("PASS Translator language catalog, pivot models, cache reuse, configuration, and speech-only routing");
 }
 finally
 {
@@ -62,6 +102,31 @@ static void Check(bool condition, string message)
 {
     if (!condition)
         throw new InvalidOperationException("FAILED: " + message);
+}
+
+public class TranslatorSessionProxy : DispatchProxy
+{
+    protected override object? Invoke(MethodInfo? targetMethod, object?[]? args) =>
+        targetMethod?.Name == "get_MainCharacter" ? null : throw new NotSupportedException(targetMethod?.Name);
+}
+
+sealed class RecordingTranslationEngine : ITranslationEngine
+{
+    public string Id => "test";
+    public string Label => "Test";
+    public int Calls { get; private set; }
+    public string? LastRoute { get; private set; }
+    public bool EmptyResult { get; set; }
+    public Task<IReadOnlyList<TranslationLanguage>> GetSupportedLanguagesAsync(CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<TranslationLanguage>>([]);
+
+    public async ValueTask<string> TranslateAsync(string text, string fromLanguage, string toLanguage, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        Calls++;
+        LastRoute = fromLanguage + "-" + toLanguage;
+        return EmptyResult ? "" : toLanguage + ":" + text;
+    }
 }
 
 sealed class RegistryHandler : HttpMessageHandler

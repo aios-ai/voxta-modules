@@ -14,6 +14,7 @@ public sealed class ModuleConfigurationProvider(
     public const string EngineName = "Engine";
     public const string UserLanguageName = "UserLanguage";
     public const string ChatLanguageName = "ChatLanguage";
+    public const string TranslateSpeechOnlyName = "TranslateSpeechOnly";
 
     public static string[] FieldsRequiringReload => [];
 
@@ -39,6 +40,14 @@ public sealed class ModuleConfigurationProvider(
         ChatLanguageName,
         "Reply language",
         "Character replies are translated from the character's configured language into this language.");
+
+    public static readonly FormBooleanField TranslateSpeechOnly = new()
+    {
+        Name = TranslateSpeechOnlyName,
+        Label = "Translate speech only (experimental)",
+        DefaultValue = false,
+        Help = "Keep character replies in their original language in chat and history. Translate only spoken text into Reply language. Your language is unaffected. Use a voice that supports the reply language. Start a new chat after changing this option. The first spoken reply may wait for model downloads.",
+    };
 
     public async Task<FormField[]> GetModuleConfigurationFieldsAsync(
         IAuthenticationContext auth,
@@ -79,7 +88,8 @@ public sealed class ModuleConfigurationProvider(
             FormTitleField.Create("Translator"),
             Engine,
             userLanguage,
-            replyLanguage);
+            replyLanguage,
+            TranslateSpeechOnly);
     }
 
     private static FormChoicesField LanguageField(string name, string label, string help) => new()

@@ -13,8 +13,9 @@ public sealed class TranslatorAugmentation(
     ITranslationEngine engine,
     string userLanguage,
     string replyLanguage,
-    ILogger logger)
-    : IChatInboundTextAugmentation, IChatPostProcessAugmentation
+    ILogger logger,
+    bool translateSpeechOnly = false)
+    : IChatInboundTextAugmentation, IChatPostProcessAugmentation, IChatSpeechReplacementsAugmentation
 {
     private readonly string _userLanguage = NormalizeLanguage(userLanguage);
     private readonly string _replyLanguage = NormalizeLanguage(replyLanguage);
@@ -45,7 +46,7 @@ public sealed class TranslatorAugmentation(
         string text,
         CancellationToken cancellationToken)
     {
-        if (role != ChatMessageRole.Assistant ||
+        if (translateSpeechOnly || role != ChatMessageRole.Assistant ||
             string.IsNullOrWhiteSpace(text) ||
             string.Equals(CharacterLanguage, _replyLanguage, StringComparison.Ordinal))
         {
@@ -53,6 +54,23 @@ public sealed class TranslatorAugmentation(
         }
 
         return await TranslateAsync(text, CharacterLanguage, _replyLanguage, "reply", cancellationToken);
+    }
+
+    public string SpeechProcessText(string text)
+    {
+        var characterLanguage = CharacterLanguage;
+        if (!translateSpeechOnly || string.IsNullOrWhiteSpace(text) ||
+            string.Equals(characterLanguage, _replyLanguage, StringComparison.Ordinal))
+        {
+            return text;
+        }
+
+        // Voxta's speech hook is synchronous. Run the async engine off the caller's
+        // synchronization context, then wait for the text required by speech synthesis.
+        // The hook provides no cancellation token.
+        return Task.Run(() => TranslateAsync(
+                text, characterLanguage, _replyLanguage, "speech", CancellationToken.None).AsTask())
+            .GetAwaiter().GetResult();
     }
 
     private async ValueTask<string> TranslateAsync(

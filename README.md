@@ -68,6 +68,14 @@ are preferred, with an English pivot when a released direct model is unavailable
 The first beta supports 64-bit Windows. The module itself is free. It requires Voxta `1.13.0-alpha.14` or newer and
 an internet connection for the initial model registry and selected model downloads. Message text is translated
 locally and is not sent to a translation service.
+
+Enable **Translate speech only (experimental)** to keep original character replies in chat and history while
+translating speech into **Reply language**. This is off by default; the existing **Your language** and
+**Reply language** selections keep their current behavior when it is off. Start a new chat after changing it,
+and select a voice that supports the reply language. Translation runs for each speech text passed by Voxta;
+the synchronous speech hook waits for translation, including any initial model download, and provides no
+cancellation token. Separation of chat/history and speech still needs live Voxta acceptance testing.
+
 ### Spotify Control
 
 `Voxta.Modules.Aios.Spotify` adds Spotify playback control to Voxta chats. It connects through Spotify OAuth and
