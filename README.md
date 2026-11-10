@@ -62,7 +62,9 @@ rate-limited free plan.
 
 `Voxta.Modules.Translator` translates user messages into the character's configured language and translates
 assistant replies into a selected reply language. It runs locally with Bergamot; supported Mozilla translation
-models are downloaded into Voxta's module data folder on first use and reused afterward. Direct translation models
+models are downloaded into Voxta's module data folder on first use and reused across chats and server restarts.
+Cached and downloaded assets are checked for format, expected size and checksum; invalid files are downloaded again.
+Direct translation models
 are preferred, with an English pivot when a released direct model is unavailable.
 
 The first beta supports 64-bit Windows. The module itself is free. It requires Voxta `1.13.0-alpha.14` or newer and

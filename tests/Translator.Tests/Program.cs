@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Buffers.Binary;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
@@ -41,6 +42,35 @@ try
     var cachedRoute = await store.EnsureRouteAsync("de", "fr", default);
     Check(cachedRoute.SequenceEqual(route) && handler.AssetRequests == assetRequests,
         "Validated model assets are reused without another download");
+
+    var restartedStore = new ModelStore(tempRoot, new HttpClient(handler), NullLogger<ModelStore>.Instance);
+    var restartedRoute = await restartedStore.EnsureRouteAsync("de", "fr", default);
+    Check(restartedRoute.SequenceEqual(route) && handler.AssetRequests == assetRequests,
+        "A fresh store reuses persisted models after restart without downloading assets");
+
+    var cachedModel = Directory.GetFiles(Path.GetDirectoryName(route[0])!, "model.*.bin").Single();
+    var damagedModel = await File.ReadAllBytesAsync(cachedModel);
+    damagedModel[^1] ^= 0xFF;
+    await File.WriteAllBytesAsync(cachedModel, damagedModel);
+    var repairStore = new ModelStore(tempRoot, new HttpClient(handler), NullLogger<ModelStore>.Instance);
+    await repairStore.EnsureRouteAsync("de", "fr", default);
+    Check(handler.AssetRequests == assetRequests + 1,
+        "Checksum mismatch repairs only the damaged asset");
+
+    var invalidHandler = new RegistryHandler(invalidBinary: true);
+    var invalidStore = new ModelStore(Path.Combine(tempRoot, "invalid"), new HttpClient(invalidHandler), NullLogger<ModelStore>.Instance);
+    var invalidRejected = false;
+    try
+    {
+        await invalidStore.EnsureRouteAsync("de", "en", default);
+    }
+    catch (InvalidDataException)
+    {
+        invalidRejected = true;
+    }
+    Check(invalidRejected, "Downloaded temporary files are format-validated even when their checksum matches");
+    Check(!Directory.GetFiles(Path.Combine(tempRoot, "invalid", "models"), "*.bin", SearchOption.AllDirectories).Any(),
+        "Invalid downloads are never promoted into the cache");
 
     var engine = new BergamotTranslationEngine(store, NullLogger<BergamotTranslationEngine>.Instance);
     var registry = new TranslatorEngineRegistry([engine]);
@@ -133,9 +163,11 @@ sealed class RegistryHandler : HttpMessageHandler
 {
     private readonly Dictionary<string, byte[]> _assets = new(StringComparer.Ordinal);
     private readonly string _registry;
+    private readonly bool _invalidBinary;
 
-    public RegistryHandler()
+    public RegistryHandler(bool invalidBinary = false)
     {
+        _invalidBinary = invalidBinary;
         var models = new Dictionary<string, object>();
         AddRelease(models, "de-en");
         AddRelease(models, "en-de");
@@ -168,7 +200,9 @@ sealed class RegistryHandler : HttpMessageHandler
 
     private object Candidate(string direction, string status)
     {
-        var model = new byte[] { 0x00, 0xFD, 0x00, 0x00, 0x01 };
+        var model = new byte[49];
+        BinaryPrimitives.WriteUInt64LittleEndian(model, _invalidBinary ? 2UL : 1UL);
+        BinaryPrimitives.WriteUInt64LittleEndian(model.AsSpan(8), 1);
         var vocab = new byte[] { 0x0A, 0x01, 0x02, 0x03, 0x04 };
         var shortlist = new byte[] { 0x01, 0x00, 0x00, 0x00, 0x05 };
         var prefix = "models/" + direction + "/";

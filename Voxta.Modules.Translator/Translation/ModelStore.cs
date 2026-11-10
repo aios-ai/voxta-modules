@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Buffers.Binary;
 using System.Globalization;
 using System.IO.Compression;
 using System.Net;
@@ -246,13 +247,26 @@ public sealed class ModelStore(string dataFolder, HttpClient http, ILogger<Model
         if (stream.Read(magic) != magic.Length)
             throw new InvalidDataException($"Model asset '{info.Name}' is truncated.");
 
+        // Use the registry name: downloads are validated before their temporary
+        // filename is replaced, so its extension does not describe the format.
+        var assetName = file.Path.EndsWith(".gz", StringComparison.OrdinalIgnoreCase)
+            ? file.Path[..^3]
+            : file.Path;
         switch (kind)
         {
-            case ModelFileKind.Model when info.Name.EndsWith(".bin", StringComparison.OrdinalIgnoreCase):
-                if (magic[0] != 0x00 || magic[1] != 0xFD)
-                    throw new InvalidDataException($"Model asset '{info.Name}' is not an intgemm model.");
+            case ModelFileKind.Model when assetName.EndsWith(".bin", StringComparison.OrdinalIgnoreCase):
+                // Marian binaries begin with a uint64 version and uint64 item count,
+                // followed by one 32-byte header per item. They have no intgemm magic.
+                Span<byte> header = stackalloc byte[16];
+                stream.Position = 0;
+                if (stream.Read(header) != header.Length ||
+                    BinaryPrimitives.ReadUInt64LittleEndian(header) != 1)
+                    throw new InvalidDataException($"Model asset '{info.Name}' is not a Marian binary model.");
+                var itemCount = BinaryPrimitives.ReadUInt64LittleEndian(header[8..]);
+                if (itemCount == 0 || itemCount > (ulong)(info.Length - header.Length) / 32)
+                    throw new InvalidDataException($"Model asset '{info.Name}' has an invalid Marian header table.");
                 break;
-            case ModelFileKind.Model when info.Name.EndsWith(".npz", StringComparison.OrdinalIgnoreCase):
+            case ModelFileKind.Model when assetName.EndsWith(".npz", StringComparison.OrdinalIgnoreCase):
                 if (magic[0] != 0x50 || magic[1] != 0x4B)
                     throw new InvalidDataException($"Model asset '{info.Name}' is not an NPZ archive.");
                 break;
