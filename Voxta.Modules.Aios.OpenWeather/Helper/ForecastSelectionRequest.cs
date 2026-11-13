@@ -63,7 +63,7 @@ internal sealed record ForecastSelectionRequest(
             _ => (-1, -1),
         };
         if (hours.Item1 >= 0) return (new(hours.Item1, 0), new(hours.Item2, 0), hours.Item2 <= hours.Item1);
-        if (period != null && Regex.IsMatch(period, @"^[0-9]{2}:[0-9]{2}-[0-9]{2}:[0-9]{2}$")
+        if (period != null && Regex.IsMatch(period, @"\A(?:[01][0-9]|2[0-3]):[0-5][0-9]-(?:[01][0-9]|2[0-3]):[0-5][0-9]\z")
             && TimeOnly.TryParseExact(period[..5], "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var start)
             && TimeOnly.TryParseExact(period[6..], "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var end)
             && start != end)

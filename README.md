@@ -13,7 +13,7 @@ Each module has its own project directory, `module.json`, version, dependencies,
 `Voxta.Modules.Aios.PhilipsHue` controls Philips Hue lights, smart plugs, rooms, zones, scenes, color, and brightness
 from Voxta chats. It can also expose a configured light to a character for mood and emotion-driven changes.
 
-The module itself is free. It requires Voxta `1.13.0` or newer and a Philips Hue Bridge reachable on the local
+The module itself is free. It requires Voxta `1.13.0-beta.1` or newer and a Philips Hue Bridge reachable on the local
 network. Initial setup asks you to press the bridge link button.
 
 ### OpenWeather
@@ -55,7 +55,7 @@ Locations accept full city/state/country names,
 free APIs without a One Call subscription.
 The API key stays in Voxta's encrypted password-field configuration.
 
-The module itself is free. It requires Voxta `1.13.0` or newer and an OpenWeather API key; OpenWeather offers a
+The module itself is free. It requires Voxta `1.13.0-beta.1` or newer and an OpenWeather API key; OpenWeather offers a
 rate-limited free plan.
 
 ### Translator
@@ -67,7 +67,7 @@ Cached and downloaded assets are checked for format, expected size and checksum;
 Direct translation models
 are preferred, with an English pivot when a released direct model is unavailable.
 
-The first beta supports 64-bit Windows. The module itself is free. It requires Voxta `1.13.0-alpha.14` or newer and
+Translator supports 64-bit Windows. The module itself is free. It requires Voxta `1.13.0-beta.1` or newer and
 an internet connection for the initial model registry and selected model downloads. Message text is translated
 locally and is not sent to a translation service.
 
@@ -83,7 +83,7 @@ cancellation token. Separation of chat/history and speech still needs live Voxta
 `Voxta.Modules.Aios.Spotify` adds Spotify playback control to Voxta chats. It connects through Spotify OAuth and
 exposes 17 native tools for playback, search, queueing, volume, seeking, shuffle, repeat, favorites, playlists, and devices.
 
-The module itself is free. It requires Voxta `1.13.0` or newer, a Spotify Premium account, and a Spotify Developer
+The module itself is free. It requires Voxta `1.13.0-beta.1` or newer, a Spotify Premium account, and a Spotify Developer
 application that provides a Client ID and Client Secret.
 
 ## Develop
@@ -142,7 +142,7 @@ Set the fixed limit to 100 or the relative reduction to 0 to disable ducking.
 Tokens are stored through Voxta's internal account store. The module creates no local token directory or files;
 old token files are ignored.
 
-Voxta displays module load errors on the Custom Modules page. The project uses the `1.13.0-alpha.10` Modules SDK and
+Voxta displays module load errors on the Custom Modules page. The project uses the `1.13.0-beta.1` Modules SDK and
 keeps its package lock file in source control so local and release builds resolve the same dependencies.
 
 ## Spotify tools
