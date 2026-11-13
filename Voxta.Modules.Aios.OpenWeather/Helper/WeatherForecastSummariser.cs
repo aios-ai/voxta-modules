@@ -76,7 +76,7 @@ public static class WeatherForecastSummariser
         if (weatherDetails.Contains("TempMinMax")) text += $"Sample temperature bounds (not full-day low/high): {FormatWholeNumber(minTemp)}-{FormatWholeNumber(maxTemp)}{unitSuffix}. ";
         if (weatherDetails.Contains("Temp")) text += $"Temperature: {FormatWholeNumber(block.Average(x => x.Main.Temp))}{unitSuffix}. ";
         if (weatherDetails.Contains("FeelsLike")) text += $"Feels like: {FormatWholeNumber(block.Average(x => x.Main.FeelsLike))}{unitSuffix}. ";
-        if (weatherDetails.Contains("Precipitation")) text += $"Rain: {totalRain:0.#} mm; snow: {totalSnow:0.#} mm. ";
+        if (weatherDetails.Contains("Precipitation")) text += $"Rain: {WeatherReportFormatter.PrecipitationAmount(totalRain)} mm; snow: {WeatherReportFormatter.PrecipitationAmount(totalSnow)} mm. ";
         var extras = new StringBuilder();
         double? Average(Func<ForecastItem, double?> get) => block.Any(x => get(x).HasValue) ? block.Average(get) : null;
         WeatherReportFormatter.AppendWeatherExtras(extras, new MainInfo
@@ -87,7 +87,7 @@ public static class WeatherForecastSummariser
         }, weatherDetails);
         text += extras;
         if (weatherDetails.Contains("WindGust")) text += $"Peak wind gust: {(block.Max(x => x.Wind.Gust) is { } gust ? gust.ToString("0.#", CultureInfo.InvariantCulture) + " " + windUnit : "unavailable")}. ";
-        if (weatherDetails.Contains("PrecipitationProbability")) text += $"Highest three-hour precipitation probability: {(block.Max(x => x.Pop) is { } pop ? (pop * 100).ToString("0.#", CultureInfo.InvariantCulture) + "%" : "unavailable")}. ";
+        if (weatherDetails.Contains("PrecipitationProbability")) text += $"Highest three-hour precipitation probability: {(block.Max(x => x.Pop) is { } pop ? WeatherReportFormatter.PrecipitationAmount(pop * 100) + "%" : "unavailable")}. ";
         if (weatherDetails.Contains("ObservationTime")) text += "Forecast valid times are summarized by destination day/night; these are not observations. ";
 
         if (weatherDetails.Contains("Wind"))

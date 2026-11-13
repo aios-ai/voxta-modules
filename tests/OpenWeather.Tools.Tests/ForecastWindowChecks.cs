@@ -43,10 +43,13 @@ internal static class ForecastWindowChecks
         }
         var text = await Call("get_weather", new { when = "2026-10-29T10:00/2026-10-29T13:00", details = "Humidity,WindGust,PrecipitationProbability,Precipitation" });
         var rows = text.Split('\n').Where(line => line.StartsWith("2026-", StringComparison.Ordinal)).ToArray();
-        Check(rows.Length == 3 && rows[0].Contains("07:00 +01:00 [surrounding context]") && rows[1].Contains("10:00 +01:00:")
+        Check(rows.Length == 3 && rows[0].Contains("07:00 +01:00 [surrounding context]") && rows[1].Contains("10:00 +01:00 |")
             && rows[2].Contains("13:00 +01:00 [surrounding context]"), "Individual three-hour entries, exclusive end and one context entry each side");
-        Check(rows[1].Contains("Humidity: 13%") && rows[1].Contains("mph") && rows[1].Contains("30%") && rows[1].Contains("mm/3h")
-            && !text.Contains("Temperature:") && !text.Contains(" Day:"), "Explicit fields, units, accumulation semantics and no averaging");
+        Check(text.Contains("Local valid time | Wind gust (mph) | Rain (mm/3h) | Snow (mm/3h) | Precipitation probability (%) | Humidity (%)")
+            && rows[1].TrimEnd().EndsWith(" | 6 | 0.04 | <0.01 | 30 | 13")
+            && rows[0].TrimEnd().EndsWith(" | 5 | 2 | 0 | unavailable | 12")
+            && text.Contains("three-hour accumulations ending at each valid time") && !text.Contains("Temperature")
+            && !text.Contains(" Day:"), "Explicit fields, units, trace precipitation, unavailable values and no averaging: " + text);
         text = await Call("get_weather", new { when = "2026-10-29T11:00/2026-10-29T12:00", details = "Humidity" });
         Check(text.Contains("no forecast timestamp inside") && text.Split('\n').Count(line => line.StartsWith("2026-")) == 2, "Narrow gap returns surrounding data, never invented exact-hour values");
         var explicitUtc = await Call("get_weather", new { when = "2026-10-29T10:00Z/2026-10-29T11:00Z", details = "Humidity" });
@@ -56,7 +59,8 @@ internal static class ForecastWindowChecks
         Check(rows.Length == 4 && rows[0].Contains("09:00 +01:00 [surrounding context]") && rows[^1].Contains("12:00 +01:00 [surrounding context]")
             && text.Contains("Resolution: 1-hour steps") && text.Contains("NH₃:") && !text.Contains("AQI"), "Pollution hourly detail override");
         text = await Call("get_weather", new { when = "2026-10-28T00:00/2026-10-29T04:00", details = "Humidity" });
-        Check(text.Contains("bounds extend beyond") && text.Contains("only the listed times"), "Partial coverage is explicit");
+        Check(text.Contains("Unavailable: 2026-10-28 00:00 +01:00 until the first sample at 2026-10-29 01:00 +01:00."),
+            "Partial coverage identifies the unavailable start");
         text = await Call("get_weather", new { when = "2026-10-29T00:00/2026-10-30T00:00", details = "Temp" });
         Check(text.Contains("Requested window: 2026-10-29 00:00 +01:00 to 2026-10-30 00:00 +01:00"), "Date-only endpoints are destination midnight");
         foreach (var op in new[] { "get_weather", "get_air_pollution" })
@@ -96,7 +100,17 @@ internal static class ForecastWindowChecks
             var nextWeekend = await catalog.CallToolAsync(op, JsonSerializer.SerializeToElement(new { when = "next weekend" }), default);
             Check(nextWeekend.IsError && nextWeekend.Text.Contains("2026-11-07") && nextWeekend.Text.Contains("2026-11-08"), "Next weekend is not moved into available dates");
             text = await Call(op, new { when = "this week" });
-            Check(text.Contains("Partial forecast coverage") && text.Contains("No forecast coverage for this period") && text.Contains("2026-11-01"), "Partly available week identifies missing requested dates");
+            Check(text.Contains("Partial forecast coverage"), "Partly available week flags missing coverage");
+            if (op == "get_weather")
+            {
+                rows = text.Split('\n').Where(line => line.StartsWith("2026-")).ToArray();
+                Check(rows.Length == 40 && rows.Distinct().Count() == 40 && !text.Contains("Periods are separate")
+                    && text.Contains("Unavailable: after the last sample at 2026-10-30 22:00 +01:00 until 2026-11-02 00:00 +01:00."),
+                    "Continuous week keeps each sample once and identifies the missing tail");
+            }
+            else
+                Check(text.Contains("No forecast coverage for this period") && text.Contains("2026-11-01"),
+                    "Air pollution keeps explicit unavailable dates");
             text = await Call(op, new { when = "next 3 afternoons" });
             Check(text.Split('\n').Count(line => line.StartsWith("Requested window:")) == 3
                 && text.Contains("Periods are separate"), "Multi-day periods stay separate in real tool output");
@@ -114,8 +128,8 @@ internal static class ForecastWindowChecks
         transport.First = DateTimeOffset.Parse("2026-10-30T00:00Z", CultureInfo.InvariantCulture);
         transport.WeatherCount = 16;
         text = await Call("get_weather", new { when = "this weekend" });
-        Check(text.Contains("Partial forecast coverage") && text.Contains("2026-11-01 00:00")
-            && text.Contains("No forecast coverage for this period"), "Partial weekend preserves the missing Sunday");
+        Check(text.Contains("Partial forecast coverage") && text.Contains("Unavailable: after the last sample at 2026-10-31 22:00 +01:00 until 2026-11-02 00:00 +01:00."),
+            "Partial weekend identifies the missing Sunday in the unavailable tail");
         transport.First = DateTimeOffset.Parse("2026-10-26T12:00Z", CultureInfo.InvariantCulture);
         transport.WeatherCount = 40;
         text = await Call("get_weather", new { when = "forecast" });
@@ -194,7 +208,8 @@ internal static class ForecastWindowChecks
                 {
                     Dt = first.AddHours(i * 3).ToUnixTimeSeconds(), Main = new() { Temp = 50 + i, FeelsLike = 49 + i, TempMin = 48 + i, TempMax = 52 + i, Humidity = 10 + i },
                     Weather = [new() { Description = "clear", Icon = "01d" }], Wind = new() { Speed = 2 + i, Gust = 3 + i },
-                    Clouds = new() { All = 10 }, Sys = new(), Pop = (i % 10) / 10.0, Rain = new() { ThreeHours = i },
+                    Clouds = new() { All = 10 }, Sys = new(), Pop = i == 2 ? null : (i % 10) / 10.0,
+                    Rain = new() { ThreeHours = i == 3 ? 0.04 : i }, Snow = i == 3 ? new() { ThreeHours = 0.004 } : null,
                 }).ToList(),
             };
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)

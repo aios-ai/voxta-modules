@@ -7,6 +7,7 @@ namespace Voxta.Modules.Aios.OpenWeather.Tools;
 
 internal static class OpenWeatherToolCatalog
 {
+    private const string WeatherForecastGuidance = "For a future-weather question, fetch the requested period before answering. Base forecast claims on returned samples and state any unavailable portion of the requested period. Select Condition and CloudCover for sky conditions, or PrecipitationProbability and Precipitation for rain or snow, along with any other fields needed for the question.";
     private sealed record Definition(string Name, string Description, FunctionArgumentDefinition[] Arguments);
     private static FunctionArgumentDefinition Location() => new()
     {
@@ -56,6 +57,7 @@ internal static class OpenWeatherToolCatalog
     public static ModuleToolCatalog Create(OpenWeatherToolHandler handler, OpenWeatherToolsSettings settings, ILogger logger) => new(
         Definitions.Select((d, i) => new ModuleTool(new ChatTool(Choices[i].Name,
             (settings.Descriptions?.GetValueOrDefault(Choices[i].Name) ?? d.Description)
+                + (d.Name == "get_weather" ? " " + WeatherForecastGuidance : "")
                 + " Use only as needed to fulfill a user request or an established user instruction, not merely because the chat has started or a location is configured.",
             ChatToolSchema.FromArguments(d.Arguments), VoxtaModule.ServiceName)
         {

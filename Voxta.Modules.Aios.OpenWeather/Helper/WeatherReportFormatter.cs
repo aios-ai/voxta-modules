@@ -8,6 +8,8 @@ internal static class WeatherReportFormatter
 {
     public static string WindUnit(string? units) => units == "imperial" ? "mph" : "m/s";
     private static string FormatWholeNumber(double value) => Math.Round(value).ToString("0", CultureInfo.InvariantCulture);
+    internal static string PrecipitationAmount(double value) =>
+        value is > 0 and < 0.01 ? "<0.01" : value.ToString("0.##", CultureInfo.InvariantCulture);
 
     public static string Weather(OpenWeatherResponse data, string location, string? units, HashSet<string> details)
     {

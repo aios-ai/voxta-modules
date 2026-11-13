@@ -76,7 +76,8 @@ internal sealed record ForecastWindow(DateTimeOffset Start, DateTimeOffset End, 
         return inside;
     }
 
-    public string Describe<T>(IReadOnlyList<T> all, IReadOnlyList<T> selected, Func<T, long> timestamp, int stepHours, bool includeAvailability = true)
+    public string Describe<T>(IReadOnlyList<T> all, IReadOnlyList<T> selected, Func<T, long> timestamp, int stepHours,
+        bool includeAvailability = true, bool includeCoverageWarning = true)
     {
         var first = DateTimeOffset.FromUnixTimeSeconds(all.Min(timestamp));
         var last = DateTimeOffset.FromUnixTimeSeconds(all.Max(timestamp));
@@ -84,7 +85,7 @@ internal sealed record ForecastWindow(DateTimeOffset Start, DateTimeOffset End, 
         if (includeAvailability)
             text += $"Available forecast timestamps: {Format(first)} through {Format(last)}. Resolution: {stepHours}-hour steps. " +
                 "Individual provider entries follow; surrounding context is outside the requested window. Values are not interpolated or day/night averages. ";
-        if (Start < first || End > last)
+        if (includeCoverageWarning && (Start < first || End > last))
             text += "Partial forecast coverage: requested bounds extend beyond the returned timestamps; only the listed times are available. Do not claim coverage of the whole requested period. ";
         if (!selected.Any(x => Contains(timestamp(x))))
             text += "There is no forecast timestamp inside this narrow window; only the surrounding entries are available. ";
