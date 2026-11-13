@@ -44,7 +44,7 @@ public sealed class ModuleConfigurationProvider(
     public static readonly FormBooleanField TranslateSpeechOnly = new()
     {
         Name = TranslateSpeechOnlyName,
-        Label = "Translate speech only (experimental)",
+        Label = "Translate speech only",
         DefaultValue = false,
         Help = "Keep character replies in their original language in chat and history. Translate only spoken text into Reply language. Your language is unaffected. Use a voice that supports the reply language. Start a new chat after changing this option. The first spoken reply may wait for model downloads.",
     };

@@ -23,7 +23,7 @@ public sealed class TranslatorAugmentation(
     public ServiceTypes[] GetRequiredServiceTypes() => [];
 
     private string CharacterLanguage => NormalizeLanguage(
-        session.MainCharacter?.Culture?.TwoLetterISOLanguageName ?? "en");
+        BergamotLanguageCode.FromCulture(session.MainCharacter?.Culture));
 
     public async ValueTask<string> ProcessInboundTextAsync(
         InboundTextSource source,

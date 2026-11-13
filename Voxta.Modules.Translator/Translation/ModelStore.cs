@@ -31,12 +31,13 @@ public sealed class ModelStore(string dataFolder, HttpClient http, ILogger<Model
         var releaseDirections = registry.Models
             .Where(entry => SelectRelease(entry.Value) is not null)
             .Select(entry => entry.Key)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            .ToHashSet(StringComparer.Ordinal);
 
         var languages = releaseDirections
             .SelectMany(ParseDirection)
             .Append("en")
-            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Distinct(StringComparer.Ordinal)
+            .Where(BergamotLanguageCode.IsValid)
             .Where(language =>
                 string.Equals(language, "en", StringComparison.OrdinalIgnoreCase) ||
                 releaseDirections.Contains(language + "-en") && releaseDirections.Contains("en-" + language))
@@ -463,7 +464,7 @@ public sealed class ModelStore(string dataFolder, HttpClient http, ILogger<Model
     {
         try
         {
-            return CultureInfo.GetCultureInfo(code).EnglishName + " (" + code + ")";
+            return CultureInfo.GetCultureInfo(code.Replace('_', '-')).EnglishName + " (" + code + ")";
         }
         catch (CultureNotFoundException)
         {

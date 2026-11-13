@@ -23,10 +23,12 @@ try
     var handler = new RegistryHandler();
     var store = new ModelStore(tempRoot, new HttpClient(handler), NullLogger<ModelStore>.Instance);
     var languages = await store.GetSupportedLanguagesAsync(default);
-    Check(languages.Select(language => language.Code).SequenceEqual(["en", "fr", "de"]),
+    Check(languages.Select(language => language.Code).SequenceEqual(["zh_hant", "en", "fr", "de"]),
         "Only bidirectional released languages are listed with readable sorting");
     Check(languages.Single(language => language.Code == "de").Label == "German (de)",
         "Language labels are readable");
+    Check(languages[0].Label.Contains("Traditional", StringComparison.Ordinal),
+        "Traditional Chinese has a readable script label");
 
     var route = await store.EnsureRouteAsync("de", "fr", default);
     Check(route.Count == 2, "A missing direct route pivots through English");
@@ -82,17 +84,30 @@ try
     foreach (var fieldName in new[] { ModuleConfigurationProvider.UserLanguageName, ModuleConfigurationProvider.ChatLanguageName })
     {
         var languageField = fields.OfType<FormChoicesField>().Single(field => field.Name == fieldName);
-        Check(languageField.Choices!.Select(choice => choice.Value).SequenceEqual(["en", "fr", "de"]),
+        Check(languageField.Choices!.Select(choice => choice.Value).SequenceEqual(languages.Select(language => language.Code)),
             fieldName + " only offers supported languages");
     }
+    var beforeInvalidCode = handler.AssetRequests;
+    Check(await engine.TranslateAsync("Original", "../en", "fr", default) == "Original" &&
+        handler.AssetRequests == beforeInvalidCode, "Malformed language codes leave the message intact");
+    Check(await engine.TranslateAsync("原文", "zh-Hant", "zh_hant", default) == "原文" &&
+        handler.AssetRequests == beforeInvalidCode, "Traditional Chinese aliases resolve to the same language");
     engine.Dispose();
+
+    var traditionalRoute = await store.EnsureRouteAsync("zh_hant", "fr", default);
+    Check(traditionalRoute.Count == 2 && traditionalRoute[0].Contains("zh_hant-en"),
+        "Traditional Chinese can pivot through English");
+    var traditionalReply = await store.EnsureRouteAsync("en", "zh_hant", default);
+    Check(traditionalReply.Count == 1 && traditionalReply[0].Contains("en-zh_hant"),
+        "Traditional Chinese is available as a reply language");
 
     var speechOnlyField = fields.OfType<FormBooleanField>()
         .Single(field => field.Name == ModuleConfigurationProvider.TranslateSpeechOnlyName);
     var oldSettings = new StaticSettingsSource(new());
     Check(!oldSettings.GetRequired(speechOnlyField), "Existing configurations default to normal reply translation");
     var enabledSettings = new StaticSettingsSource(new() { [speechOnlyField.Name] = "true" });
-    Check(enabledSettings.GetRequired(speechOnlyField), "Experimental option can be enabled");
+    Check(enabledSettings.GetRequired(speechOnlyField) && speechOnlyField.Label == "Translate speech only",
+        "The speech-only option can be enabled and has a stable label");
 
     var session = DispatchProxy.Create<IChatSessionChatAugmentationApi, TranslatorSessionProxy>();
     var fakeEngine = new RecordingTranslationEngine();
@@ -173,6 +188,11 @@ sealed class RegistryHandler : HttpMessageHandler
         AddRelease(models, "en-de");
         AddRelease(models, "fr-en");
         AddRelease(models, "en-fr");
+        AddRelease(models, "zh_hant-en");
+        AddRelease(models, "en-zh_hant");
+        AddRelease(models, "en-zh");
+        AddRelease(models, "xx_!-en");
+        AddRelease(models, "en-xx_!");
         models["es-en"] = new[] { Candidate("es-en", "Nightly") };
         _registry = JsonSerializer.Serialize(new
         {

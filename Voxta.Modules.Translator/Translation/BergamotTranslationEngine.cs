@@ -29,8 +29,14 @@ public sealed class BergamotTranslationEngine(ModelStore modelStore, ILogger<Ber
         if (string.IsNullOrWhiteSpace(text))
             return text;
 
-        var from = NormalizeLanguage(fromLanguage);
-        var to = NormalizeLanguage(toLanguage);
+        var from = BergamotLanguageCode.Normalize(fromLanguage);
+        var to = BergamotLanguageCode.Normalize(toLanguage);
+        if (!BergamotLanguageCode.IsValid(from) || !BergamotLanguageCode.IsValid(to))
+        {
+            logger.LogWarning("Invalid translation language code for {FromLanguage}->{ToLanguage}; using the original text", from, to);
+            return text;
+        }
+
         if (string.Equals(from, to, StringComparison.Ordinal))
             return text;
 
@@ -82,14 +88,6 @@ public sealed class BergamotTranslationEngine(ModelStore modelStore, ILogger<Ber
             _ => throw new InvalidOperationException("A Bergamot route must contain one or two models."),
         };
         return new LoadedTranslationRoute(service);
-    }
-
-    private static string NormalizeLanguage(string language)
-    {
-        var normalized = language.Trim().ToLowerInvariant();
-        if (normalized.Length is < 2 or > 3 || normalized.Any(character => character is < 'a' or > 'z'))
-            throw new ArgumentException($"Invalid language code '{language}'.", nameof(language));
-        return normalized;
     }
 
     public void Dispose()
