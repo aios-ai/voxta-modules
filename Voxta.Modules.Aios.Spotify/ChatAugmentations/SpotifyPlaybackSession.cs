@@ -1,4 +1,5 @@
 using Voxta.Abstractions.Chats.Objects.Characters;
+using Voxta.Abstractions.Chats.Sessions;
 using Voxta.Abstractions.Model;
 using Voxta.Abstractions.Scripting.ActionScripts;
 using Voxta.Abstractions.Services.ChatAugmentations;
@@ -7,7 +8,7 @@ using Voxta.Modules.Aios.Spotify.Clients.Services;
 
 namespace Voxta.Modules.Aios.Spotify.ChatAugmentations;
 
-internal sealed class SpotifyPlaybackSession(SpotifyPlaybackMonitor monitor, SpotifySpeechDucking ducking)
+internal sealed class SpotifyPlaybackSession(SpotifyPlaybackMonitor monitor, SpotifySpeechDucking ducking, IChatSessionChatAugmentationApi session)
     : IChatScriptEventsAugmentation
 {
     private readonly CancellationTokenSource _cts = new();
@@ -28,7 +29,9 @@ internal sealed class SpotifyPlaybackSession(SpotifyPlaybackMonitor monitor, Spo
         {
             case TranscriptionStartedScriptEvent: await ducking.LowerVolumeAsync("transcription", cancellationToken); break;
             case TranscriptionFinishedScriptEvent: await ducking.RestoreVolumeAsync("transcription", cancellationToken); break;
-            case SpeechStartActionScriptEvent: await ducking.LowerVolumeAsync("speech", cancellationToken); break;
+            case SpeechStartActionScriptEvent when session.Chat.ChatSettings.SpeakerMuted != true:
+                await ducking.LowerVolumeAsync("speech", cancellationToken);
+                break;
             case SpeechCompleteActionScriptEvent: await ducking.RestoreVolumeAsync("speech", cancellationToken); break;
         }
     }

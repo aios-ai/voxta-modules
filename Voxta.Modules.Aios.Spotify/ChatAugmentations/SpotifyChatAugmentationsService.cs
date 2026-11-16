@@ -78,7 +78,7 @@ public class SpotifyChatAugmentationsService(
             ? ModuleConfigurationProvider.SpeechDuckingReductionPercent : ModuleConfigurationProvider.SpeechDuckingVolumePercent);
         var ducking = new SpotifySpeechDucking(spotifyManager, () => spotifyPlaybackMonitor.PlaybackState, duckingAmount,
             relativeDucking ? SpotifyDuckingMode.Relative : SpotifyDuckingMode.Fixed);
-        var playback = new SpotifyPlaybackSession(spotifyPlaybackMonitor, ducking);
+        var playback = new SpotifyPlaybackSession(spotifyPlaybackMonitor, ducking, session);
         var handler = new SpotifyToolHandler(spotifyManager, playlistMap, ducking);
         var instance = new SpotifyToolsSession(SpotifyToolCatalog.Create(handler, toolSettings, playlistMap, logger), playback);
         try { await playback.InitializeAsync(cancellationToken); }

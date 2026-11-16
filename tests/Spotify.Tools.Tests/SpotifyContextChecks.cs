@@ -21,7 +21,7 @@ internal static class SpotifyContextChecks
         string Context(string name) => session.Contexts.Single(c => c.Name == name).Text;
 
         f.Backend.State = null;
-        var playback = new SpotifyPlaybackSession(monitor, f.Ducking);
+        var playback = new SpotifyPlaybackSession(monitor, f.Ducking, api);
         await playback.InitializeAsync(default);
         await playback.DisposeAsync();
         var tools = new SpotifyToolsSession(f.Catalog, playback);

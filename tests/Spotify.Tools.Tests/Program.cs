@@ -318,7 +318,7 @@ Console.WriteLine("PASS invalid arguments rejected before provider access");
     Check(plan.Length == 1 && VoxtaModule.Augmentations.Length == 1, "Legacy augmentation still registered");
     Check((await f.Catalog.CallToolAsync("spotify_connect", null, default)).IsError, "Removed connect tool executed");
     var monitor = new SpotifyPlaybackMonitor(f.Manager, session, NullLogger<SpotifyPlaybackMonitor>.Instance);
-    var playback = new SpotifyPlaybackSession(monitor, f.Ducking);
+    var playback = new SpotifyPlaybackSession(monitor, f.Ducking, session);
     IToolsChatAugmentation instance = new SpotifyToolsSession(f.Catalog, playback);
     Check(instance.GetRequiredServiceTypes().Length == 0 && instance is not IActionInferenceAugmentation, "Tools depend on action inference");
     await instance.CallToolAsync("spotify_skip", JsonSerializer.SerializeToElement(new { direction = "next" }), default);
