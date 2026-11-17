@@ -14,7 +14,7 @@ public sealed class TranslatorAugmentation(
     string userLanguage,
     string replyLanguage,
     ILogger logger,
-    bool translateSpeechOnly = false)
+    bool translateReplyHistory = false)
     : IChatInboundTextAugmentation, IChatPostProcessAugmentation, IChatSpeechReplacementsAugmentation
 {
     private readonly string _userLanguage = NormalizeLanguage(userLanguage);
@@ -46,7 +46,7 @@ public sealed class TranslatorAugmentation(
         string text,
         CancellationToken cancellationToken)
     {
-        if (translateSpeechOnly || role != ChatMessageRole.Assistant ||
+        if (!translateReplyHistory || role != ChatMessageRole.Assistant ||
             string.IsNullOrWhiteSpace(text) ||
             string.Equals(CharacterLanguage, _replyLanguage, StringComparison.Ordinal))
         {
@@ -59,7 +59,7 @@ public sealed class TranslatorAugmentation(
     public string SpeechProcessText(string text)
     {
         var characterLanguage = CharacterLanguage;
-        if (!translateSpeechOnly || string.IsNullOrWhiteSpace(text) ||
+        if (translateReplyHistory || string.IsNullOrWhiteSpace(text) ||
             string.Equals(characterLanguage, _replyLanguage, StringComparison.Ordinal))
         {
             return text;

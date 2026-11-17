@@ -14,7 +14,8 @@ public sealed class ModuleConfigurationProvider(
     public const string EngineName = "Engine";
     public const string UserLanguageName = "UserLanguage";
     public const string ChatLanguageName = "ChatLanguage";
-    public const string TranslateSpeechOnlyName = "TranslateSpeechOnly";
+    public const string TranslateReplyHistoryName = "TranslateReplyHistory";
+    private const string LegacyTranslateSpeechOnlyName = "TranslateSpeechOnly";
 
     public static string[] FieldsRequiringReload => [];
 
@@ -31,22 +32,23 @@ public sealed class ModuleConfigurationProvider(
         ],
     };
 
-    public static readonly FormChoicesField UserLanguage = LanguageField(
-        UserLanguageName,
-        "Your language",
-        "Messages you send are translated from this language into the character's configured language.");
+    public static FormChoicesField UserLanguage => LanguageField(
+        UserLanguageName, "Your language",
+        "Messages you send are translated from this language into the character's configured language when needed.");
 
-    public static readonly FormChoicesField ChatLanguage = LanguageField(
-        ChatLanguageName,
-        "Reply language",
-        "Character replies are translated from the character's configured language into this language.");
+    public static FormChoicesField ChatLanguage => LanguageField(
+        ChatLanguageName, "Reply language",
+        "Spoken replies use this language. Written replies keep the character's original wording by default. Use a voice that supports the reply language.");
 
-    public static readonly FormBooleanField TranslateSpeechOnly = new()
+    public static bool ShouldTranslateReplyHistory(ISettingsSource settings) =>
+        settings.GetRequired(ReplyHistoryField(settings));
+
+    private static FormBooleanField ReplyHistoryField(ISettingsSource settings) => new()
     {
-        Name = TranslateSpeechOnlyName,
-        Label = "Translate speech only",
-        DefaultValue = false,
-        Help = "Keep character replies in their original language in chat and history. Translate only spoken text into Reply language. Your language is unaffected. Use a voice that supports the reply language. Start a new chat after changing this option. The first spoken reply may wait for model downloads.",
+        Name = TranslateReplyHistoryName,
+        Label = "Also translate replies in chat and history",
+        DefaultValue = bool.TryParse(settings.GetRawValue(LegacyTranslateSpeechOnlyName), out var speechOnly) && !speechOnly,
+        Help = "Useful if you read replies with speech off. Voxta saves the translated reply and can use it as context in later turns. Start a new chat after changing this option.",
     };
 
     public async Task<FormField[]> GetModuleConfigurationFieldsAsync(
@@ -73,15 +75,9 @@ public sealed class ModuleConfigurationProvider(
             choices = [new FormChoice { Value = "en", Label = "English (en)" }];
         }
 
-        var userLanguage = LanguageField(
-            UserLanguageName,
-            "Your language",
-            "Messages you send are translated from this language into the character's configured language.");
+        var userLanguage = UserLanguage;
         userLanguage.Choices = choices;
-        var replyLanguage = LanguageField(
-            ChatLanguageName,
-            "Reply language",
-            "Character replies are translated from the character's configured language into this language.");
+        var replyLanguage = ChatLanguage;
         replyLanguage.Choices = choices;
 
         return FormBuilder.Build(
@@ -89,7 +85,7 @@ public sealed class ModuleConfigurationProvider(
             Engine,
             userLanguage,
             replyLanguage,
-            TranslateSpeechOnly);
+            ReplyHistoryField(settings));
     }
 
     private static FormChoicesField LanguageField(string name, string label, string help) => new()

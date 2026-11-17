@@ -19,7 +19,7 @@ public sealed class TranslatorAugmentationsService(
         var engine = registry.GetRequired(ModuleConfiguration.GetRequired(ModuleConfigurationProvider.Engine));
         var userLanguage = ModuleConfiguration.GetRequired(ModuleConfigurationProvider.UserLanguage);
         var replyLanguage = ModuleConfiguration.GetRequired(ModuleConfigurationProvider.ChatLanguage);
-        var translateSpeechOnly = ModuleConfiguration.GetRequired(ModuleConfigurationProvider.TranslateSpeechOnly);
+        var translateReplyHistory = ModuleConfigurationProvider.ShouldTranslateReplyHistory(ModuleConfiguration);
 
         return Task.FromResult<AugmentationPlanItem[]>(
         [
@@ -31,7 +31,7 @@ public sealed class TranslatorAugmentationsService(
                     userLanguage,
                     replyLanguage,
                     logger,
-                    translateSpeechOnly)),
+                    translateReplyHistory)),
         ]);
     }
 }

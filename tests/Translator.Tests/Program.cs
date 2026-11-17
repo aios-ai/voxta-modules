@@ -77,7 +77,8 @@ try
     var engine = new BergamotTranslationEngine(store, NullLogger<BergamotTranslationEngine>.Instance);
     var registry = new TranslatorEngineRegistry([engine]);
     var provider = new ModuleConfigurationProvider(registry, NullLogger<ModuleConfigurationProvider>.Instance);
-    var fields = await provider.GetModuleConfigurationFieldsAsync(null!, null!, default);
+    var newSettings = new StaticSettingsSource(new());
+    var fields = await provider.GetModuleConfigurationFieldsAsync(null!, newSettings, default);
     var engineField = fields.OfType<FormChoicesField>().Single(field => field.Name == ModuleConfigurationProvider.EngineName);
     Check(engineField.Choices!.Select(choice => choice.Value).SequenceEqual([BergamotTranslationEngine.EngineId]),
         "Translation engine is a constrained choice");
@@ -101,40 +102,49 @@ try
     Check(traditionalReply.Count == 1 && traditionalReply[0].Contains("en-zh_hant"),
         "Traditional Chinese is available as a reply language");
 
-    var speechOnlyField = fields.OfType<FormBooleanField>()
-        .Single(field => field.Name == ModuleConfigurationProvider.TranslateSpeechOnlyName);
-    var oldSettings = new StaticSettingsSource(new());
-    Check(!oldSettings.GetRequired(speechOnlyField), "Existing configurations default to normal reply translation");
-    var enabledSettings = new StaticSettingsSource(new() { [speechOnlyField.Name] = "true" });
-    Check(enabledSettings.GetRequired(speechOnlyField) && speechOnlyField.Label == "Translate speech only",
-        "The speech-only option can be enabled and has a stable label");
+    var historyField = fields.OfType<FormBooleanField>()
+        .Single(field => field.Name == ModuleConfigurationProvider.TranslateReplyHistoryName);
+    Check(!ModuleConfigurationProvider.ShouldTranslateReplyHistory(newSettings) &&
+        historyField.Label == "Also translate replies in chat and history", "New setups default to speech-only");
+    var legacySettings = new StaticSettingsSource(new() { ["TranslateSpeechOnly"] = "false" });
+    var legacySpeechOnly = new StaticSettingsSource(new() { ["TranslateSpeechOnly"] = "true" });
+    var overriddenSettings = new StaticSettingsSource(new()
+        { ["TranslateSpeechOnly"] = "false", [historyField.Name] = "false" });
+    var enabledSettings = new StaticSettingsSource(new() { [historyField.Name] = "true" });
+    var legacyFields = await provider.GetModuleConfigurationFieldsAsync(null!, legacySettings, default);
+    Check(legacyFields.OfType<FormBooleanField>().Single().DefaultValue == true &&
+        ModuleConfigurationProvider.ShouldTranslateReplyHistory(legacySettings) &&
+        !ModuleConfigurationProvider.ShouldTranslateReplyHistory(legacySpeechOnly) &&
+        !ModuleConfigurationProvider.ShouldTranslateReplyHistory(overriddenSettings) &&
+        ModuleConfigurationProvider.ShouldTranslateReplyHistory(enabledSettings),
+        "Saved preferences carry forward and the new setting takes precedence");
 
     var session = DispatchProxy.Create<IChatSessionChatAugmentationApi, TranslatorSessionProxy>();
     var fakeEngine = new RecordingTranslationEngine();
-    var normal = new TranslatorAugmentation(session, fakeEngine, "de", "fr", NullLogger.Instance);
+    var normal = new TranslatorAugmentation(session, fakeEngine, "de", "fr", NullLogger.Instance, true);
     Check(await normal.PostProcessTextAsync(ChatMessageRole.Assistant, "Hello", default) == "fr:Hello",
-        "Default mode still translates the assistant response");
+        "Opting in translates the assistant response");
     var beforeSpeech = fakeEngine.Calls;
     Check(normal.SpeechProcessText("fr:Hello") == "fr:Hello" && fakeEngine.Calls == beforeSpeech,
-        "Default mode does not translate speech a second time");
+        "Speech reuses the translated reply when history translation is enabled");
 
-    var experimental = new TranslatorAugmentation(session, fakeEngine, "de", "fr", NullLogger.Instance, true);
-    Check(await experimental.PostProcessTextAsync(ChatMessageRole.Assistant, "Hello", default) == "Hello",
-        "Experimental mode preserves the original response for chat/history");
+    var speechOnly = new TranslatorAugmentation(session, fakeEngine, "de", "fr", NullLogger.Instance);
+    Check(await speechOnly.PostProcessTextAsync(ChatMessageRole.Assistant, "Hello", default) == "Hello",
+        "Default mode preserves the original response for chat/history");
     Check(fakeEngine.Calls == beforeSpeech, "Preserving chat text does not invoke translation");
-    Check(experimental.SpeechProcessText("Hello") == "fr:Hello", "Speech is translated into the existing reply language");
+    Check(speechOnly.SpeechProcessText("Hello") == "fr:Hello", "Speech is translated into the existing reply language");
     Check(fakeEngine.LastRoute == "en-fr", "Speech translation uses the character language");
-    Check(await experimental.ProcessInboundTextAsync(new(InboundTextKind.Message, "User"), "Hallo", default) == "en:Hallo",
-        "Experimental mode retains the existing inbound translation");
+    Check(await speechOnly.ProcessInboundTextAsync(new(InboundTextKind.Message, "User"), "Hallo", default) == "en:Hallo",
+        "Speech-only mode retains the existing inbound translation");
     Check(fakeEngine.LastRoute == "de-en", "Inbound translation uses the existing user language");
-    var sameLanguage = new TranslatorAugmentation(session, fakeEngine, "de", "en", NullLogger.Instance, true);
+    var sameLanguage = new TranslatorAugmentation(session, fakeEngine, "de", "en", NullLogger.Instance);
     var beforeNoOp = fakeEngine.Calls;
-    Check(sameLanguage.SpeechProcessText("Hello") == "Hello" && experimental.SpeechProcessText(" ") == " ",
+    Check(sameLanguage.SpeechProcessText("Hello") == "Hello" && speechOnly.SpeechProcessText(" ") == " ",
         "Matching languages and empty speech are unchanged");
     Check(await normal.PostProcessTextAsync(ChatMessageRole.User, "Hallo", default) == "Hallo" && fakeEngine.Calls == beforeNoOp,
         "No-op paths do not translate");
     fakeEngine.EmptyResult = true;
-    Check(experimental.SpeechProcessText("Hello") == "Hello", "Empty translation falls back to original speech");
+    Check(speechOnly.SpeechProcessText("Hello") == "Hello", "Empty translation falls back to original speech");
 
     Console.WriteLine("PASS Translator language catalog, pivot models, cache reuse, configuration, and speech-only routing");
 }
