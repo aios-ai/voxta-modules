@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shortcut Groups · Voxta</title>
+  <link rel="stylesheet" href="/api/extensions/keyboard-shortcuts/groups.css">
+  <script src="/api/extensions/keyboard-shortcuts/groups.js" defer></script>
+</head>
+<body>
+  <main>
+    <header class="page-header">
+      <div>
+        <h1>Shortcut Groups</h1>
+        <p>Browse your saved shortcuts and share one group at a time.</p>
+      </div>
+      <button id="import-group" class="primary" type="button">Import group</button>
+      <input id="pack-file" type="file" accept=".json,application/json" hidden>
+    </header>
+    <p id="status" role="status" aria-live="polite">Loading shortcut groups…</p>
+    <div class="workspace">
+      <aside aria-label="Shortcut groups">
+        <h2>Groups</h2>
+        <nav id="group-list" aria-label="Select a shortcut group"></nav>
+      </aside>
+      <section class="group-panel" aria-labelledby="group-title">
+        <header class="group-header">
+          <div>
+            <h2 id="group-title">Shortcuts</h2>
+            <p id="group-summary"></p>
+          </div>
+          <button id="export-group" type="button" disabled>Export group</button>
+        </header>
+        <p id="empty" hidden>Save a shortcut in the module settings to see it here.</p>
+        <div id="table-wrap" class="table-wrap" hidden>
+          <table>
+            <thead><tr><th scope="col">Shortcut</th><th scope="col">Keys</th><th scope="col">Foreground app</th><th scope="col">Status</th></tr></thead>
+            <tbody id="shortcuts"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+    <dialog id="preview" aria-labelledby="preview-title">
+      <header><h2 id="preview-title">Review import</h2><p>Existing shortcuts are retained.</p></header>
+      <div id="preview-details"></div>
+      <p id="preview-error" role="alert" hidden></p>
+      <footer>
+        <button id="close-preview" type="button">Cancel</button>
+        <button id="apply-import" class="primary" type="button">Add shortcuts</button>
+      </footer>
+    </dialog>
+  </main>
+</body>
+</html>

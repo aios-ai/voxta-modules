@@ -1,0 +1,98 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net11.0": {
+      "Voxta.Sdk.Modules": {
+        "type": "Direct",
+        "requested": "[1.13.0-beta.1, )",
+        "resolved": "1.13.0-beta.1",
+        "contentHash": "H1I8JwTaTDy6N9O26mQ+O0uDe5ZzkT1aMisC+SICyq/zMsxoIZOOY+eaPZzVw06qF8yz5ogztBi3jwO78ZE0AQ==",
+        "dependencies": {
+          "Voxta.Abstractions": "1.13.0-beta.1",
+          "Voxta.Common": "1.13.0-beta.1",
+          "Voxta.Model": "1.13.0-beta.1"
+        }
+      },
+      "Microsoft.Extensions.Configuration": {
+        "type": "Transitive",
+        "resolved": "11.0.0",
+        "contentHash": "VQS/GkFU9oLQmXZv0AR/zluF0YAbEAoUQ5aYMqcRc2TWeKa6m2AjInAOnDhCcoWI5a6LQUCzTcl8B3DZZaPZLg=="
+      },
+      "Microsoft.Extensions.Configuration.Binder": {
+        "type": "Transitive",
+        "resolved": "11.0.0",
+        "contentHash": "3eoaKF4Stat1PSN+KFwqmy04sM9DwGuHM1o1lHwuNFM/TqwQ+PCIvaQHS4lcT3kJl5rwvDK4w/rIlR0wc024eQ==",
+        "dependencies": {
+          "Microsoft.Extensions.Configuration": "11.0.0"
+        }
+      },
+      "Microsoft.Extensions.DependencyInjection": {
+        "type": "Transitive",
+        "resolved": "11.0.0",
+        "contentHash": "KygQMITBDDPXw7+AAgdwQvVAaTXuDsc1iCAuvhO73ERxKX+d92cdbgZmpoYF7DIUq2hfs/yO2KD87uIreRy3MA=="
+      },
+      "Microsoft.Extensions.Diagnostics": {
+        "type": "Transitive",
+        "resolved": "11.0.0",
+        "contentHash": "tX8piU+KbYHXIf5F70leczIWwtTkPKhyjRqjbo6D2uTA1PwrhcMD+Ls7rzqSMkx1U3osyrD4/kCrZeF13Lkgnw==",
+        "dependencies": {
+          "Microsoft.Extensions.Configuration": "11.0.0",
+          "Microsoft.Extensions.Options.ConfigurationExtensions": "11.0.0"
+        }
+      },
+      "Microsoft.Extensions.Http": {
+        "type": "Transitive",
+        "resolved": "11.0.0",
+        "contentHash": "Pa5xJYtE5weFzv8sRwei1yvqCc05PareJABDtUSigzyj0xmrnG7ZU5VBy0hf5tgh7HN3/psGiOQouw5PLaQD8w==",
+        "dependencies": {
+          "Microsoft.Extensions.Diagnostics": "11.0.0",
+          "Microsoft.Extensions.Logging": "11.0.0"
+        }
+      },
+      "Microsoft.Extensions.Logging": {
+        "type": "Transitive",
+        "resolved": "11.0.0",
+        "contentHash": "zsse8MOgo0bj2KAEsSkg9WtNAfZbHbTlGeqfhy5PGozomM3zQM0XzumSQzQ0451IWNSJWLqYaSIQEpCi2j1sCA==",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection": "11.0.0"
+        }
+      },
+      "Microsoft.Extensions.Options.ConfigurationExtensions": {
+        "type": "Transitive",
+        "resolved": "11.0.0",
+        "contentHash": "s4JrxDPwxk8pE6LFVj+M5TrDHxOVIoCnQBy5lexs5uAYeggPYwAc/pSDNgVuZN14pCmZGCInygI/2ylCdLYShw==",
+        "dependencies": {
+          "Microsoft.Extensions.Configuration.Binder": "11.0.0"
+        }
+      },
+      "Profanity.Detector": {
+        "type": "Transitive",
+        "resolved": "0.1.8",
+        "contentHash": "4rfonJb74vncmdyobz71Wm0N5YeKtReOMIr0P8z/IRP9iJsVcoRfFFfgANopaFjmHI1lZyZL+ps8AKwF1rNjHg=="
+      },
+      "Voxta.Abstractions": {
+        "type": "Transitive",
+        "resolved": "1.13.0-beta.1",
+        "contentHash": "VRGCEW+N0j86R0Ni1c17IEZe73Zcaz6i+qHX1dAuFRRoYBtiAEDsbH/ETFbqRKSVkpoAwUJ2IoXbk6RrDFo52w==",
+        "dependencies": {
+          "Profanity.Detector": "0.1.8",
+          "Voxta.Common": "1.13.0-beta.1",
+          "Voxta.Model": "1.13.0-beta.1"
+        }
+      },
+      "Voxta.Common": {
+        "type": "Transitive",
+        "resolved": "1.13.0-beta.1",
+        "contentHash": "w29ZoVAurpkzTPgmqWgdR9sz2yGrIeOIlogTNO8JQtOHWBwkNPUSvoxGVfqhWJkhtHKQyplvruq/9ymLNlLIyQ==",
+        "dependencies": {
+          "Microsoft.Extensions.Http": "11.0.0"
+        }
+      },
+      "Voxta.Model": {
+        "type": "Transitive",
+        "resolved": "1.13.0-beta.1",
+        "contentHash": "ZcmRg6xMi/43EZH9KNGJhEKk8CCtK7V71y291/KpaBiA1jMDa2480NFazTF22QSl9z8yyTi6/RY1uKAqN644yg=="
+      }
+    }
+  }
+}

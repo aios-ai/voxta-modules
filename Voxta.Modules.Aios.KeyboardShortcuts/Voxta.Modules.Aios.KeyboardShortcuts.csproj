@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <Import Project="../Shared/Tools/Tools.projitems" />
+
+    <PropertyGroup>
+        <TargetFramework>net11.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Voxta.Sdk.Modules" Version="1.13.0-beta.1" ExcludeAssets="runtime" />
+        <EmbeddedResource Include="Assets/logo.png" />
+        <EmbeddedResource Include="PacksUi/*" />
+    </ItemGroup>
+</Project>
