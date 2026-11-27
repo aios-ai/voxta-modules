@@ -2,7 +2,7 @@ using System.Net;
 using Microsoft.Extensions.Logging;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
-using Voxta.Modules.Aios.OpenWeather.Clients;
+using Voxta.Modules.OpenWeather.Clients;
 
 internal static class WeatherMapChecks
 {

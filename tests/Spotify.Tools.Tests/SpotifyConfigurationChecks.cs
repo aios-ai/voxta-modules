@@ -3,8 +3,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Voxta.Abstractions.Registration;
 using Voxta.Model.Shared;
 using Voxta.Model.Shared.Forms;
-using Voxta.Modules.Aios.Spotify.Configuration;
-using Voxta.Modules.Aios.Spotify.Tools;
+using Voxta.Modules.Spotify.Configuration;
+using Voxta.Modules.Spotify.Tools;
 
 internal static class SpotifyConfigurationChecks
 {

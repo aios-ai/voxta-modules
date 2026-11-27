@@ -2,9 +2,9 @@ using System.Reflection;
 using Microsoft.Extensions.Logging.Abstractions;
 using SpotifyAPI.Web;
 using Voxta.Abstractions.Chats.Sessions;
-using Voxta.Modules.Aios.Spotify.ChatAugmentations;
-using Voxta.Modules.Aios.Spotify.Clients.Services;
-using Voxta.Modules.Aios.Spotify.Tools;
+using Voxta.Modules.Spotify.ChatAugmentations;
+using Voxta.Modules.Spotify.Clients.Services;
+using Voxta.Modules.Spotify.Tools;
 using Voxta.Model.Shared;
 
 internal static class SpotifyContextChecks

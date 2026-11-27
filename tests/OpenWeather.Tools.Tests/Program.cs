@@ -13,12 +13,12 @@ using Voxta.Abstractions.Services.VisionCapture;
 using Voxta.Abstractions.Services.ChatAugmentations;
 using Voxta.Model.Shared;
 using Voxta.Model.Shared.Forms;
-using Voxta.Modules.Aios.OpenWeather;
-using Voxta.Modules.Aios.OpenWeather.ChatAugmentations;
-using Voxta.Modules.Aios.OpenWeather.Clients;
-using Voxta.Modules.Aios.OpenWeather.Configuration;
-using Voxta.Modules.Aios.OpenWeather.Tools;
-using Voxta.Modules.Aios.Tools;
+using Voxta.Modules.OpenWeather;
+using Voxta.Modules.OpenWeather.ChatAugmentations;
+using Voxta.Modules.OpenWeather.Clients;
+using Voxta.Modules.OpenWeather.Configuration;
+using Voxta.Modules.OpenWeather.Tools;
+using Voxta.Modules.Tools;
 
 var defaults = OpenWeatherToolsSettings.From(new StaticSettingsSource(new()));
 Check(defaults.Selected.Count == 5 && defaults.ChatStyles.SequenceEqual(new[] { ChatStyles.Assistant, ChatStyles.Companion }), "Tool defaults");

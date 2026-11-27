@@ -1,7 +1,7 @@
 using Voxta.Model.Shared;
 using Voxta.Model.Shared.Forms;
 
-namespace Voxta.Modules.Aios.Tools;
+namespace Voxta.Modules.Tools;
 
 /// <summary>Configuration-only argument help; never read as agent settings.</summary>
 internal static class ModuleToolDocumentation

@@ -1,6 +1,6 @@
 using Voxta.Abstractions.Repositories;
 
-namespace Voxta.Modules.Aios.Tools;
+namespace Voxta.Modules.Tools;
 
 /// <summary>Forget one module account without decrypting potentially damaged credentials.</summary>
 internal static class ModuleAuthorizationReset

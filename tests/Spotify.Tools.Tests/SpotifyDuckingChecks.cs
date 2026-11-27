@@ -1,4 +1,4 @@
-using Voxta.Modules.Aios.Spotify.Clients.Services;
+using Voxta.Modules.Spotify.Clients.Services;
 
 internal static class SpotifyDuckingChecks
 {

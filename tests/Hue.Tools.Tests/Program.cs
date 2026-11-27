@@ -9,11 +9,11 @@ using HueApi.Models;
 using Microsoft.Extensions.Logging.Abstractions;
 using Voxta.Abstractions.Services.Agents;
 using Voxta.Abstractions.Services.ChatAugmentations;
-using Voxta.Modules.Aios.PhilipsHue;
-using Voxta.Modules.Aios.PhilipsHue.Clients;
-using Voxta.Modules.Aios.PhilipsHue.Tools;
-using Voxta.Modules.Aios.PhilipsHue.ChatAugmentations;
-using Voxta.Modules.Aios.Tools;
+using Voxta.Modules.PhilipsHue;
+using Voxta.Modules.PhilipsHue.Clients;
+using Voxta.Modules.PhilipsHue.Tools;
+using Voxta.Modules.PhilipsHue.ChatAugmentations;
+using Voxta.Modules.Tools;
 using Voxta.Abstractions.Utils;
 
 static void Check(bool ok, string message) { if (!ok) throw new Exception(message); }
@@ -124,7 +124,7 @@ foreach (var flag in new[] { "true", "\"true\"" })
 }
 var cards = (FormArrayOfObjectsField)HueToolsSettings.ConfigurationField(new StaticSettingsSource(new()));
 Check(cards.Name == HueToolsSettings.CardsFieldName && JsonSerializer.Deserialize<HueToolSettings[]>(cards.DefaultValue!)!.Length == 6, "Current tool editor");
-var configurationFields = await new Voxta.Modules.Aios.PhilipsHue.Configuration.ModuleConfigurationProvider(null!, null!, null!, null!, null!, null!).GetModuleConfigurationFieldsAsync(null!, new StaticSettingsSource(new()), default);
+var configurationFields = await new Voxta.Modules.PhilipsHue.Configuration.ModuleConfigurationProvider(null!, null!, null!, null!, null!, null!).GetModuleConfigurationFieldsAsync(null!, new StaticSettingsSource(new()), default);
 Check(configurationFields.All(f => f is not FormDocumentationField), "Separate argument reference retained");
 var session = DispatchProxy.Create<IChatSessionChatAugmentationApi, SessionProxy>();
 var proxy = (SessionProxy)(object)session;
@@ -166,7 +166,7 @@ var service = new PhilipsHueChatAugmentationsService(NullLoggerFactory.Instance,
 Check(service is IToolsChatAugmentationsService, "Tools marker");
 var plans = await service.PlanAsync(null!, default);
 Check(plans.Length == 1 && VoxtaModule.Augmentations.Length == 1 && plans.Single() is { Key: "hue_tools", IncludeInCatchAll: false, Activation: AugmentationActivation.OptIn }, "Legacy plan remains");
-var fields = await new Voxta.Modules.Aios.PhilipsHue.Configuration.ModuleConfigurationProvider(null!, null!, null!, null!, null!, null!).GetModuleConfigurationFieldsAsync(null!, new StaticSettingsSource(new()), default);
+var fields = await new Voxta.Modules.PhilipsHue.Configuration.ModuleConfigurationProvider(null!, null!, null!, null!, null!, null!).GetModuleConfigurationFieldsAsync(null!, new StaticSettingsSource(new()), default);
 Check(fields.OfType<Voxta.Model.Shared.Forms.FormInvokeActionField>().Single().Name == "ReauthenticateHue", "Missing native Hue authorization recovery button");
 Check(fields.All(f => f.Name is not ("Actions" or "SendInventoryAtSessionStart" or "AuthPath")), "Legacy configuration remains");
 await new HueUserInteractionWrapper(session).RequestUserInteraction(default);

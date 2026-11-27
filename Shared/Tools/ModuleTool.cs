@@ -1,7 +1,7 @@
 using System.Text.Json;
 using Voxta.Abstractions.Services.Agents;
 
-namespace Voxta.Modules.Aios.Tools;
+namespace Voxta.Modules.Tools;
 
 /// <summary>A native SDK definition paired with its session-scoped implementation.</summary>
 internal sealed record ModuleTool(

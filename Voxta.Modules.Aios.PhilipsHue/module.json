@@ -1,9 +1,0 @@
-{
-  "id": "Voxta.Modules.Aios.PhilipsHue",
-  "version": "0.1.7",
-  "voxta": ">=1.13.0-beta.1",
-  "label": "Philips Hue",
-  "author": "aios",
-  "category": "Devices",
-  "description": "Control Philips Hue lights, rooms, zones, scenes, color, and brightness from Voxta chats. Requires a Philips Hue Bridge on the local network."
-}

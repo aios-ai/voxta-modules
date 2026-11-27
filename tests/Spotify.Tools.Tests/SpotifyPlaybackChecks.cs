@@ -3,8 +3,8 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using SpotifyAPI.Web;
 using SpotifyAPI.Web.Http;
-using Voxta.Modules.Aios.Spotify.Clients.Models;
-using Voxta.Modules.Aios.Spotify.Clients.Services;
+using Voxta.Modules.Spotify.Clients.Models;
+using Voxta.Modules.Spotify.Clients.Services;
 
 internal static class SpotifyPlaybackChecks
 {

@@ -3,11 +3,11 @@ using System.Net;
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using Voxta.Abstractions.Registration;
-using Voxta.Modules.Aios.OpenWeather.ChatAugmentations;
-using Voxta.Modules.Aios.OpenWeather.Clients;
-using Voxta.Modules.Aios.OpenWeather.Helper;
-using Voxta.Modules.Aios.OpenWeather.Tools;
-using Voxta.Modules.Aios.Tools;
+using Voxta.Modules.OpenWeather.ChatAugmentations;
+using Voxta.Modules.OpenWeather.Clients;
+using Voxta.Modules.OpenWeather.Helper;
+using Voxta.Modules.OpenWeather.Tools;
+using Voxta.Modules.Tools;
 
 internal static class ForecastWindowChecks
 {

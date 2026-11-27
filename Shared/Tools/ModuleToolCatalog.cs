@@ -2,7 +2,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Voxta.Abstractions.Services.Agents;
 
-namespace Voxta.Modules.Aios.Tools;
+namespace Voxta.Modules.Tools;
 
 /// <summary>One catalog per session. No action dispatch, notes, reply triggers, or retries.</summary>
 internal sealed class ModuleToolCatalog

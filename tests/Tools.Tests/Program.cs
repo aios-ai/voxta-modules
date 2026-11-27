@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Voxta.Abstractions.Services.Agents;
 using Voxta.Abstractions.Services.ChatAugmentations;
 using Voxta.Model.Shared;
-using Voxta.Modules.Aios.Tools;
+using Voxta.Modules.Tools;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
@@ -120,7 +120,7 @@ await ModuleAuthorizationResetChecks.RunAsync();
 
 static ModuleToolCatalog Catalog(params ModuleTool[] tools) => new(tools, NullLogger.Instance);
 static ModuleTool Tool(string name, Func<JsonElement?, CancellationToken, ValueTask<ChatToolCallResult>> handler) =>
-    new(new ChatTool(name, "Test tool", JsonSerializer.SerializeToElement(new { type = "object" }), "Aios.Test")
+    new(new ChatTool(name, "Test tool", JsonSerializer.SerializeToElement(new { type = "object" }), "Test")
     {
         Enabled = true,
         Permission = ToolPermissionClass.Read,

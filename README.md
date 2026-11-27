@@ -1,90 +1,69 @@
 # Voxta modules by aios
 
 Installable Voxta modules maintained by aios. Add `aios-ai/voxta-modules` under
-**Add Modules → Module Registries** in Voxta Server to discover published modules.
+**Settings → AI Setup → Module Sources** (or **Add Modules → Module Registries**) in Voxta Server to discover published modules.
 
 Each module has its own project directory, `module.json`, version, dependencies, and release history. A push to
 `main` builds every module; a module-qualified version tag builds and releases only the named module.
 
+All modules in this repository are free and require Voxta `1.13.0-beta.1` or newer.
+
 ## Modules
 
-### Philips Hue
+### Keyboard Shortcuts (`Voxta.Modules.KeyboardShortcuts`)
 
-`Voxta.Modules.Aios.PhilipsHue` controls Philips Hue lights, smart plugs, rooms, zones, scenes, color, and brightness
-from Voxta chats. It can also expose a configured light to a character for mood and emotion-driven changes.
+Lets a character trigger Windows keyboard shortcuts you explicitly configure on the local desktop.
 
-The module itself is free. It requires Voxta `1.13.0-beta.1` or newer and a Philips Hue Bridge reachable on the local
-network. Initial setup asks you to press the bridge link button.
+- **How it works:** Define shortcuts in module settings as **Shortcut groups** (each enabled group appears as one chat tool) or **Standalone shortcuts** (each appears as its own chat tool). Open the **Shortcut Groups** link in module settings to browse saved shortcuts by group and export or import/merge group JSON files.
+- **What to pay attention to:**
+  - **Windows (`win-x64`) only**, admin-only install/settings, and opt-in per character (**Augmentations → Keyboard Shortcuts**).
+  - Only runs in local sessions (disabled in remote or unattended sessions, or when computer session access is disabled).
+  - You can optionally restrict any shortcut to a specific foreground `.exe` from Task Manager, or leave it blank for global shortcuts.
+  - Shortcuts are marked as destructive tools so Voxta asks for approval. Reopen an active chat after enabling the module or changing shortcut bindings.
 
-### OpenWeather
+### OpenWeather (`Voxta.Modules.OpenWeather`)
 
-`Voxta.Modules.Aios.OpenWeather` adds current weather, forecasts, air quality, and generated weather maps to Voxta
-chats. Select **OpenWeather** to use its seven native tools with a tool-capable model. The augmentation supports
-configurable locations, units and reported details, without an action-inference service. Legacy actions and their
-settings have been removed after user acceptance. Existing chats using only the old action augmentation must
-select OpenWeather; existing tool-enabled chats keep their selection.
+Adds current weather, forecasts, air quality (current, forecast, and history), local astronomical sunrise/sunset times, and generated weather maps to Voxta chats via 5 native tools (`get_weather`, `get_air_pollution`, `get_air_pollution_history`, `get_sun_times`, `get_weather_map`).
 
-All seven tools default enabled in Assistant and Companion chats. The **OpenWeather Tools** cards let you disable
-individual tools and edit their descriptions. City queries use **My Location** when no location is supplied;
-without either, the agent can ask which city to use. Maps support countries, continents and global views and
-attach images visibly to the chat and return them to the model with geographic bounds, layer units and a local
-color-legend reference for brief visual descriptions. This adds no extra API requests.
-Weather and pollution detail selections are defaults for general questions. Explicit requests can select unchecked
-fields through the tools' optional `details` argument (a comma-separated field list), without changing settings.
-Weather includes humidity, pressure, gusts, sunrise/sunset and data time; forecasts also expose precipitation
-probability. For sunrise/sunset on a specific date, `get_sun_times` accepts `today`, `tomorrow`, or `YYYY-MM-DD`
-(1901-2099). It calculates astronomical estimates from the resolved coordinates, with the destination time zone
-and daylight-saving rules. No additional API subscription is required. Times assume a sea-level unobstructed
-horizon; terrain and atmosphere may alter visible times. Polar dates can have no sunrise or sunset.
-Current weather sun times apply only to their displayed date; the forecast endpoint redirects date-specific sun
-questions to `get_sun_times` instead of repeating today's values.
-`get_air_pollution_history` accepts ISO 8601 `start`/`end` timestamps with a UTC offset or Z, from 27 November
-2020 onward, up to 31 days per call. The end is exclusive; history summarizes UTC periods.
-Weather and pollution forecasts accept optional `start` AND `end` to target a time frame. Use `today`,
-`tomorrow`, `YYYY-MM-DD`, or a date with `THH:mm[:ss]` and optional `Z`/UTC offset. Without an offset,
-times use the destination time zone and daylight-saving rules; date-only values mean local midnight. For
-example, `start: tomorrowT06:00`, `end: tomorrowT12:00` requests tomorrow morning (end exclusive).
-Targeted weather results show individual three-hour entries (approximately five days ahead); pollution shows
-hourly entries (approximately four days ahead). Each includes at most one surrounding entry per side, labelled
-as context. Actual returned timestamps determine availability; gaps and partial coverage are explicit, and
-wholly unavailable windows return a limitation. No interpolation or extrapolation is performed. Ambiguous or
-skipped local clock times require an explicit offset. With no range, the existing weather day/night summaries
-and UTC pollution summaries remain the default. `details` still controls which fields are returned.
-Locations accept full city/state/country names,
-`zip:10115,DE` (country required), or `52.52,13.405` (latitude,longitude). These features use the standard
-free APIs without a One Call subscription.
-The API key stays in Voxta's encrypted password-field configuration.
+- **How it works:** Uses OpenWeather's standard free APIs (no One Call subscription required) plus local astronomical/timezone calculations for `get_sun_times`. Queries accept city/state/country names, `zip:10115,DE`, or `lat,lon`, falling back to **My Location** when omitted. Individual tools and descriptions can be customized via **OpenWeather Tools** cards, and explicit requests can override default weather/pollution detail fields per call.
+- **What to pay attention to:**
+  - Requires an OpenWeather API key (rate-limited free plan available; stored encrypted in Voxta) and a tool-capable model.
+  - Weather forecasts cover ~5 days in 3-hour steps; air pollution forecasts cover ~4 days in hourly steps; pollution history supports up to 31 days per call from 27 Nov 2020 onward.
+  - Weather maps attach visibly to the chat and are passed to vision-capable models with bounds, units, and a color-legend reference. Note that Voxta queues chat image attachments behind the active reply/speech.
 
-The module itself is free. It requires Voxta `1.13.0-beta.1` or newer and an OpenWeather API key; OpenWeather offers a
-rate-limited free plan.
+### Philips Hue (`Voxta.Modules.PhilipsHue`)
 
-### Translator
+Controls Philips Hue lights, smart plugs, rooms, zones, scenes, color, and brightness from Voxta chats via 6 native tools, and can optionally expose a character-controlled light for emotion-driven changes.
 
-`Voxta.Modules.Translator` translates user messages into the character's configured language and translates
-assistant replies into a selected reply language. It runs locally with Bergamot; supported Mozilla translation
-models are downloaded into Voxta's module data folder on first use and reused across chats and server restarts.
-Cached and downloaded assets are checked for format, expected size and checksum; invalid files are downloaded again.
-Direct translation models
-are preferred, with an English pivot when a released direct model is unavailable.
+- **How it works:** Connects directly to your Philips Hue Bridge on the local network. On chat startup, it snapshots your exact light, smart-plug, room, zone, and group names so the model can target them accurately, while scenes are queried through the inventory tool.
+- **What to pay attention to:**
+  - Requires a Philips Hue Bridge reachable on the local network. Initial pairing prompts you to press the physical bridge link button; credentials are stored encrypted in Voxta (use **Re-authenticate** in module settings to clear and redo pairing).
+  - Inventory and connection status are initialized when a chat starts—restart the chat after adding/renaming lights or to retry a disconnected bridge.
+  - Toggling all lights without a target excludes smart plugs. The emotion tool is disabled by default and requires setting **Character Controlled Light**.
 
-Translator supports 64-bit Windows. The module itself is free. It requires Voxta `1.13.0-beta.1` or newer and
-an internet connection for the initial model registry and selected model downloads. Message text is translated
-locally and is not sent to a translation service.
+### Spotify Control (`Voxta.Modules.Spotify`)
 
-Enable **Translate speech only (experimental)** to keep original character replies in chat and history while
-translating speech into **Reply language**. This is off by default; the existing **Your language** and
-**Reply language** selections keep their current behavior when it is off. Start a new chat after changing it,
-and select a voice that supports the reply language. Translation runs for each speech text passed by Voxta;
-the synchronous speech hook waits for translation, including any initial model download, and provides no
-cancellation token. Separation of chat/history and speech still needs live Voxta acceptance testing.
+Controls Spotify playback, search, queueing, volume, seeking, shuffle, repeat, Liked Songs, playlists, and devices through 16 native tools, with automatic **Speech Ducking** while speaking or transcribing.
 
-### Spotify Control
+- **How it works:** Uses Voxta's built-in OAuth flow and a lightweight background monitor to track the active player, current track, and volume. Search returns numbered, human-readable selections bound to Spotify URIs for the current chat. **Speech Ducking Mode** supports either a fixed volume ceiling or a relative percentage reduction, restoring volume automatically after speech/transcription.
+- **What to pay attention to:**
+  - Requires a **Spotify Premium** account and your own app in the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard/) with **both** redirect URIs registered:
+    - `http://127.0.0.1:5384/oauth-native-bounce.html` — desktop app
+    - `http://127.0.0.1:5384/auth/modules/callback` — web browser
+    *(For a different server address, register both paths with that origin using HTTPS or an explicit loopback IP such as `127.0.0.1` or `[::1]`, not `localhost`.)*
+  - Enter **Client ID** and **Client Secret**, save, and click **Sign in** in **Spotify Account** (use **Sign out** or **Re-authenticate** to reset). Finish a pending sign-in within 5 minutes before switching clients.
+  - Playback tools appear automatically only when an active Spotify player (playing or paused) is detected; without one, start playback manually on your device first.
+  - Device discovery and transfer tools are disabled by default; enable or customize individual tools under **Spotify Tools** cards.
 
-`Voxta.Modules.Aios.Spotify` adds Spotify playback control to Voxta chats. It connects through Spotify OAuth and
-exposes 17 native tools for playback, search, queueing, volume, seeking, shuffle, repeat, favorites, playlists, and devices.
+### Translator (`Voxta.Modules.Translator`)
 
-The module itself is free. It requires Voxta `1.13.0-beta.1` or newer, a Spotify Premium account, and a Spotify Developer
-application that provides a Client ID and Client Secret.
+Translates your messages into the character's configured language and translates the character's replies into your chosen **Reply language** locally using Mozilla's Bergamot engine.
+
+- **How it works:** Runs on your Voxta server—message text is translated locally and is never sent to an external translation service. Direct translation models are preferred, falling back to an English pivot when no direct model exists.
+- **What to pay attention to:**
+  - **Windows (`win-x64`) only.** Requires an internet connection on first use of a language pair to download Mozilla translation models into Voxta's module data folder (cached and checksum-verified for later chats).
+  - By default, spoken replies are translated into **Reply language** while written chat/history keeps the character's original wording. Turn on **Also translate replies in chat and history** if you read with speech off, and start a new chat after changing it.
+  - Choose a voice that supports your **Reply language** (or set **Reply language** to the character's language to hear original replies while still typing/speaking in your own language).
 
 ## Develop
 
@@ -92,67 +71,7 @@ application that provides a Client ID and Client Secret.
 2. In Voxta, open **Add Modules → Add Custom Module**, select the module project, and apply it.
 3. Configure the selected module in Voxta.
 
-Spotify uses Voxta's supported module OAuth flow for both the desktop app and web browser. No additional
-HTTP server is started by the module.
-
-1. Create or open your application in the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard/).
-2. Add **both** redirect URIs to your Spotify application's settings:
-   - `http://127.0.0.1:5384/oauth-native-bounce.html` — desktop app
-   - `http://127.0.0.1:5384/auth/modules/callback` — web browser
-3. Enter the application's **Client ID** and **Client Secret** in the module, save, and click **Sign in** in
-   **Spotify Account**. Voxta supplies the correct callback automatically for the client that starts sign-in.
-4. Complete Spotify authorization. For desktop sign-in, allow the browser to return to Voxta when prompted.
-   For browser sign-in, finish in the same browser so Voxta retains its OAuth state.
-5. Run **Test**, then start a new chat and test playback/tools.
-
-You can sign in from desktop or browser without changing module settings. The callback chosen by Voxta is
-retained for that sign-in and used unchanged during token exchange. The module does not try alternate URLs
-on failure. Finish an active sign-in before starting one for the same module from a different client; an
-unfinished sign-in expires after five minutes. If Voxta restarts during sign-in, start a new sign-in.
-
-For a different Voxta server address, register both callback paths with that origin in Spotify. Remote
-addresses require HTTPS; local HTTP requires an explicit loopback IP such as `127.0.0.1` or `[::1]`, not
-`localhost`. You still do not enter or select redirect URLs in the module.
-
-**Sign out** clears the stored account through Voxta, including when the Spotify token has expired. On its
-next provider request, an active client notices the removed token and clears its cached connection. The module
-logs `Spotify OAuth sign-out requested` when the request reaches it.
-
-Select **Spotify Control** for native tool calling. All tools default on and **Offer Tools In** defaults to
-Assistant and Companion. The **Spotify Tools** cards provide individual switches and editable descriptions.
-Saved selections/styles are retained. Spotify's legacy actions, wake word, connect gate, and connection flags
-have been removed. Chats that used only **Spotify Actions (Legacy)** must select **Spotify Control**.
-
-All Spotify tools appear automatically when an active player is detected, including a paused player.
-Without one, all Spotify tools are hidden. Context guides the assistant to ask the user to open Spotify on
-their preferred device and start playback manually, then continue their original request. No status or connect
-tool is needed: the background monitor restores availability automatically. Changes apply to
-subsequent assistant generations, normally within the monitor's one-second polling interval. A tool you disabled
-in settings stays disabled. Playback context tells the assistant when manual startup or authorization is needed.
-
-**Spotify Status** combines player availability and playing/paused state in one context. Saving a track to
-Liked Songs reports when it is already saved, without adding it again.
-
-**Speech Ducking Mode** offers a fixed volume limit or a percentage reduction from the normal volume.
-Existing settings keep the fixed limit. For a normal volume of 60%, choose percentage reduction with 25% to
-duck to 45%, or about 17% to duck to 50%. Fixed mode never raises a quieter player. Both modes restore the
-normal volume after speech/transcription, including volume changes requested while ducked.
-Set the fixed limit to 100 or the relative reduction to 0 to disable ducking.
-
-Tokens are stored through Voxta's internal account store. The module creates no local token directory or files;
-old token files are ignored.
-
-Voxta displays module load errors on the Custom Modules page. The project uses the `1.13.0-beta.1` Modules SDK and
-keeps its package lock file in source control so local and release builds resolve the same dependencies.
-
-## Spotify tools
-
-- Pause, resume, and toggle playback.
-- Play requested or random music and configured special playlists.
-- Search Spotify and queue selected tracks.
-- Change volume and seek within the current track.
-- Skip tracks and change shuffle or repeat mode.
-- Save the current track, list or update playlists, list devices, and transfer playback.
+Voxta displays module load errors on the Custom Modules page. Each module targets `net11.0`, references the `1.13.0-beta.1` Modules SDK, and keeps its `packages.lock.json` in source control so local and release builds resolve the same dependencies.
 
 ## Releases
 
@@ -174,13 +93,13 @@ The workflows here call Voxta's reusable ones ([voxta-module-actions](https://gi
 To create the same files locally for one module:
 
 ```powershell
-dotnet publish Voxta.Modules.Aios.Spotify/Voxta.Modules.Aios.Spotify.csproj `
+dotnet publish Voxta.Modules.Spotify/Voxta.Modules.Spotify.csproj `
   -c Release -p:VoxtaModulePack=dist/spotify
 ```
 
 A zip is at most 32 MB; download CUDA, models, and other large dependencies at runtime.
 
-Users add `aios-ai/voxta-modules` in **Add Modules → Module Registries** and install from there. Voxta checks
+Users add `aios-ai/voxta-modules` in **Settings → AI Setup → Module Sources** and install from there. Voxta checks
 each download against the sha256 in `voxta-module.json` and GitHub's own hash of the asset.
 
 When a later Voxta breaks a release, cap its range without rebuilding: **Actions → edit release**, e.g.
@@ -188,11 +107,12 @@ When a later Voxta breaks a release, cap its range without rebuilding: **Actions
 
 ## Adding another module
 
-1. Give it a unique project directory and module ID.
+1. Give it a unique project directory and module ID (`Voxta.Modules.<Name>`).
 2. Add its project, `module.json`, assets, and committed `packages.lock.json`.
 3. Add the project to `Voxta.Modules.slnx` for local all-module builds.
-4. Push a branch or pull request; the build workflow discovers every tracked `module.json` and packages each module.
-5. Release it with `<module id>/v<version>` after its manifest version is committed to `main`.
+4. Add a concise section describing how it works and what to pay attention to in this README.
+5. Push a branch or pull request; the build workflow discovers every tracked `module.json` and packages each module.
+6. Release it with `<module id>/v<version>` after its manifest version is committed to `main`.
 
 The **bump voxta** workflow intentionally updates the SDK, Voxta compatibility range, lockfile, and selected semantic
 version component for every module in this repository together.
@@ -214,8 +134,8 @@ Voxta's source: yank it.
 In a public repository every zip is attested by GitHub: it was built by this repository's `release.yml` from the
 tagged commit.
 
-```
-gh attestation verify Voxta.Modules.Aios.Spotify-0.1.0-any.zip --repo aios-ai/voxta-modules
+```powershell
+gh attestation verify Voxta.Modules.Spotify-0.1.10-any.zip --repo aios-ai/voxta-modules
 ```
 
 The build is pinned (`packages.lock.json`, deterministic compiler output): rebuild the tag with

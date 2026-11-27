@@ -1,6 +1,6 @@
 # Repository guidance
 
-This is the active source repository for the installable modules under `Voxta.Modules.Aios.*`.
+This is the active source repository for the installable modules under `Voxta.Modules.*`.
 
 ## Required release flow
 

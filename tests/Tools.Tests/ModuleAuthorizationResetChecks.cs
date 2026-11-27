@@ -1,7 +1,7 @@
 using System.Reflection;
 using Voxta.Abstractions.Model;
 using Voxta.Abstractions.Repositories;
-using Voxta.Modules.Aios.Tools;
+using Voxta.Modules.Tools;
 using Module = Voxta.Abstractions.Model.Module;
 
 internal static class ModuleAuthorizationResetChecks
@@ -12,7 +12,7 @@ internal static class ModuleAuthorizationResetChecks
         var otherUser = Guid.NewGuid();
         var moduleId = Guid.NewGuid();
         var otherModule = Guid.NewGuid();
-        var module = new Module { Id = moduleId, ServiceName = "Aios.Test", Configuration = new()
+        var module = new Module { Id = moduleId, ServiceName = "Test", Configuration = new()
         {
             ["Account"] = Guid.NewGuid().ToString(), ["ClientSecret"] = "encrypted-secret", ["Tools"] = "settings"
         }};
@@ -62,21 +62,21 @@ internal static class ModuleAuthorizationResetChecks
             ModuleAuthorizationReset.ClearAsync(factory, user, id, service, "Account", ct);
 
         using var canceled = new CancellationTokenSource(); canceled.Cancel();
-        await Throws<OperationCanceledException>(() => Reset(moduleId, "Aios.Test", canceled.Token));
-        await Throws<InvalidOperationException>(() => Reset(otherModule, "Aios.Test"));
-        await Throws<InvalidOperationException>(() => Reset(moduleId, "Aios.Wrong"));
+        await Throws<OperationCanceledException>(() => Reset(moduleId, "Test", canceled.Token));
+        await Throws<InvalidOperationException>(() => Reset(otherModule, "Test"));
+        await Throws<InvalidOperationException>(() => Reset(moduleId, "Wrong"));
         Check(saves == 0 && rows.Count == 5, "Invalid actions changed storage");
         failRead = true;
-        await Throws<IOException>(() => Reset(moduleId, "Aios.Test"));
+        await Throws<IOException>(() => Reset(moduleId, "Test"));
         Check(module.Configuration.ContainsKey("Account") && saves == 0, "Read failure cleared settings");
         failRead = false;
-        await Reset(moduleId, "Aios.Test");
+        await Reset(moduleId, "Test");
         Check(rows.Count == 3 && rows.All(r => r.User != user || r.Token.ModuleId != moduleId || r.Token.Identifier != "Account"), "Wrong rows removed");
         Check(saves == 1 && !module.Configuration.ContainsKey("Account") && module.Configuration["ClientSecret"] == "encrypted-secret" && module.Configuration["Tools"] == "settings", "Unrelated settings changed");
-        await Reset(moduleId, "Aios.Test");
+        await Reset(moduleId, "Test");
         Check(rows.Count == 3 && saves == 2, "Repeated reset was not harmless");
         failSave = true;
-        await Throws<IOException>(() => Reset(moduleId, "Aios.Test"));
+        await Throws<IOException>(() => Reset(moduleId, "Test"));
         Console.WriteLine("PASS authorization reset: damaged/duplicate credentials, user/module/field isolation, preserved settings, repeated reset, failures and cancellation");
     }
 

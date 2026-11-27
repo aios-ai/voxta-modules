@@ -106,7 +106,7 @@
           "Voxta.Model": "1.13.0-beta.1"
         }
       },
-      "voxta.modules.aios.spotify": {
+      "voxta.modules.spotify": {
         "type": "Project",
         "dependencies": {
           "SpotifyAPI.Web": "[7.4.2, )",

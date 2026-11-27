@@ -1,7 +1,7 @@
 using Voxta.Model.Shared;
 using Voxta.Model.Shared.Forms;
 
-namespace Voxta.Modules.Aios.Tools;
+namespace Voxta.Modules.Tools;
 
 internal static class ModuleToolChatStyles
 {

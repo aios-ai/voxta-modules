@@ -3,7 +3,7 @@ using Voxta.Abstractions.Services.Agents;
 using Voxta.Abstractions.Services.ChatAugmentations;
 using Voxta.Model.Shared;
 
-namespace Voxta.Modules.Aios.Tools;
+namespace Voxta.Modules.Tools;
 
 /// <summary>SDK adapter. The module's session owner remains responsible for its clients and monitors.</summary>
 internal sealed class ModuleToolsAugmentation(ModuleToolCatalog catalog) : IToolsChatAugmentation

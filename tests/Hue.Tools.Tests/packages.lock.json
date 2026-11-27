@@ -106,7 +106,7 @@
           "Voxta.Model": "1.13.0-beta.1"
         }
       },
-      "voxta.modules.aios.philipshue": {
+      "voxta.modules.philipshue": {
         "type": "Project",
         "dependencies": {
           "HueApi": "[3.2.0, )",

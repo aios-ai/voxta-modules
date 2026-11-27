@@ -3,7 +3,7 @@ using HueApi.Models.Clip;
 using Voxta.Abstractions.Authorization;
 using Voxta.Abstractions.Encryption;
 using Voxta.Model.Shared.Forms;
-using Voxta.Modules.Aios.PhilipsHue.Clients;
+using Voxta.Modules.PhilipsHue.Clients;
 
 internal static class HueCredentialChecks
 {

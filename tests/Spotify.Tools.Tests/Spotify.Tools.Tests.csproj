@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../Voxta.Modules.Aios.Spotify/Voxta.Modules.Aios.Spotify.csproj" />
+    <ProjectReference Include="../../Voxta.Modules.Spotify/Voxta.Modules.Spotify.csproj" />
     <PackageReference Include="Voxta.Abstractions" Version="1.13.0-beta.1" />
   </ItemGroup>
 </Project>

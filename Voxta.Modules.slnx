@@ -1,8 +1,8 @@
 <Solution>
-  <Project Path="Voxta.Modules.Aios.KeyboardShortcuts/Voxta.Modules.Aios.KeyboardShortcuts.csproj" />
-  <Project Path="Voxta.Modules.Aios.OpenWeather/Voxta.Modules.Aios.OpenWeather.csproj" />
-  <Project Path="Voxta.Modules.Aios.PhilipsHue/Voxta.Modules.Aios.PhilipsHue.csproj" />
-  <Project Path="Voxta.Modules.Aios.Spotify/Voxta.Modules.Aios.Spotify.csproj" />
+  <Project Path="Voxta.Modules.KeyboardShortcuts/Voxta.Modules.KeyboardShortcuts.csproj" />
+  <Project Path="Voxta.Modules.OpenWeather/Voxta.Modules.OpenWeather.csproj" />
+  <Project Path="Voxta.Modules.PhilipsHue/Voxta.Modules.PhilipsHue.csproj" />
+  <Project Path="Voxta.Modules.Spotify/Voxta.Modules.Spotify.csproj" />
   <Project Path="Voxta.Modules.Translator/Voxta.Modules.Translator.csproj" />
   <Folder Name="/tests/">
     <Project Path="tests/OpenWeather.Tools.Tests/OpenWeather.Tools.Tests.csproj" />

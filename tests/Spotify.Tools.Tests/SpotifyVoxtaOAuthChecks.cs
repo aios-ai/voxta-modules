@@ -7,9 +7,9 @@ using Voxta.Abstractions.Encryption;
 using Voxta.Abstractions.Registration;
 using Voxta.Abstractions.Security;
 using Voxta.Model.Shared.Forms;
-using Voxta.Modules.Aios.Spotify.Clients.Models;
-using Voxta.Modules.Aios.Spotify.Clients.Services;
-using Voxta.Modules.Aios.Spotify.Configuration;
+using Voxta.Modules.Spotify.Clients.Models;
+using Voxta.Modules.Spotify.Clients.Services;
+using Voxta.Modules.Spotify.Configuration;
 
 internal static class SpotifyVoxtaOAuthChecks
 {

@@ -6,11 +6,11 @@ using Voxta.Abstractions.Chats.Sessions;
 using Voxta.Abstractions.Services.Agents;
 using Voxta.Abstractions.Services.ChatAugmentations;
 using Voxta.Model.Shared;
-using Voxta.Modules.Aios.Spotify;
-using Voxta.Modules.Aios.Spotify.ChatAugmentations;
-using Voxta.Modules.Aios.Spotify.Clients.Services;
-using Voxta.Modules.Aios.Spotify.Tools;
-using Voxta.Modules.Aios.Tools;
+using Voxta.Modules.Spotify;
+using Voxta.Modules.Spotify.ChatAugmentations;
+using Voxta.Modules.Spotify.Clients.Services;
+using Voxta.Modules.Spotify.Tools;
+using Voxta.Modules.Tools;
 
 var operations = new (string Operation, string Json, string? Mutation)[]
 {

@@ -1,7 +1,7 @@
 using System.Globalization;
-using Voxta.Modules.Aios.OpenWeather.Clients;
-using Voxta.Modules.Aios.OpenWeather.Helper;
-using Voxta.Modules.Aios.Tools;
+using Voxta.Modules.OpenWeather.Clients;
+using Voxta.Modules.OpenWeather.Helper;
+using Voxta.Modules.Tools;
 
 internal static class ForecastSelectionChecks
 {

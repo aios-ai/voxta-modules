@@ -1,0 +1,10 @@
+{
+  "id": "Voxta.Modules.KeyboardShortcuts",
+  "version": "0.1.0-beta.11",
+  "voxta": ">=1.13.0-beta.1",
+  "label": "Keyboard Shortcuts",
+  "author": "aios",
+  "category": "Augmentations",
+  "description": "Let a character trigger keyboard shortcuts you configure on the local Windows desktop.",
+  "platforms": ["win-x64"]
+}
